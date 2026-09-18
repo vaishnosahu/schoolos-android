@@ -3,6 +3,7 @@ plugins { id 'com.android.application' }
 dependencies {
     implementation 'androidx.core:core:1.15.0'
     implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'com.google.firebase:firebase-messaging:23.4.1'
 }
 
 android {
@@ -22,8 +23,8 @@ android {
         applicationId 'com.schooloss.mobile'
         minSdk 24
         targetSdk 35
-        versionCode 3010004
-        versionName '3.1.4'
+        versionCode 3010005
+        versionName '3.1.5'
     }
 
     buildTypes {

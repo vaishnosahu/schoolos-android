@@ -1,4 +1,4 @@
-name: Build SchoolOS Native Mobile 3.1.4 Stable Beta APK
+name: Build SchoolOS Native Mobile 3.1.5 Stable Beta APK
 on:
   workflow_dispatch:
   push:
@@ -22,12 +22,12 @@ jobs:
       - name: Prepare artifact
         run: |
           test -f app/build/outputs/apk/debug/app-debug.apk
-          cp app/build/outputs/apk/debug/app-debug.apk SchoolOS-Native-Mobile-3.1.4-Stable-Beta.apk
-          sha256sum SchoolOS-Native-Mobile-3.1.4-Stable-Beta.apk > SchoolOS-Native-Mobile-3.1.4-Stable-Beta.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk
+          sha256sum SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk > SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: SchoolOS-Native-Mobile-3.1.4-Stable-Beta-APK
+          name: SchoolOS-Native-Mobile-3.1.5-Stable-Beta-APK
           path: |
-            SchoolOS-Native-Mobile-3.1.4-Stable-Beta.apk
-            SchoolOS-Native-Mobile-3.1.4-Stable-Beta.apk.sha256
+            SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk
+            SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk.sha256
           if-no-files-found: error

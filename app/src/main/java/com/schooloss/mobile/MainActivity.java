@@ -46,6 +46,9 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.FirebaseMessaging;
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.IOException;
@@ -60,12 +63,13 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.1.4";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.1.4";
-    private static final String APP_UA = " SchoolOSNative/3.1.4 Android";
+    private static final String NATIVE_VERSION = "3.1.5";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.1.5";
+    private static final String APP_UA = " SchoolOSNative/3.1.5 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
+    private static final int PUSH_PERM_REQ = 4104;
 
     private WebView web;
     private ProgressBar progress;
@@ -92,6 +96,7 @@ public class MainActivity extends Activity {
     private PermissionRequest pendingWebPermission;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
+    private String pushCsrf = "";
     private final Set<String> internalHosts = new HashSet<>();
 
     @Override protected void onCreate(Bundle state) {
@@ -116,6 +121,7 @@ public class MainActivity extends Activity {
         internalHosts.add("www.alkeynesprjects.com");
         internalHosts.add("schooloss.com");
         internalHosts.add("www.schooloss.com");
+        SchoolOSMessagingService.ensureChannels(this);
         setContentView(R.layout.activity_main);
         web = findViewById(R.id.web);
         web.setPadding(0,0,0,0);
@@ -301,6 +307,7 @@ public class MainActivity extends Activity {
         Map<String,String> headers = new HashMap<>();
         headers.put("X-SchoolOS-Native", NATIVE_VERSION);
         headers.put("X-SchoolOS-Platform", "android");
+        headers.put("X-SchoolOS-Install-ID", SchoolOSApplication.installationId(this));
         return headers;
     }
 
@@ -497,6 +504,52 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void configureNativePush(String rawJson) {
+        try {
+            JSONObject cfg = new JSONObject(rawJson == null ? "{}" : rawJson);
+            if (!cfg.optBoolean("enabled", false)) return;
+            pushCsrf = cfg.optString("csrf", "");
+            if (!SchoolOSApplication.configureFirebase(this, cfg)) return;
+
+            if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                android.content.SharedPreferences prefs = getSharedPreferences(SchoolOSApplication.PREFS, MODE_PRIVATE);
+                if (!prefs.getBoolean("notification_permission_requested", false)) {
+                    prefs.edit().putBoolean("notification_permission_requested", true).apply();
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, PUSH_PERM_REQ);
+                }
+            }
+            syncPushToken();
+        } catch (Exception ignored) {}
+    }
+
+    private void syncPushToken() {
+        if (!SchoolOSApplication.firebaseReady(this)) return;
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if (!task.isSuccessful() || task.getResult() == null || task.getResult().trim().isEmpty()) return;
+            String token = task.getResult().trim();
+            SchoolOSApplication.savePendingToken(this, token);
+            sendPushTokenToPage(token);
+        });
+    }
+
+    private void sendPushTokenToPage(String token) {
+        if (web == null || token == null || token.trim().isEmpty() || pushCsrf.trim().isEmpty()) return;
+        try {
+            JSONObject meta = new JSONObject();
+            meta.put("csrf", pushCsrf);
+            meta.put("installation_id", SchoolOSApplication.installationId(this));
+            meta.put("platform", "android");
+            meta.put("app_version", NATIVE_VERSION);
+            meta.put("device_model", (Build.MANUFACTURER + " " + Build.MODEL).trim());
+            meta.put("os_version", "Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")");
+            meta.put("notifications_allowed", SchoolOSApplication.notificationsAllowed(this));
+            String js = "window.SchoolOSPush&&window.SchoolOSPush.onNativeToken(" +
+                    JSONObject.quote(token) + "," + meta.toString() + ");";
+            runOnUiThread(() -> web.evaluateJavascript(js, null));
+        } catch (Exception ignored) {}
+    }
+
     private void requestWebPermissions(PermissionRequest request) {
         List<String> needed = new ArrayList<>();
         for (String resource : request.getResources()) {
@@ -682,6 +735,16 @@ public class MainActivity extends Activity {
     }
 
     private String resolve(Intent i) {
+        if (i != null) {
+            String pushTarget = i.getStringExtra("target_url");
+            if (pushTarget != null && !pushTarget.trim().isEmpty()) {
+                try {
+                    Uri p = Uri.parse(pushTarget.trim());
+                    if ("https".equalsIgnoreCase(p.getScheme()) && p.getHost() != null &&
+                            internalHosts.contains(p.getHost().toLowerCase(Locale.ROOT))) return p.toString();
+                } catch (Exception ignored) {}
+            }
+        }
         Uri u = i == null ? null : i.getData();
         if (u == null) return HOME;
         if ("schoolos".equalsIgnoreCase(u.getScheme())) return resolveDeepLink(u);
@@ -776,6 +839,7 @@ public class MainActivity extends Activity {
             geoCallback = null;
             geoOrigin = null;
         }
+        if (requestCode == PUSH_PERM_REQ) syncPushToken();
     }
 
     @Override public void onBackPressed() {
@@ -816,6 +880,13 @@ public class MainActivity extends Activity {
     public class NativeBridge {
         @JavascriptInterface public String getVersion() { return NATIVE_VERSION; }
         @JavascriptInterface public String getPlatform() { return "android"; }
+        @JavascriptInterface public String getInstallationId() { return SchoolOSApplication.installationId(MainActivity.this); }
+        @JavascriptInterface public void configurePush(String configJson) {
+            runOnUiThread(() -> configureNativePush(configJson));
+        }
+        @JavascriptInterface public void syncPushToken() {
+            runOnUiThread(MainActivity.this::syncPushToken);
+        }
         @JavascriptInterface public void share(String text, String url) {
             runOnUiThread(() -> {
                 Intent s = new Intent(Intent.ACTION_SEND);

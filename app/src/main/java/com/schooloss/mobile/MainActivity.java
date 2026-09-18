@@ -17,9 +17,13 @@ import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.MotionEvent;
+import android.view.animation.DecelerateInterpolator;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
@@ -53,9 +57,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.0.6";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.6";
-    private static final String APP_UA = " SchoolOSNative/3.0.6 Android";
+    private static final String NATIVE_VERSION = "3.0.7";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.7";
+    private static final String APP_UA = " SchoolOSNative/3.0.7 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -63,6 +67,17 @@ public class MainActivity extends Activity {
     private WebView web;
     private ProgressBar progress;
     private View offlinePanel;
+    private View launchOverlay;
+    private View launchLogo;
+    private View launchTitle;
+    private View launchSubtitle;
+    private View launchDot1;
+    private View launchDot2;
+    private View launchDot3;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private long launchStartedAt = 0L;
+    private boolean launchHidden = false;
+    private int launchDotIndex = 0;
     private ValueCallback<Uri[]> fileCallback;
     private Uri cameraUri;
     private PermissionRequest pendingWebPermission;
@@ -94,7 +109,16 @@ public class MainActivity extends Activity {
         web.setBackgroundColor(Color.rgb(247,249,253));
         progress = findViewById(R.id.progress);
         offlinePanel = findViewById(R.id.offlinePanel);
+        launchOverlay = findViewById(R.id.launchOverlay);
+        launchLogo = findViewById(R.id.launchLogo);
+        launchTitle = findViewById(R.id.launchTitle);
+        launchSubtitle = findViewById(R.id.launchSubtitle);
+        launchDot1 = findViewById(R.id.launchDot1);
+        launchDot2 = findViewById(R.id.launchDot2);
+        launchDot3 = findViewById(R.id.launchDot3);
         findViewById(R.id.retryButton).setOnClickListener(v -> retry());
+        launchStartedAt = System.currentTimeMillis();
+        startLaunchAnimation();
         configureWebView();
         prepareNativeSession();
         if (state != null) web.restoreState(state); else load(resolve(getIntent()));
@@ -115,10 +139,22 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(false);
         s.setTextZoom(100);
+        s.setSupportZoom(false);
         s.setSupportMultipleWindows(true);
         s.setJavaScriptCanOpenWindowsAutomatically(true);
         s.setUserAgentString(s.getUserAgentString() + APP_UA);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) s.setSafeBrowsingEnabled(true);
+
+        web.setVerticalScrollBarEnabled(false);
+        web.setHorizontalScrollBarEnabled(false);
+        web.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        web.setNestedScrollingEnabled(true);
+        web.setOnTouchListener((v, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN || event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                ViewParentCompat.disallow(v);
+            }
+            return false;
+        });
 
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
@@ -132,9 +168,7 @@ public class MainActivity extends Activity {
             }
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 offlinePanel.setVisibility(View.GONE);
-                web.setFocusable(false);
-                web.setFocusableInTouchMode(false);
-                web.setVisibility(View.INVISIBLE);
+                web.setVisibility(View.VISIBLE);
             }
             @Override public void onPageFinished(WebView view, String url) {
                 CookieManager.getInstance().flush();
@@ -209,8 +243,9 @@ public class MainActivity extends Activity {
         String script = "(function(){" +
                 "var sel='.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]';" +
                 "var css=sel+'{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
-                "css+='html,body{margin:0!important;padding:0!important;width:100%!important;max-width:none!important;overflow-x:hidden!important}';" +
-                "css+='.m-stage,.m-app,.m-native-stage,.m-native-app{width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important}';" +
+                "css+='html,body{margin:0!important;padding:0!important;width:100%!important;max-width:none!important;height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;touch-action:pan-y pinch-zoom!important;-webkit-overflow-scrolling:touch!important}';" +
+                "css+='.m-stage,.m-app,.m-native-stage,.m-native-app{width:100%!important;max-width:none!important;height:auto!important;min-height:100dvh!important;margin:0!important;box-shadow:none!important;overflow-y:visible!important;touch-action:pan-y pinch-zoom!important}';" +
+                "css+='.m-content,.m-native-content,.main-area{height:auto!important;overflow-y:visible!important;touch-action:pan-y!important}';" +
                 "css+='.m-login-stage{width:100%!important;max-width:none!important;margin:0!important;padding:0!important;place-items:stretch!important}';" +
                 "css+='.m-login-card{width:100%!important;max-width:none!important;margin:0!important;min-height:100dvh!important;border-radius:0!important;box-shadow:none!important}';" +
                 "css+='.m-bottom,.m-native-bottom{left:0!important;right:0!important;transform:none!important;width:100%!important;max-width:none!important;margin:0!important}';" +
@@ -243,6 +278,79 @@ public class MainActivity extends Activity {
         headers.put("X-SchoolOS-Native", NATIVE_VERSION);
         headers.put("X-SchoolOS-Platform", "android");
         return headers;
+    }
+
+    private final Runnable launchPulse = new Runnable() {
+        @Override public void run() {
+            if (launchHidden || launchOverlay == null || launchOverlay.getVisibility() != View.VISIBLE) return;
+            View[] dots = new View[]{launchDot1, launchDot2, launchDot3};
+            for (int i = 0; i < dots.length; i++) {
+                View dot = dots[i];
+                if (dot == null) continue;
+                boolean active = i == launchDotIndex;
+                dot.animate()
+                        .alpha(active ? 1f : .34f)
+                        .scaleX(active ? 1.28f : 1f)
+                        .scaleY(active ? 1.28f : 1f)
+                        .translationY(active ? -3f : 0f)
+                        .setDuration(180)
+                        .start();
+            }
+            launchDotIndex = (launchDotIndex + 1) % 3;
+            uiHandler.postDelayed(this, 260);
+        }
+    };
+
+    private void startLaunchAnimation() {
+        if (launchOverlay == null) return;
+        launchOverlay.setAlpha(1f);
+        launchOverlay.setVisibility(View.VISIBLE);
+        if (launchLogo != null) {
+            launchLogo.setAlpha(0f);
+            launchLogo.setScaleX(.82f);
+            launchLogo.setScaleY(.82f);
+            launchLogo.setTranslationY(16f);
+            launchLogo.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+                    .setDuration(520).setInterpolator(new DecelerateInterpolator()).start();
+        }
+        if (launchTitle != null) {
+            launchTitle.setAlpha(0f);
+            launchTitle.setTranslationY(16f);
+            launchTitle.animate().alpha(1f).translationY(0f)
+                    .setStartDelay(120).setDuration(420).setInterpolator(new DecelerateInterpolator()).start();
+        }
+        if (launchSubtitle != null) {
+            launchSubtitle.setAlpha(0f);
+            launchSubtitle.setTranslationY(12f);
+            launchSubtitle.animate().alpha(1f).translationY(0f)
+                    .setStartDelay(210).setDuration(420).setInterpolator(new DecelerateInterpolator()).start();
+        }
+        uiHandler.removeCallbacks(launchPulse);
+        uiHandler.postDelayed(launchPulse, 340);
+    }
+
+    private void hideLaunchOverlay() {
+        if (launchHidden || launchOverlay == null) return;
+        long elapsed = System.currentTimeMillis() - launchStartedAt;
+        long delay = Math.max(0L, 1150L - elapsed);
+        uiHandler.postDelayed(() -> {
+            if (launchHidden || launchOverlay == null) return;
+            launchHidden = true;
+            uiHandler.removeCallbacks(launchPulse);
+            launchOverlay.animate()
+                    .alpha(0f)
+                    .setDuration(320)
+                    .withEndAction(() -> launchOverlay.setVisibility(View.GONE))
+                    .start();
+        }, delay);
+    }
+
+    private static final class ViewParentCompat {
+        static void disallow(View view) {
+            if (view != null && view.getParent() != null) {
+                view.getParent().requestDisallowInterceptTouchEvent(true);
+            }
+        }
     }
 
     private void requestWebPermissions(PermissionRequest request) {
@@ -382,10 +490,9 @@ public class MainActivity extends Activity {
                 "return 'ready';" +
                 "})();";
         web.evaluateJavascript(js, value -> {
-            web.setFocusableInTouchMode(true);
-            web.setFocusable(true);
             web.clearFocus();
             web.setVisibility(View.VISIBLE);
+            hideLaunchOverlay();
         });
     }
 
@@ -435,9 +542,7 @@ public class MainActivity extends Activity {
             return;
         }
         offlinePanel.setVisibility(View.GONE);
-        web.setFocusable(false);
-        web.setFocusableInTouchMode(false);
-        web.setVisibility(View.INVISIBLE);
+        web.setVisibility(View.VISIBLE);
         web.loadUrl(url, nativeHeaders());
     }
 
@@ -448,6 +553,7 @@ public class MainActivity extends Activity {
     private void showOffline() {
         web.setVisibility(View.GONE);
         offlinePanel.setVisibility(View.VISIBLE);
+        hideLaunchOverlay();
     }
 
     private boolean isOnline() {
@@ -513,6 +619,11 @@ public class MainActivity extends Activity {
     @Override protected void onPause() {
         CookieManager.getInstance().flush();
         super.onPause();
+    }
+
+    @Override protected void onDestroy() {
+        uiHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     @Override protected void onSaveInstanceState(Bundle out) {

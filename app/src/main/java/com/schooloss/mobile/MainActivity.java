@@ -292,6 +292,9 @@ public class MainActivity extends Activity {
         CookieManager cm = CookieManager.getInstance();
         cm.setCookie("https://alkeynesprjects.com", "schoolos_native=" + NATIVE_VERSION + "; Path=/; Secure; SameSite=Lax");
         cm.setCookie("https://www.alkeynesprjects.com", "schoolos_native=" + NATIVE_VERSION + "; Path=/; Secure; SameSite=Lax");
+        String installId = SchoolOSApplication.installationId(this);
+        cm.setCookie("https://alkeynesprjects.com", "schoolos_install_id=" + installId + "; Path=/schools/; Secure; SameSite=Lax");
+        cm.setCookie("https://www.alkeynesprjects.com", "schoolos_install_id=" + installId + "; Path=/schools/; Secure; SameSite=Lax");
         cm.flush();
         android.content.SharedPreferences prefs = getSharedPreferences("schoolos_native", MODE_PRIVATE);
         String previous = prefs.getString("version", "");

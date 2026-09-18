@@ -46,11 +46,14 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/";
-    private static final String APP_UA = " SchoolOSNative/3.0.3 Android";
+    private static final String NATIVE_VERSION = "3.0.4";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.4";
+    private static final String APP_UA = " SchoolOSNative/3.0.4 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -78,6 +81,7 @@ public class MainActivity extends Activity {
         offlinePanel = findViewById(R.id.offlinePanel);
         findViewById(R.id.retryButton).setOnClickListener(v -> retry());
         configureWebView();
+        prepareNativeSession();
         if (state != null) web.restoreState(state); else load(resolve(getIntent()));
     }
 
@@ -110,6 +114,8 @@ public class MainActivity extends Activity {
             }
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 offlinePanel.setVisibility(View.GONE);
+                web.setFocusable(false);
+                web.setFocusableInTouchMode(false);
                 web.setVisibility(View.INVISIBLE);
             }
             @Override public void onPageFinished(WebView view, String url) {
@@ -183,12 +189,36 @@ public class MainActivity extends Activity {
         origins.add("https://schooloss.com");
         origins.add("https://www.schooloss.com");
         String script = "(function(){" +
-                "var css='.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
+                "var sel='.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]';" +
+                "var css=sel+'{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
                 "var st=document.createElement('style');st.id='schoolos-native-prepaint';st.textContent=css;" +
                 "(document.head||document.documentElement).appendChild(st);" +
-                "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});},{once:true});" +
+                "document.addEventListener('focusin',function(e){try{if(e.target&&e.target.matches&&e.target.matches(sel)){e.target.blur();var m=document.getElementById('mainContent');if(m&&m.focus)m.focus({preventScroll:true});}}catch(x){}},true);" +
+                "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll(sel).forEach(function(x){x.remove();});},{once:true});" +
                 "})();";
         WebViewCompat.addDocumentStartJavaScript(web, script, origins);
+    }
+
+    private void prepareNativeSession() {
+        CookieManager cm = CookieManager.getInstance();
+        cm.setCookie("https://alkeynesprjects.com", "schoolos_native=" + NATIVE_VERSION + "; Path=/; Secure; SameSite=Lax");
+        cm.setCookie("https://www.alkeynesprjects.com", "schoolos_native=" + NATIVE_VERSION + "; Path=/; Secure; SameSite=Lax");
+        cm.flush();
+        android.content.SharedPreferences prefs = getSharedPreferences("schoolos_native", MODE_PRIVATE);
+        String previous = prefs.getString("version", "");
+        if (!NATIVE_VERSION.equals(previous)) {
+            web.clearCache(true);
+            web.clearHistory();
+            prefs.edit().putString("version", NATIVE_VERSION).apply();
+            Toast.makeText(this, "SchoolOS Native " + NATIVE_VERSION, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private Map<String,String> nativeHeaders() {
+        Map<String,String> headers = new HashMap<>();
+        headers.put("X-SchoolOS-Native", NATIVE_VERSION);
+        headers.put("X-SchoolOS-Platform", "android");
+        return headers;
     }
 
     private void requestWebPermissions(PermissionRequest request) {
@@ -261,7 +291,7 @@ public class MainActivity extends Activity {
         }
         if (("https".equals(scheme) || "http".equals(scheme)) && internalHosts.contains(host)) {
             Uri target = normalizeNativeWorkspace(uri, fromUrl);
-            web.loadUrl(target.toString());
+            web.loadUrl(target.toString(), nativeHeaders());
             return true;
         }
         if ("intent".equals(scheme)) {
@@ -328,6 +358,8 @@ public class MainActivity extends Activity {
                 "return 'ready';" +
                 "})();";
         web.evaluateJavascript(js, value -> {
+            web.setFocusableInTouchMode(true);
+            web.setFocusable(true);
             web.clearFocus();
             web.setVisibility(View.VISIBLE);
         });
@@ -379,8 +411,10 @@ public class MainActivity extends Activity {
             return;
         }
         offlinePanel.setVisibility(View.GONE);
+        web.setFocusable(false);
+        web.setFocusableInTouchMode(false);
         web.setVisibility(View.INVISIBLE);
-        web.loadUrl(url);
+        web.loadUrl(url, nativeHeaders());
     }
 
     private void retry() {
@@ -463,7 +497,7 @@ public class MainActivity extends Activity {
     }
 
     public class NativeBridge {
-        @JavascriptInterface public String getVersion() { return "3.0.3"; }
+        @JavascriptInterface public String getVersion() { return NATIVE_VERSION; }
         @JavascriptInterface public String getPlatform() { return "android"; }
         @JavascriptInterface public void share(String text, String url) {
             runOnUiThread(() -> {

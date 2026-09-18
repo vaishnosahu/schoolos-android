@@ -183,10 +183,10 @@ public class MainActivity extends Activity {
         origins.add("https://schooloss.com");
         origins.add("https://www.schooloss.com");
         String script = "(function(){" +
-                "var css='.m-native-skip,.m-native-skip,.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
+                "var css='.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
                 "var st=document.createElement('style');st.id='schoolos-native-prepaint';st.textContent=css;" +
                 "(document.head||document.documentElement).appendChild(st);" +
-                "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});},{once:true});" +
+                "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});},{once:true});" +
                 "})();";
         WebViewCompat.addDocumentStartJavaScript(web, script, origins);
     }

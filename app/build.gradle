@@ -1,5 +1,7 @@
 plugins { id 'com.android.application' }
 
+dependencies { implementation 'androidx.core:core:1.15.0' }
+
 android {
     namespace 'com.schooloss.mobile'
     compileSdk 35
@@ -7,8 +9,8 @@ android {
         applicationId 'com.schooloss.mobile'
         minSdk 24
         targetSdk 35
-        versionCode 20491012
-        versionName '2.0.10'
+        versionCode 3000000
+        versionName '3.0.0'
     }
     buildTypes {
         release {

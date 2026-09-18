@@ -1,6 +1,8 @@
 name: Build SchoolOS Native Mobile 3.0 APK
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 jobs:
   apk:
     runs-on: ubuntu-latest

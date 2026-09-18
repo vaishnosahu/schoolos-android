@@ -34,7 +34,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
-import androidx.core.content.FileProvider;\nimport androidx.webkit.WebViewCompat;\nimport androidx.webkit.WebViewFeature;
+import androidx.core.content.FileProvider;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import java.io.File;
 import java.io.IOException;
@@ -99,7 +101,8 @@ public class MainActivity extends Activity {
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
         cm.setAcceptThirdPartyCookies(web, true);
-        web.addJavascriptInterface(new NativeBridge(), "SchoolOSNative");\n        installDocumentStartCleanup();
+        web.addJavascriptInterface(new NativeBridge(), "SchoolOSNative");
+        installDocumentStartCleanup();
 
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {

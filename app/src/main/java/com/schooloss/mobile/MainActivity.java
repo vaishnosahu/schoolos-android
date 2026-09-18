@@ -50,7 +50,7 @@ import java.util.Set;
 
 public class MainActivity extends Activity {
     private static final String HOME = "https://alkeynesprjects.com/schools/mobile/";
-    private static final String APP_UA = " SchoolOSNative/3.0.1 Android";
+    private static final String APP_UA = " SchoolOSNative/3.0.2 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
             }
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 offlinePanel.setVisibility(View.GONE);
-                web.setVisibility(View.VISIBLE);
+                web.setVisibility(View.INVISIBLE);
             }
             @Override public void onPageFinished(WebView view, String url) {
                 CookieManager.getInstance().flush();
@@ -314,11 +314,23 @@ public class MainActivity extends Activity {
                 "table{font-size:12px!important}.table-wrap,.table-card,.data-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch}";
         String js = "(function(){" +
                 "document.documentElement.classList.add('schoolos-native');" +
-                "var s=document.querySelector('.m-skip-link,.skip-link');if(s)s.remove();" +
-                "document.querySelectorAll('[data-install],#installSheet,#installBackdrop').forEach(function(x){x.style.display='none'});" +
+                "var kill=function(){" +
+                    "document.querySelectorAll('.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});" +
+                    "document.querySelectorAll('[data-install],#installSheet,#installBackdrop').forEach(function(x){x.style.display='none'});" +
+                "};" +
+                "kill();" +
+                "if(!window.__schoolosNativeSkipObserver){" +
+                    "window.__schoolosNativeSkipObserver=new MutationObserver(function(){kill();});" +
+                    "window.__schoolosNativeSkipObserver.observe(document.documentElement||document,{subtree:true,childList:true,attributes:false});" +
+                "}" +
                 (workspace ? "var st=document.getElementById('schoolos-native-workspace');if(!st){st=document.createElement('style');st.id='schoolos-native-workspace';st.textContent=" + quoteJs(css) + ";document.head.appendChild(st);}" : "") +
+                "kill();" +
+                "return 'ready';" +
                 "})();";
-        web.evaluateJavascript(js, null);
+        web.evaluateJavascript(js, value -> {
+            web.clearFocus();
+            web.setVisibility(View.VISIBLE);
+        });
     }
 
     private String quoteJs(String value) {
@@ -367,7 +379,7 @@ public class MainActivity extends Activity {
             return;
         }
         offlinePanel.setVisibility(View.GONE);
-        web.setVisibility(View.VISIBLE);
+        web.setVisibility(View.INVISIBLE);
         web.loadUrl(url);
     }
 
@@ -451,7 +463,7 @@ public class MainActivity extends Activity {
     }
 
     public class NativeBridge {
-        @JavascriptInterface public String getVersion() { return "3.0.1"; }
+        @JavascriptInterface public String getVersion() { return "3.0.2"; }
         @JavascriptInterface public String getPlatform() { return "android"; }
         @JavascriptInterface public void share(String text, String url) {
             runOnUiThread(() -> {

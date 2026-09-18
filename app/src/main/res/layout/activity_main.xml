@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent">
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#F5F7FB">
     <WebView android:id="@+id/web" android:layout_width="match_parent" android:layout_height="match_parent"/>
     <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent" android:layout_height="3dp"
         android:layout_gravity="top" android:max="100" android:visibility="gone"/>
+    <LinearLayout android:id="@+id/offlinePanel" android:orientation="vertical"
+        android:gravity="center" android:padding="28dp" android:background="#F5F7FB"
+        android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="SchoolOS is offline" android:textStyle="bold" android:textSize="22sp" android:textColor="#172033"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="Check your connection and retry. Your live school data stays on the SchoolOS server."
+            android:gravity="center" android:textSize="14sp" android:textColor="#667085"/>
+        <Button android:id="@+id/retryButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:text="Retry"/>
+    </LinearLayout>
 </FrameLayout>

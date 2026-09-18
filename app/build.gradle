@@ -14,6 +14,12 @@ dependencies {
     implementation 'com.google.firebase:firebase-messaging:23.4.1'
 }
 
+def releaseStorePath = System.getenv('SCHOOLOS_RELEASE_STORE_FILE')
+def releaseStorePassword = System.getenv('SCHOOLOS_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('SCHOOLOS_RELEASE_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('SCHOOLOS_RELEASE_KEY_PASSWORD')
+def releaseSigningReady = releaseStorePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+
 android {
     namespace 'com.schooloss.mobile'
     compileSdk 35
@@ -25,20 +31,31 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (releaseSigningReady) {
+            release {
+                storeFile file(releaseStorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
     }
 
     defaultConfig {
         applicationId 'com.schooloss.mobile'
         minSdk 24
         targetSdk 35
-        versionCode 3010005
-        versionName '3.1.5'
+        versionCode 3010009
+        versionName '3.1.9'
     }
 
     buildTypes {
         release {
             minifyEnabled false
             shrinkResources false
+            if (releaseSigningReady) signingConfig signingConfigs.release
         }
         debug {
             signingConfig signingConfigs.debug

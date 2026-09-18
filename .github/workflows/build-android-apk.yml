@@ -1,13 +1,18 @@
-name: Build SchoolOS Native Mobile 3.1.5 Stable Beta APK
+name: Build SchoolOS Android 3.1.9 Release Candidate
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
 jobs:
-  apk:
+  android:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.SCHOOLOS_RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.SCHOOLOS_RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.SCHOOLOS_RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.SCHOOLOS_RELEASE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -17,17 +22,42 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build stable-signed beta APK
-        run: gradle --no-daemon clean assembleDebug
-      - name: Prepare artifact
+      - name: Configure optional production signing
+        shell: bash
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$RELEASE_STORE_PASSWORD" ] && [ -n "$RELEASE_KEY_ALIAS" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/schoolos-release-upload.keystore"
+            echo "SCHOOLOS_RELEASE_STORE_FILE=$RUNNER_TEMP/schoolos-release-upload.keystore" >> "$GITHUB_ENV"
+            echo "SCHOOLOS_RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "SCHOOLOS_RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "SCHOOLOS_RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "signed" > signing-state.txt
+          else
+            echo "unsigned" > signing-state.txt
+          fi
+      - name: Build beta APK and release APK/AAB
+        run: gradle --no-daemon clean assembleDebug assembleRelease bundleRelease
+      - name: Prepare artifacts
+        shell: bash
         run: |
           test -f app/build/outputs/apk/debug/app-debug.apk
-          cp app/build/outputs/apk/debug/app-debug.apk SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk
-          sha256sum SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk > SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk
+          sha256sum SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk > SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk.sha256
+
+          RELEASE_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -n "$RELEASE_APK"
+          cp "$RELEASE_APK" SchoolOS-Android-3.1.9-Release.apk
+          test -f app/build/outputs/bundle/release/app-release.aab
+          cp app/build/outputs/bundle/release/app-release.aab SchoolOS-Android-3.1.9-Release.aab
+          sha256sum SchoolOS-Android-3.1.9-Release.apk SchoolOS-Android-3.1.9-Release.aab > SchoolOS-Android-3.1.9-Release.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: SchoolOS-Native-Mobile-3.1.5-Stable-Beta-APK
+          name: SchoolOS-Android-3.1.9-Release-Candidate
           path: |
-            SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk
-            SchoolOS-Native-Mobile-3.1.5-Stable-Beta.apk.sha256
+            SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk
+            SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk.sha256
+            SchoolOS-Android-3.1.9-Release.apk
+            SchoolOS-Android-3.1.9-Release.aab
+            SchoolOS-Android-3.1.9-Release.sha256
+            signing-state.txt
           if-no-files-found: error

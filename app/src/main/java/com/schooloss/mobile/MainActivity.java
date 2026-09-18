@@ -12,6 +12,7 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
+import android.net.Network;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
@@ -35,6 +36,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -63,13 +65,14 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.1.5";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.1.5";
-    private static final String APP_UA = " SchoolOSNative/3.1.5 Android";
+    private static final String NATIVE_VERSION = "3.1.9";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.1.9";
+    private static final String APP_UA = " SchoolOSNative/3.1.9 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
     private static final int PUSH_PERM_REQ = 4104;
+    private static final int FILE_CAMERA_PERM_REQ = 4105;
 
     private WebView web;
     private ProgressBar progress;
@@ -97,6 +100,10 @@ public class MainActivity extends Activity {
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
     private String pushCsrf = "";
+    private String lastRequestedUrl = HOME;
+    private boolean showingOfflineSnapshot = false;
+    private WebChromeClient.FileChooserParams pendingChooserParams;
+    private ConnectivityManager.NetworkCallback networkCallback;
     private final Set<String> internalHosts = new HashSet<>();
 
     @Override protected void onCreate(Bundle state) {
@@ -148,6 +155,7 @@ public class MainActivity extends Activity {
         startLaunchAnimation();
         configureWebView();
         prepareNativeSession();
+        registerNetworkRecovery();
         if (state != null) web.restoreState(state); else load(resolve(getIntent()));
     }
 
@@ -168,6 +176,7 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);
         s.setSupportZoom(false);
         s.setSupportMultipleWindows(true);
+        s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setJavaScriptCanOpenWindowsAutomatically(true);
         s.setUserAgentString(s.getUserAgentString() + APP_UA);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) s.setSafeBrowsingEnabled(true);
@@ -191,22 +200,42 @@ public class MainActivity extends Activity {
 
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (!isOnline() && !"GET".equalsIgnoreCase(request.getMethod())) {
+                    Toast.makeText(MainActivity.this, "This change needs an internet connection. Nothing was queued offline.", Toast.LENGTH_LONG).show();
+                    return true;
+                }
                 return route(request.getUrl(), view.getUrl());
             }
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (!showingOfflineSnapshot) lastRequestedUrl = url == null ? lastRequestedUrl : url;
                 offlinePanel.setVisibility(View.GONE);
                 web.setVisibility(View.VISIBLE);
             }
             @Override public void onPageFinished(WebView view, String url) {
                 CookieManager.getInstance().flush();
+                boolean login = url != null && url.contains("/schools/mobile/login.php");
+                if (login) {
+                    OfflineSnapshotStore.clearAll(MainActivity.this);
+                    showingOfflineSnapshot = false;
+                    web.clearHistory();
+                }
                 applyNativePresentation(url);
+                if (isOnline() && !login && OfflineSnapshotStore.isSafeUrl(url)) {
+                    captureSafeSnapshot(url);
+                }
             }
             @Override public void onReceivedSslError(WebView v, SslErrorHandler h, SslError e) {
                 h.cancel();
                 Toast.makeText(MainActivity.this, "Secure connection could not be verified.", Toast.LENGTH_LONG).show();
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) showOffline();
+                if (request.isForMainFrame()) showOfflineFor(request.getUrl() == null ? lastRequestedUrl : request.getUrl().toString());
+            }
+            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
+                if (request.isForMainFrame() && response != null && (response.getStatusCode() == 401 || response.getStatusCode() == 419)) {
+                    OfflineSnapshotStore.clearAll(MainActivity.this);
+                    Toast.makeText(MainActivity.this, "Your SchoolOS session expired. Please sign in again.", Toast.LENGTH_LONG).show();
+                }
             }
         });
 
@@ -218,7 +247,12 @@ public class MainActivity extends Activity {
             @Override public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
-                launchFileChooser(params);
+                if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                    pendingChooserParams = params;
+                    requestPermissions(new String[]{Manifest.permission.CAMERA}, FILE_CAMERA_PERM_REQ);
+                } else {
+                    launchFileChooser(params);
+                }
                 return true;
             }
             @Override public void onPermissionRequest(PermissionRequest request) {
@@ -623,7 +657,13 @@ public class MainActivity extends Activity {
         }
         if (("https".equals(scheme) || "http".equals(scheme)) && internalHosts.contains(host)) {
             Uri target = normalizeNativeWorkspace(uri, fromUrl);
-            web.loadUrl(target.toString(), nativeHeaders());
+            if (!isOnline()) {
+                showOfflineFor(target.toString());
+            } else {
+                showingOfflineSnapshot = false;
+                web.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+                web.loadUrl(target.toString(), nativeHeaders());
+            }
             return true;
         }
         if ("intent".equals(scheme)) {
@@ -759,6 +799,20 @@ public class MainActivity extends Activity {
     private String resolveDeepLink(Uri u) {
         String path = u.getPath();
         String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
+        if ("return".equals(host) || "open".equals(host) || "payment".equals(host) || "oauth".equals(host)) {
+            String target = u.getQueryParameter("url");
+            if (target == null || target.trim().isEmpty()) target = u.getQueryParameter("target");
+            if (target != null && !target.trim().isEmpty()) {
+                try {
+                    Uri t = Uri.parse(target.trim());
+                    if ("https".equalsIgnoreCase(t.getScheme()) && t.getHost() != null &&
+                            internalHosts.contains(t.getHost().toLowerCase(Locale.ROOT))) return t.toString();
+                } catch (Exception ignored) {}
+            }
+            if ("payment".equals(host)) return "https://alkeynesprjects.com/schools/mobile/payments.php?native_return=1";
+            if ("oauth".equals(host)) return "https://alkeynesprjects.com/schools/study-from-home/google-integration.php?native_app=android&native_version=" + NATIVE_VERSION + "&native_workspace=1";
+            return HOME;
+        }
         if ("sfh".equals(host)) {
             String sfhPath = path == null ? "" : path.replaceFirst("^/", "");
             String target = "https://alkeynesprjects.com/schools/study-from-home/" + sfhPath;
@@ -780,23 +834,92 @@ public class MainActivity extends Activity {
     }
 
     private void load(String url) {
+        lastRequestedUrl = url == null || url.trim().isEmpty() ? HOME : url;
         if (!isOnline()) {
-            showOffline();
+            showOfflineFor(lastRequestedUrl);
             return;
         }
+        showingOfflineSnapshot = false;
+        web.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
         offlinePanel.setVisibility(View.GONE);
         web.setVisibility(View.VISIBLE);
-        web.loadUrl(url, nativeHeaders());
+        web.loadUrl(lastRequestedUrl, nativeHeaders());
     }
 
     private void retry() {
-        load(web.getUrl() == null ? HOME : web.getUrl());
+        load(lastRequestedUrl == null ? HOME : lastRequestedUrl);
+    }
+
+    private void showOfflineFor(String url) {
+        hideLaunchOverlay();
+        String target = url == null || url.trim().isEmpty() ? HOME : url;
+        String snapshot = OfflineSnapshotStore.read(MainActivity.this, target);
+        if (snapshot != null && !snapshot.trim().isEmpty()) {
+            showingOfflineSnapshot = true;
+            web.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            offlinePanel.setVisibility(View.GONE);
+            web.setVisibility(View.VISIBLE);
+            web.loadDataWithBaseURL(target, snapshot, "text/html", "UTF-8", target);
+            Toast.makeText(this, "Showing a read-only offline copy.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        showOffline();
     }
 
     private void showOffline() {
+        showingOfflineSnapshot = false;
         web.setVisibility(View.GONE);
         offlinePanel.setVisibility(View.VISIBLE);
         hideLaunchOverlay();
+    }
+
+    private void captureSafeSnapshot(String url) {
+        if (!OfflineSnapshotStore.isSafeUrl(url)) return;
+        String js = "(function(){try{" +
+                "if(!window.SchoolOSNative||typeof window.SchoolOSNative.cacheOfflineSnapshot!=='function')return;" +
+                "var d=document.documentElement.cloneNode(true);" +
+                "d.querySelectorAll('script,noscript,iframe,object,embed,video,audio').forEach(function(x){x.remove();});" +
+                "d.querySelectorAll('form').forEach(function(f){var box=document.createElement('div');while(f.firstChild)box.appendChild(f.firstChild);f.replaceWith(box);});" +
+                "d.querySelectorAll('input,textarea,select,button').forEach(function(x){x.remove();});" +
+                "d.querySelectorAll('[contenteditable]').forEach(function(x){x.removeAttribute('contenteditable');});" +
+                "d.querySelectorAll('a').forEach(function(a){a.removeAttribute('href');a.removeAttribute('onclick');a.setAttribute('aria-disabled','true');});" +
+                "var b=document.createElement('div');b.textContent='Offline read-only copy · reconnect for live data and actions';" +
+                "b.setAttribute('style','position:sticky;top:0;z-index:2147483647;padding:10px 14px;background:#fff4cc;color:#5b4300;font:600 13px system-ui;text-align:center;border-bottom:1px solid #ead68a');" +
+                "var body=d.querySelector('body');if(body)body.insertBefore(b,body.firstChild);" +
+                "window.SchoolOSNative.cacheOfflineSnapshot(location.href,'<!doctype html>'+d.outerHTML);" +
+                "}catch(e){}})();";
+        web.evaluateJavascript(js, null);
+    }
+
+    private void setOfflineInteractionState(boolean offline) {
+        if (web == null || showingOfflineSnapshot) return;
+        String js = "(function(){var off=" + (offline ? "true" : "false") + ";" +
+                "document.documentElement.classList.toggle('schoolos-native-offline',off);" +
+                "var n=document.getElementById('networkStatus');if(n){n.hidden=!off;}" +
+                "document.querySelectorAll('form button,form input[type=submit],form input[type=button]').forEach(function(x){" +
+                "if(off&&!x.disabled){x.dataset.nativeOfflineDisabled='1';x.disabled=true;}else if(!off&&x.dataset.nativeOfflineDisabled==='1'){x.disabled=false;delete x.dataset.nativeOfflineDisabled;}});" +
+                "})();";
+        web.evaluateJavascript(js, null);
+    }
+
+    private void registerNetworkRecovery() {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
+        networkCallback = new ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(Network network) {
+                uiHandler.post(() -> {
+                    setOfflineInteractionState(false);
+                    if (showingOfflineSnapshot || offlinePanel.getVisibility() == View.VISIBLE) {
+                        Toast.makeText(MainActivity.this, "Connection restored. Refreshing SchoolOS.", Toast.LENGTH_SHORT).show();
+                        load(lastRequestedUrl);
+                    }
+                });
+            }
+            @Override public void onLost(Network network) {
+                uiHandler.post(() -> setOfflineInteractionState(true));
+            }
+        };
+        try { cm.registerDefaultNetworkCallback(networkCallback); } catch (Exception ignored) {}
     }
 
     private boolean isOnline() {
@@ -843,6 +966,11 @@ public class MainActivity extends Activity {
             geoOrigin = null;
         }
         if (requestCode == PUSH_PERM_REQ) syncPushToken();
+        if (requestCode == FILE_CAMERA_PERM_REQ) {
+            WebChromeClient.FileChooserParams chooser = pendingChooserParams;
+            pendingChooserParams = null;
+            launchFileChooser(chooser);
+        }
     }
 
     @Override public void onBackPressed() {
@@ -867,6 +995,13 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         uiHandler.removeCallbacksAndMessages(null);
+        if (networkCallback != null) {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null) cm.unregisterNetworkCallback(networkCallback);
+            } catch (Exception ignored) {}
+            networkCallback = null;
+        }
         super.onDestroy();
     }
 
@@ -889,6 +1024,22 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public void syncPushToken() {
             runOnUiThread(MainActivity.this::syncPushToken);
+        }
+        @JavascriptInterface public void cacheOfflineSnapshot(String url, String html) {
+            if (!isOnline() || url == null || html == null) return;
+            OfflineSnapshotStore.save(MainActivity.this, url, html);
+        }
+        @JavascriptInterface public void openFile(String url, String name, String mime) {
+            NativeFileManager.perform(MainActivity.this, "open", url, name, mime, nativeHeaders(), web.getSettings().getUserAgentString());
+        }
+        @JavascriptInterface public void shareFile(String url, String name, String mime) {
+            NativeFileManager.perform(MainActivity.this, "share", url, name, mime, nativeHeaders(), web.getSettings().getUserAgentString());
+        }
+        @JavascriptInterface public void printFile(String url, String name, String mime) {
+            NativeFileManager.perform(MainActivity.this, "print", url, name, mime, nativeHeaders(), web.getSettings().getUserAgentString());
+        }
+        @JavascriptInterface public void downloadFile(String url, String name, String mime) {
+            runOnUiThread(() -> download(url, web.getSettings().getUserAgentString(), name, mime));
         }
         @JavascriptInterface public void share(String text, String url) {
             runOnUiThread(() -> {

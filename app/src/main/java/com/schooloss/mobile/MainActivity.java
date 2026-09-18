@@ -60,9 +60,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.0.9";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.9";
-    private static final String APP_UA = " SchoolOSNative/3.0.9 Android";
+    private static final String NATIVE_VERSION = "3.0.10";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.10";
+    private static final String APP_UA = " SchoolOSNative/3.0.10 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -438,9 +438,16 @@ public class MainActivity extends Activity {
     }
 
     private void restoreSystemBars() {
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+        getWindow().clearFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN |
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
+                WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS |
+                WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION
+        );
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
 
+        // Keep the app inside the real usable area, exactly like a standard Android app.
+        // Content begins below the status bar and ends above the system navigation bar.
         WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
 
         getWindow().setStatusBarColor(Color.WHITE);
@@ -450,7 +457,7 @@ public class MainActivity extends Activity {
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         controller.setAppearanceLightStatusBars(true);
         controller.setAppearanceLightNavigationBars(true);
-        controller.show(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
+        controller.show(WindowInsetsCompat.Type.systemBars());
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             getWindow().setStatusBarContrastEnforced(false);
@@ -464,9 +471,16 @@ public class MainActivity extends Activity {
         }
 
         View decor = getWindow().getDecorView();
+        decor.setPadding(0, 0, 0, 0);
         decor.requestApplyInsets();
         decor.requestLayout();
+
         if (web != null) {
+            ViewGroup.LayoutParams lp = web.getLayoutParams();
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            web.setLayoutParams(lp);
+            web.setPadding(0, 0, 0, 0);
             web.requestApplyInsets();
             web.requestLayout();
         }

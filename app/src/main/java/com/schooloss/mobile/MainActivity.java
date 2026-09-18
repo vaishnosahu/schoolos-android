@@ -41,6 +41,9 @@ import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 import androidx.core.content.FileProvider;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
@@ -57,9 +60,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.0.8";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.8";
-    private static final String APP_UA = " SchoolOSNative/3.0.8 Android";
+    private static final String NATIVE_VERSION = "3.0.9";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.9";
+    private static final String APP_UA = " SchoolOSNative/3.0.9 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -93,7 +96,15 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        getWindow().setStatusBarColor(Color.WHITE);
+        getWindow().setNavigationBarColor(Color.WHITE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
         getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         getWindow().getDecorView().setPadding(0,0,0,0);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -253,7 +264,7 @@ public class MainActivity extends Activity {
         String script = "(function(){" +
                 "var sel='.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]';" +
                 "var css=sel+'{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
-                "css+='html,body{margin:0!important;padding:0!important;width:100%!important;max-width:none!important;height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;touch-action:pan-y pinch-zoom!important;-webkit-overflow-scrolling:touch!important}';" +
+                "css+='html,body{margin:0!important;padding:0!important;width:100%!important;max-width:none!important;height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;touch-action:pan-y pinch-zoom!important;-webkit-overflow-scrolling:touch!important;background:#F7F9FD!important}';" +
                 "css+='.m-stage,.m-app,.m-native-stage,.m-native-app{width:100%!important;max-width:none!important;height:auto!important;min-height:100dvh!important;margin:0!important;box-shadow:none!important;overflow-y:visible!important;touch-action:pan-y pinch-zoom!important}';" +
                 "css+='.m-content,.m-native-content,.main-area{height:auto!important;overflow-y:visible!important;touch-action:pan-y!important}';" +
                 "css+='.m-login-stage{width:100%!important;max-width:none!important;margin:0!important;padding:0!important;place-items:stretch!important}';" +
@@ -420,25 +431,44 @@ public class MainActivity extends Activity {
                     .setDuration(430)
                     .withEndAction(() -> {
                         launchOverlay.setVisibility(View.GONE);
-                        restoreSystemStatusBar();
+                        restoreSystemBars();
                     })
                     .start();
         }, delay);
     }
 
-    private void restoreSystemStatusBar() {
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+    private void restoreSystemBars() {
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+
         getWindow().setStatusBarColor(Color.WHITE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            int flags = getWindow().getDecorView().getSystemUiVisibility();
-            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            getWindow().getDecorView().setSystemUiVisibility(flags);
+        getWindow().setNavigationBarColor(Color.WHITE);
+
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        controller.setAppearanceLightStatusBars(true);
+        controller.setAppearanceLightNavigationBars(true);
+        controller.show(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
         }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             WindowManager.LayoutParams attrs = getWindow().getAttributes();
             attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
             getWindow().setAttributes(attrs);
+        }
+
+        View decor = getWindow().getDecorView();
+        decor.requestApplyInsets();
+        decor.requestLayout();
+        if (web != null) {
+            web.requestApplyInsets();
+            web.requestLayout();
         }
     }
 
@@ -725,7 +755,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        if (launchHidden) restoreSystemStatusBar();
+        if (launchHidden) restoreSystemBars();
     }
 
     @Override protected void onSaveInstanceState(Bundle out) {

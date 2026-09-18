@@ -22,8 +22,8 @@ android {
         applicationId 'com.schooloss.mobile'
         minSdk 24
         targetSdk 35
-        versionCode 3000005
-        versionName '3.0.5'
+        versionCode 3000006
+        versionName '3.0.6'
     }
 
     buildTypes {

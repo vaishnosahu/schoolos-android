@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
@@ -18,6 +19,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
@@ -51,9 +53,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.0.5";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.5";
-    private static final String APP_UA = " SchoolOSNative/3.0.5 Android";
+    private static final String NATIVE_VERSION = "3.0.6";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.6";
+    private static final String APP_UA = " SchoolOSNative/3.0.6 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -71,12 +73,25 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        getWindow().getDecorView().setPadding(0,0,0,0);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams attrs = getWindow().getAttributes();
+            attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(attrs);
+        }
         internalHosts.add("alkeynesprjects.com");
         internalHosts.add("www.alkeynesprjects.com");
         internalHosts.add("schooloss.com");
         internalHosts.add("www.schooloss.com");
         setContentView(R.layout.activity_main);
         web = findViewById(R.id.web);
+        web.setPadding(0,0,0,0);
+        ViewGroup.LayoutParams webLp = web.getLayoutParams();
+        webLp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+        webLp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+        web.setLayoutParams(webLp);
+        web.setBackgroundColor(Color.rgb(247,249,253));
         progress = findViewById(R.id.progress);
         offlinePanel = findViewById(R.id.offlinePanel);
         findViewById(R.id.retryButton).setOnClickListener(v -> retry());
@@ -97,6 +112,9 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(false);
+        s.setTextZoom(100);
         s.setSupportMultipleWindows(true);
         s.setJavaScriptCanOpenWindowsAutomatically(true);
         s.setUserAgentString(s.getUserAgentString() + APP_UA);
@@ -191,6 +209,12 @@ public class MainActivity extends Activity {
         String script = "(function(){" +
                 "var sel='.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]';" +
                 "var css=sel+'{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
+                "css+='html,body{margin:0!important;padding:0!important;width:100%!important;max-width:none!important;overflow-x:hidden!important}';" +
+                "css+='.m-stage,.m-app,.m-native-stage,.m-native-app{width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important}';" +
+                "css+='.m-login-stage{width:100%!important;max-width:none!important;margin:0!important;padding:0!important;place-items:stretch!important}';" +
+                "css+='.m-login-card{width:100%!important;max-width:none!important;margin:0!important;min-height:100dvh!important;border-radius:0!important;box-shadow:none!important}';" +
+                "css+='.m-bottom,.m-native-bottom{left:0!important;right:0!important;transform:none!important;width:100%!important;max-width:none!important;margin:0!important}';" +
+                "css+='.m-native-topbar,.m-native-pagehead,.m-native-content{width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important}';" +
                 "var st=document.createElement('style');st.id='schoolos-native-prepaint';st.textContent=css;" +
                 "(document.head||document.documentElement).appendChild(st);" +
                 "document.addEventListener('focusin',function(e){try{if(e.target&&e.target.matches&&e.target.matches(sel)){e.target.blur();var m=document.getElementById('mainContent');if(m&&m.focus)m.focus({preventScroll:true});}}catch(x){}},true);" +

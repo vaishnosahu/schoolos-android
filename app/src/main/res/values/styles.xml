@@ -6,6 +6,8 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:windowBackground">#F7F9FD</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 </resources>

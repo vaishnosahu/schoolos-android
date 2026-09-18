@@ -51,9 +51,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.0.4";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.4";
-    private static final String APP_UA = " SchoolOSNative/3.0.4 Android";
+    private static final String NATIVE_VERSION = "3.0.5";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.5";
+    private static final String APP_UA = " SchoolOSNative/3.0.5 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -345,7 +345,7 @@ public class MainActivity extends Activity {
         String js = "(function(){" +
                 "document.documentElement.classList.add('schoolos-native');" +
                 "var kill=function(){" +
-                    "document.querySelectorAll('.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});" +
+                    "document.querySelectorAll('.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});" +
                     "document.querySelectorAll('[data-install],#installSheet,#installBackdrop').forEach(function(x){x.style.display='none'});" +
                 "};" +
                 "kill();" +

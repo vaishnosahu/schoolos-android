@@ -50,6 +50,12 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="alkeynesprjects.com" android:pathPrefix="/schools/"/>
             </intent-filter>
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="www.alkeynesprjects.com" android:pathPrefix="/schools/study-from-home/"/>
+            </intent-filter>
         </activity>
     </application>
 </manifest>

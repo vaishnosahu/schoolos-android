@@ -60,9 +60,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.1.2";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.1.2";
-    private static final String APP_UA = " SchoolOSNative/3.1.2 Android";
+    private static final String NATIVE_VERSION = "3.1.4";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.1.4";
+    private static final String APP_UA = " SchoolOSNative/3.1.4 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -588,15 +588,29 @@ public class MainActivity extends Activity {
     private Uri normalizeNativeWorkspace(Uri uri, String fromUrl) {
         String path = uri.getPath() == null ? "" : uri.getPath();
         boolean cameFromWorkspace = fromUrl != null && fromUrl.contains("native_workspace=1");
+        boolean cameFromMobile = fromUrl != null && fromUrl.contains("/schools/mobile/");
+        boolean sfhPage = path.startsWith("/schools/study-from-home/");
         boolean desktopSchoolPage = path.startsWith("/schools/") &&
                 !path.startsWith("/schools/mobile/") &&
+                !sfhPage &&
                 !path.contains("/assets/") &&
                 !path.endsWith("download.php") &&
                 !path.contains("gallery-media.php");
-        if (cameFromWorkspace && desktopSchoolPage && path.endsWith(".php")) {
+
+        if (sfhPage) {
+            Uri.Builder b = uri.buildUpon();
+            if (uri.getQueryParameter("native_app") == null) b.appendQueryParameter("native_app", "android");
+            if (uri.getQueryParameter("native_version") == null) b.appendQueryParameter("native_version", NATIVE_VERSION);
+            if (uri.getQueryParameter("native_workspace") == null) b.appendQueryParameter("native_workspace", "1");
+            return b.build();
+        }
+
+        if ((cameFromWorkspace || cameFromMobile) && desktopSchoolPage && path.endsWith(".php")) {
             Uri.Builder b = uri.buildUpon();
             if (uri.getQueryParameter("view") == null) b.appendQueryParameter("view", "desktop");
             if (uri.getQueryParameter("native_workspace") == null) b.appendQueryParameter("native_workspace", "1");
+            if (uri.getQueryParameter("native_app") == null) b.appendQueryParameter("native_app", "android");
+            if (uri.getQueryParameter("native_version") == null) b.appendQueryParameter("native_version", NATIVE_VERSION);
             return b.build();
         }
         return uri;
@@ -617,7 +631,11 @@ public class MainActivity extends Activity {
                 ".topbar{position:sticky!important;top:0!important;z-index:30!important;padding:10px 12px!important}" +
                 ".top-actions .desktop-action,.top-actions .help-open,.top-actions .command-open,.mobile-menu{display:none!important}" +
                 ".content{padding:12px!important;max-width:none!important}.footer{padding:12px!important}" +
-                "table{font-size:12px!important}.table-wrap,.table-card,.data-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch}";
+                "table{font-size:12px!important}.table-wrap,.table-card,.data-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch}" +
+                ".sfh-app{width:100%!important;max-width:none!important;min-height:100dvh!important}" +
+                ".sfh-top{position:sticky!important;top:0!important;z-index:35!important}" +
+                ".sfh-main{width:100%!important;max-width:none!important;margin:0!important;padding-left:12px!important;padding-right:12px!important}" +
+                ".sfh-footer{width:100%!important}.sfh-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}";
         String js = "(function(){" +
                 "document.documentElement.classList.add('schoolos-native');" +
                 "var kill=function(){" +
@@ -674,6 +692,21 @@ public class MainActivity extends Activity {
 
     private String resolveDeepLink(Uri u) {
         String path = u.getPath();
+        String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
+        if ("sfh".equals(host)) {
+            String sfhPath = path == null ? "" : path.replaceFirst("^/", "");
+            String target = "https://alkeynesprjects.com/schools/study-from-home/" + sfhPath;
+            Uri.Builder b = Uri.parse(target).buildUpon();
+            if (u.getQuery() != null) {
+                for (String name : u.getQueryParameterNames()) {
+                    for (String value : u.getQueryParameters(name)) b.appendQueryParameter(name, value);
+                }
+            }
+            b.appendQueryParameter("native_app", "android");
+            b.appendQueryParameter("native_version", NATIVE_VERSION);
+            b.appendQueryParameter("native_workspace", "1");
+            return b.build().toString();
+        }
         if (path == null || path.equals("/")) return HOME;
         if (path.startsWith("/schools/"))
             return "https://alkeynesprjects.com" + path + (u.getQuery() == null ? "" : "?" + u.getQuery());

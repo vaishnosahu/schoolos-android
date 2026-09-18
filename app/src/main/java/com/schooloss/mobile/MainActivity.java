@@ -50,7 +50,7 @@ import java.util.Set;
 
 public class MainActivity extends Activity {
     private static final String HOME = "https://alkeynesprjects.com/schools/mobile/";
-    private static final String APP_UA = " SchoolOSNative/3.0.2 Android";
+    private static final String APP_UA = " SchoolOSNative/3.0.3 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -183,7 +183,7 @@ public class MainActivity extends Activity {
         origins.add("https://schooloss.com");
         origins.add("https://www.schooloss.com");
         String script = "(function(){" +
-                "var css='.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
+                "var css='.m-native-skip,.m-native-skip,.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
                 "var st=document.createElement('style');st.id='schoolos-native-prepaint';st.textContent=css;" +
                 "(document.head||document.documentElement).appendChild(st);" +
                 "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});},{once:true});" +
@@ -306,7 +306,7 @@ public class MainActivity extends Activity {
 
     private void applyNativePresentation(String url) {
         boolean workspace = url != null && url.contains("native_workspace=1");
-        String css = ".sidebar,.mobile-sidebar-backdrop,.skip-link{display:none!important}" +
+        String css = ".sidebar,.mobile-sidebar-backdrop,.m-native-skip,.m-skip-link,.skip-link{display:none!important}" +
                 ".app-shell{display:block!important}.main-area{margin-left:0!important;width:100%!important;max-width:none!important}" +
                 ".topbar{position:sticky!important;top:0!important;z-index:30!important;padding:10px 12px!important}" +
                 ".top-actions .desktop-action,.top-actions .help-open,.top-actions .command-open,.mobile-menu{display:none!important}" +
@@ -463,7 +463,7 @@ public class MainActivity extends Activity {
     }
 
     public class NativeBridge {
-        @JavascriptInterface public String getVersion() { return "3.0.2"; }
+        @JavascriptInterface public String getVersion() { return "3.0.3"; }
         @JavascriptInterface public String getPlatform() { return "android"; }
         @JavascriptInterface public void share(String text, String url) {
             runOnUiThread(() -> {

@@ -60,9 +60,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.0.12";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.12";
-    private static final String APP_UA = " SchoolOSNative/3.0.12 Android";
+    private static final String NATIVE_VERSION = "3.1.0";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.1.0";
+    private static final String APP_UA = " SchoolOSNative/3.1.0 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -271,10 +271,13 @@ public class MainActivity extends Activity {
                 "css+='.m-login-card{width:100%!important;max-width:none!important;margin:0!important;min-height:100dvh!important;border-radius:0!important;box-shadow:none!important}';" +
                 "css+='.m-bottom,.m-native-bottom{left:0!important;right:0!important;transform:none!important;width:100%!important;max-width:none!important;margin:0!important}';" +
                 "css+='.m-native-topbar,.m-native-pagehead,.m-native-content{width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important}';" +
+                "css+='.native-mobile-shell,.native-mobile-shell .m-native-stage,.native-mobile-shell .m-native-app{width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important}';" +
+                "css+='.native-mobile-shell .m-native-topbar,.native-mobile-shell .m-native-bottom{width:100%!important;max-width:none!important;left:0!important;right:0!important;transform:none!important;background:#fff!important;backdrop-filter:none!important}';" +
                 "var st=document.createElement('style');st.id='schoolos-native-prepaint';st.textContent=css;" +
                 "(document.head||document.documentElement).appendChild(st);" +
                 "document.addEventListener('focusin',function(e){try{if(e.target&&e.target.matches&&e.target.matches(sel)){e.target.blur();var m=document.getElementById('mainContent');if(m&&m.focus)m.focus({preventScroll:true});}}catch(x){}},true);" +
                 "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll(sel).forEach(function(x){x.remove();});},{once:true});" +
+                "document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#schoolosPasswordToggle,.m-password-toggle'):null;if(!b)return;var p=document.getElementById('schoolosLoginPassword')||document.querySelector('input[name=password]');if(!p)return;var v=document.getElementById('schoolosLoginPasswordVisible');e.preventDefault();e.stopImmediatePropagation();var show=b.getAttribute('aria-pressed')!=='true';if(v){if(show){v.value=p.value;p.hidden=true;p.setAttribute('aria-hidden','true');p.tabIndex=-1;v.hidden=false;v.setAttribute('aria-hidden','false');v.tabIndex=0;try{v.focus({preventScroll:true});}catch(x){v.focus();}}else{p.value=v.value;v.hidden=true;v.setAttribute('aria-hidden','true');v.tabIndex=-1;p.hidden=false;p.setAttribute('aria-hidden','false');p.tabIndex=0;try{p.focus({preventScroll:true});}catch(x){p.focus();}}}else{var val=p.value;var c=p.cloneNode(true);c.value=val;c.type=show?'text':'password';c.removeAttribute('style');c.style.setProperty('-webkit-text-security',show?'none':'disc','important');p.replaceWith(c);try{c.focus({preventScroll:true});}catch(x){c.focus();}}b.setAttribute('aria-pressed',show?'true':'false');b.setAttribute('aria-label',show?'Hide password':'Show password');b.dataset.visible=show?'1':'0';},true);" +
                 "})();";
         WebViewCompat.addDocumentStartJavaScript(web, script, origins);
     }

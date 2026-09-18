@@ -57,9 +57,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.0.7";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.7";
-    private static final String APP_UA = " SchoolOSNative/3.0.7 Android";
+    private static final String NATIVE_VERSION = "3.0.8";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.0.8";
+    private static final String APP_UA = " SchoolOSNative/3.0.8 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -74,10 +74,16 @@ public class MainActivity extends Activity {
     private View launchDot1;
     private View launchDot2;
     private View launchDot3;
+    private View launchRing;
+    private View launchOrb1;
+    private View launchOrb2;
+    private View launchProgress;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private long launchStartedAt = 0L;
     private boolean launchHidden = false;
     private int launchDotIndex = 0;
+    private boolean launchAmbientFlip = false;
+    private static final long MIN_LAUNCH_MS = 3650L;
     private ValueCallback<Uri[]> fileCallback;
     private Uri cameraUri;
     private PermissionRequest pendingWebPermission;
@@ -116,6 +122,10 @@ public class MainActivity extends Activity {
         launchDot1 = findViewById(R.id.launchDot1);
         launchDot2 = findViewById(R.id.launchDot2);
         launchDot3 = findViewById(R.id.launchDot3);
+        launchRing = findViewById(R.id.launchRing);
+        launchOrb1 = findViewById(R.id.launchOrb1);
+        launchOrb2 = findViewById(R.id.launchOrb2);
+        launchProgress = findViewById(R.id.launchProgress);
         findViewById(R.id.retryButton).setOnClickListener(v -> retry());
         launchStartedAt = System.currentTimeMillis();
         startLaunchAnimation();
@@ -325,24 +335,111 @@ public class MainActivity extends Activity {
             launchSubtitle.animate().alpha(1f).translationY(0f)
                     .setStartDelay(210).setDuration(420).setInterpolator(new DecelerateInterpolator()).start();
         }
+        if (launchProgress != null) {
+            launchProgress.setScaleX(.08f);
+            launchProgress.setAlpha(.55f);
+            launchProgress.setPivotX(0f);
+            launchProgress.animate()
+                    .scaleX(1f)
+                    .alpha(1f)
+                    .setStartDelay(260)
+                    .setDuration(3200)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .start();
+        }
         uiHandler.removeCallbacks(launchPulse);
         uiHandler.postDelayed(launchPulse, 340);
+        uiHandler.removeCallbacks(launchAmbient);
+        uiHandler.postDelayed(launchAmbient, 420);
     }
+
+    private final Runnable launchAmbient = new Runnable() {
+        @Override public void run() {
+            if (launchHidden || launchOverlay == null || launchOverlay.getVisibility() != View.VISIBLE) return;
+            launchAmbientFlip = !launchAmbientFlip;
+            float dir = launchAmbientFlip ? 1f : -1f;
+
+            if (launchOrb1 != null) {
+                launchOrb1.animate()
+                        .translationX(26f * dir)
+                        .translationY(-18f * dir)
+                        .scaleX(launchAmbientFlip ? 1.12f : .94f)
+                        .scaleY(launchAmbientFlip ? 1.12f : .94f)
+                        .alpha(launchAmbientFlip ? .24f : .13f)
+                        .setDuration(1450)
+                        .setInterpolator(new DecelerateInterpolator())
+                        .start();
+            }
+            if (launchOrb2 != null) {
+                launchOrb2.animate()
+                        .translationX(-22f * dir)
+                        .translationY(24f * dir)
+                        .scaleX(launchAmbientFlip ? .92f : 1.10f)
+                        .scaleY(launchAmbientFlip ? .92f : 1.10f)
+                        .alpha(launchAmbientFlip ? .12f : .22f)
+                        .setDuration(1550)
+                        .setInterpolator(new DecelerateInterpolator())
+                        .start();
+            }
+            if (launchLogo != null) {
+                launchLogo.animate()
+                        .rotation(launchAmbientFlip ? 1.8f : -1.8f)
+                        .scaleX(launchAmbientFlip ? 1.035f : 1f)
+                        .scaleY(launchAmbientFlip ? 1.035f : 1f)
+                        .setDuration(1050)
+                        .setInterpolator(new DecelerateInterpolator())
+                        .start();
+            }
+            if (launchRing != null) {
+                launchRing.setScaleX(.90f);
+                launchRing.setScaleY(.90f);
+                launchRing.setAlpha(.42f);
+                launchRing.animate()
+                        .scaleX(1.42f)
+                        .scaleY(1.42f)
+                        .alpha(0f)
+                        .setDuration(1150)
+                        .setInterpolator(new DecelerateInterpolator())
+                        .start();
+            }
+            uiHandler.postDelayed(this, 1250);
+        }
+    };
 
     private void hideLaunchOverlay() {
         if (launchHidden || launchOverlay == null) return;
         long elapsed = System.currentTimeMillis() - launchStartedAt;
-        long delay = Math.max(0L, 1150L - elapsed);
+        long delay = Math.max(0L, MIN_LAUNCH_MS - elapsed);
         uiHandler.postDelayed(() -> {
             if (launchHidden || launchOverlay == null) return;
             launchHidden = true;
             uiHandler.removeCallbacks(launchPulse);
+            uiHandler.removeCallbacks(launchAmbient);
             launchOverlay.animate()
                     .alpha(0f)
-                    .setDuration(320)
-                    .withEndAction(() -> launchOverlay.setVisibility(View.GONE))
+                    .setDuration(430)
+                    .withEndAction(() -> {
+                        launchOverlay.setVisibility(View.GONE);
+                        restoreSystemStatusBar();
+                    })
                     .start();
         }, delay);
+    }
+
+    private void restoreSystemStatusBar() {
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        getWindow().setStatusBarColor(Color.WHITE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            int flags = getWindow().getDecorView().getSystemUiVisibility();
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams attrs = getWindow().getAttributes();
+            attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            getWindow().setAttributes(attrs);
+        }
     }
 
     private static final class ViewParentCompat {
@@ -624,6 +721,11 @@ public class MainActivity extends Activity {
     @Override protected void onDestroy() {
         uiHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (launchHidden) restoreSystemStatusBar();
     }
 
     @Override protected void onSaveInstanceState(Bundle out) {

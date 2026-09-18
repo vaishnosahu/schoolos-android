@@ -59,6 +59,26 @@
         android:clickable="true"
         android:focusable="true">
 
+        <View
+            android:id="@+id/launchOrb1"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
+            android:layout_gravity="top|right"
+            android:layout_marginTop="-74dp"
+            android:layout_marginRight="-82dp"
+            android:alpha=".16"
+            android:background="@drawable/launch_orb" />
+
+        <View
+            android:id="@+id/launchOrb2"
+            android:layout_width="220dp"
+            android:layout_height="220dp"
+            android:layout_gravity="bottom|left"
+            android:layout_marginBottom="-70dp"
+            android:layout_marginLeft="-70dp"
+            android:alpha=".12"
+            android:background="@drawable/launch_orb" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -68,29 +88,43 @@
             android:paddingRight="32dp">
 
             <FrameLayout
-                android:id="@+id/launchLogo"
-                android:layout_width="104dp"
-                android:layout_height="104dp"
-                android:background="@drawable/launch_logo_plate"
-                android:elevation="10dp"
-                android:padding="18dp">
+                android:layout_width="146dp"
+                android:layout_height="146dp">
 
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="SchoolOS"
-                    android:src="@drawable/ic_schoolos" />
+                <View
+                    android:id="@+id/launchRing"
+                    android:layout_width="128dp"
+                    android:layout_height="128dp"
+                    android:layout_gravity="center"
+                    android:alpha=".42"
+                    android:background="@drawable/launch_ring" />
+
+                <FrameLayout
+                    android:id="@+id/launchLogo"
+                    android:layout_width="104dp"
+                    android:layout_height="104dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/launch_logo_plate"
+                    android:elevation="12dp"
+                    android:padding="18dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="SchoolOS"
+                        android:src="@drawable/ic_schoolos" />
+                </FrameLayout>
             </FrameLayout>
 
             <TextView
                 android:id="@+id/launchTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
+                android:layout_marginTop="24dp"
                 android:gravity="center"
                 android:text="Welcome to SchoolOS"
                 android:textColor="#FFFFFF"
-                android:textSize="28sp"
+                android:textSize="29sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -101,13 +135,35 @@
                 android:gravity="center"
                 android:lineSpacingExtra="2dp"
                 android:text="Your school. One connected workspace."
-                android:textColor="#DDE5FF"
+                android:textColor="#E4E9FF"
                 android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:gravity="center"
+                android:text="Students • Teachers • Parents • Operations"
+                android:textColor="#BFCBFF"
+                android:textSize="11sp" />
+
+            <FrameLayout
+                android:layout_width="210dp"
+                android:layout_height="4dp"
+                android:layout_marginTop="32dp"
+                android:background="@drawable/launch_progress_track">
+
+                <View
+                    android:id="@+id/launchProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/launch_progress_fill" />
+            </FrameLayout>
 
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="34dp"
+                android:layout_marginTop="22dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
@@ -139,9 +195,9 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="11dp"
                 android:text="Preparing your workspace"
-                android:textColor="#BFCBFF"
+                android:textColor="#C9D3FF"
                 android:textSize="11sp" />
         </LinearLayout>
     </FrameLayout>

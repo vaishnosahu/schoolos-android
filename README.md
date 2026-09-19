@@ -1,3 +1,5 @@
 # SchoolOS Android
 
-SchoolOS Mobile 2.0.10 native Android shell. Generated for APK build.
+SchoolOS Mobile 3.2.0 production native Android shell.
+
+Production builds use package `com.schooloss.mobile`, target SDK 35, HTTPS-only networking, WebView debugging disabled, and repository-secret-backed release signing.

@@ -1,20 +1,15 @@
-name: Build SchoolOS Android 3.2.0 Production
+name: Build SchoolOS Android 3.2.0 Signing Handoff
 on:
   workflow_dispatch:
   pull_request:
     branches: [ main ]
   push:
-    branches: [ main, release-3.2.0-production ]
+    branches: [ release-3.2.0-production ]
 jobs:
   android:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      RELEASE_KEYSTORE_BASE64: ${{ secrets.SCHOOLOS_RELEASE_KEYSTORE_BASE64 }}
-      RELEASE_STORE_PASSWORD: ${{ secrets.SCHOOLOS_RELEASE_STORE_PASSWORD }}
-      RELEASE_KEY_ALIAS: ${{ secrets.SCHOOLOS_RELEASE_KEY_ALIAS }}
-      RELEASE_KEY_PASSWORD: ${{ secrets.SCHOOLOS_RELEASE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -25,45 +20,50 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Require production signing
-        shell: bash
-        run: |
-          test -n "$RELEASE_KEYSTORE_BASE64" || { echo "::error::SCHOOLOS_RELEASE_KEYSTORE_BASE64 is missing"; exit 1; }
-          test -n "$RELEASE_STORE_PASSWORD" || { echo "::error::SCHOOLOS_RELEASE_STORE_PASSWORD is missing"; exit 1; }
-          test -n "$RELEASE_KEY_ALIAS" || { echo "::error::SCHOOLOS_RELEASE_KEY_ALIAS is missing"; exit 1; }
-          test -n "$RELEASE_KEY_PASSWORD" || { echo "::error::SCHOOLOS_RELEASE_KEY_PASSWORD is missing"; exit 1; }
-          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/schoolos-release-upload.keystore"
-          test -s "$RUNNER_TEMP/schoolos-release-upload.keystore"
-          echo "SCHOOLOS_RELEASE_STORE_FILE=$RUNNER_TEMP/schoolos-release-upload.keystore" >> "$GITHUB_ENV"
-          echo "SCHOOLOS_RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "SCHOOLOS_RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "SCHOOLOS_RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
-
-      - name: Build signed production APK and AAB
+      - name: Build unsigned production release
         run: gradle --no-daemon clean assembleRelease bundleRelease
 
-      - name: Verify signed production APK
+      - name: Prepare secure local-signing handoff
         shell: bash
         run: |
           RELEASE_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)"
           test -n "$RELEASE_APK"
+          cp "$RELEASE_APK" schoolos-android-3.2.0-unsigned.apk
+
+          test -f app/build/outputs/bundle/release/app-release.aab
+          cp app/build/outputs/bundle/release/app-release.aab SchoolOS-Android-3.2.0-unsigned.aab
+
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs "$RELEASE_APK" | tee apk-signing-verification.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signing-verification.txt
-          cp "$RELEASE_APK" schoolos-android-production.apk
-          test -f app/build/outputs/bundle/release/app-release.aab
-          cp app/build/outputs/bundle/release/app-release.aab SchoolOS-Android-3.2.0-Production.aab
-          sha256sum schoolos-android-production.apk SchoolOS-Android-3.2.0-Production.aab > SchoolOS-Android-3.2.0-Production.sha256
-          printf 'signed-production\npackage=com.schooloss.mobile\nversion=3.2.0\ntargetSdk=35\n' > signing-state.txt
+          APKSIGNER_JAR="$(dirname "$APKSIGNER")/lib/apksigner.jar"
+          test -f "$APKSIGNER_JAR"
+          cp "$APKSIGNER_JAR" apksigner.jar
+
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$RELEASE_APK" | tee apk-badging.txt
+          "$AAPT" dump xmltree "$RELEASE_APK" AndroidManifest.xml | tee apk-manifest-tree.txt
+
+          grep -q "package: name='com.schooloss.mobile'" apk-badging.txt
+          grep -q "versionName='3.2.0'" apk-badging.txt
+          grep -q "targetSdkVersion:'35'" apk-badging.txt
+          if grep -qi "debuggable" apk-badging.txt; then
+            echo "::error::Release APK unexpectedly reports debuggable state"
+            exit 1
+          fi
+
+          sha256sum schoolos-android-3.2.0-unsigned.apk SchoolOS-Android-3.2.0-unsigned.aab > unsigned-sha256.txt
+          printf 'unsigned-production-handoff\npackage=com.schooloss.mobile\nversion=3.2.0\ntargetSdk=35\n' > signing-state.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SchoolOS-Android-3.2.0-Production
+          name: SchoolOS-Android-3.2.0-Signing-Handoff
           path: |
-            schoolos-android-production.apk
-            SchoolOS-Android-3.2.0-Production.aab
-            SchoolOS-Android-3.2.0-Production.sha256
-            apk-signing-verification.txt
+            schoolos-android-3.2.0-unsigned.apk
+            SchoolOS-Android-3.2.0-unsigned.aab
+            apksigner.jar
+            apk-badging.txt
+            apk-manifest-tree.txt
+            unsigned-sha256.txt
             signing-state.txt
           if-no-files-found: error

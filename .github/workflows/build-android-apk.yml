@@ -1,8 +1,10 @@
-name: Build SchoolOS Android 3.1.9 Release Candidate
+name: Build SchoolOS Android 3.2.0 Production
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [ main ]
+  push:
+    branches: [ main, release-3.2.0-production ]
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -22,42 +24,46 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Configure optional production signing
-        shell: bash
-        run: |
-          if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$RELEASE_STORE_PASSWORD" ] && [ -n "$RELEASE_KEY_ALIAS" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/schoolos-release-upload.keystore"
-            echo "SCHOOLOS_RELEASE_STORE_FILE=$RUNNER_TEMP/schoolos-release-upload.keystore" >> "$GITHUB_ENV"
-            echo "SCHOOLOS_RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "SCHOOLOS_RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "SCHOOLOS_RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "signed" > signing-state.txt
-          else
-            echo "unsigned" > signing-state.txt
-          fi
-      - name: Build beta APK and release APK/AAB
-        run: gradle --no-daemon clean assembleDebug assembleRelease bundleRelease
-      - name: Prepare artifacts
-        shell: bash
-        run: |
-          test -f app/build/outputs/apk/debug/app-debug.apk
-          cp app/build/outputs/apk/debug/app-debug.apk SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk
-          sha256sum SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk > SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk.sha256
 
+      - name: Require production signing
+        shell: bash
+        run: |
+          test -n "$RELEASE_KEYSTORE_BASE64" || { echo "::error::SCHOOLOS_RELEASE_KEYSTORE_BASE64 is missing"; exit 1; }
+          test -n "$RELEASE_STORE_PASSWORD" || { echo "::error::SCHOOLOS_RELEASE_STORE_PASSWORD is missing"; exit 1; }
+          test -n "$RELEASE_KEY_ALIAS" || { echo "::error::SCHOOLOS_RELEASE_KEY_ALIAS is missing"; exit 1; }
+          test -n "$RELEASE_KEY_PASSWORD" || { echo "::error::SCHOOLOS_RELEASE_KEY_PASSWORD is missing"; exit 1; }
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/schoolos-release-upload.keystore"
+          test -s "$RUNNER_TEMP/schoolos-release-upload.keystore"
+          echo "SCHOOLOS_RELEASE_STORE_FILE=$RUNNER_TEMP/schoolos-release-upload.keystore" >> "$GITHUB_ENV"
+          echo "SCHOOLOS_RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "SCHOOLOS_RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "SCHOOLOS_RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build signed production APK and AAB
+        run: gradle --no-daemon clean assembleRelease bundleRelease
+
+      - name: Verify signed production APK
+        shell: bash
+        run: |
           RELEASE_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)"
           test -n "$RELEASE_APK"
-          cp "$RELEASE_APK" SchoolOS-Android-3.1.9-Release.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$RELEASE_APK" | tee apk-signing-verification.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signing-verification.txt
+          cp "$RELEASE_APK" schoolos-android-production.apk
           test -f app/build/outputs/bundle/release/app-release.aab
-          cp app/build/outputs/bundle/release/app-release.aab SchoolOS-Android-3.1.9-Release.aab
-          sha256sum SchoolOS-Android-3.1.9-Release.apk SchoolOS-Android-3.1.9-Release.aab > SchoolOS-Android-3.1.9-Release.sha256
+          cp app/build/outputs/bundle/release/app-release.aab SchoolOS-Android-3.2.0-Production.aab
+          sha256sum schoolos-android-production.apk SchoolOS-Android-3.2.0-Production.aab > SchoolOS-Android-3.2.0-Production.sha256
+          printf 'signed-production\npackage=com.schooloss.mobile\nversion=3.2.0\ntargetSdk=35\n' > signing-state.txt
+
       - uses: actions/upload-artifact@v4
         with:
-          name: SchoolOS-Android-3.1.9-Release-Candidate
+          name: SchoolOS-Android-3.2.0-Production
           path: |
-            SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk
-            SchoolOS-Native-Mobile-3.1.9-Stable-Beta.apk.sha256
-            SchoolOS-Android-3.1.9-Release.apk
-            SchoolOS-Android-3.1.9-Release.aab
-            SchoolOS-Android-3.1.9-Release.sha256
+            schoolos-android-production.apk
+            SchoolOS-Android-3.2.0-Production.aab
+            SchoolOS-Android-3.2.0-Production.sha256
+            apk-signing-verification.txt
             signing-state.txt
           if-no-files-found: error

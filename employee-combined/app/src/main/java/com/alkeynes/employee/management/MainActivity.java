@@ -23,7 +23,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements AdminOperations.Host {
     private FrameLayout root;
     private LinearLayout content;
     private Ui ui;
@@ -185,7 +185,27 @@ public class MainActivity extends Activity {
     }
 
     private void buildAdmin(JSONObject d){
-        switch(screen){case"dashboard":adminDashboard(d);break;case"people":adminPeople(d);break;case"attendance":adminAttendance(d);break;case"map":adminMap(d);break;case"organisation":adminOrganisation(d);break;case"locations":adminLocations(d);break;case"shifts":adminShifts(d);break;case"holidays":adminHolidays(d);break;case"admin_leave":adminLeave(d);break;case"timesheets":adminTimesheets(d);break;case"field":adminField(d);break;case"expenses":adminExpenses(d);break;case"payroll":adminPayroll(d);break;case"reports":adminReports(d);break;case"notifications":notifications(d);break;case"security":security(d);break;case"settings":adminSettings(d);break;default:adminDashboard(d);}
+        AdminOperations ops=new AdminOperations(this,ui,content,user,this);
+        switch(screen){
+            case"dashboard":adminDashboard(d);break;
+            case"people":ops.people(d);break;
+            case"attendance":ops.attendance(d);break;
+            case"map":adminMap(d);break;
+            case"organisation":adminOrganisation(d);break;
+            case"locations":ops.locations(d);break;
+            case"shifts":ops.shifts(d);break;
+            case"holidays":ops.holidays(d);break;
+            case"admin_leave":adminLeave(d);break;
+            case"timesheets":adminTimesheets(d);break;
+            case"field":ops.field(d);break;
+            case"expenses":adminExpenses(d);break;
+            case"payroll":ops.payroll(d);break;
+            case"reports":adminReports(d);break;
+            case"notifications":notifications(d);break;
+            case"security":security(d);break;
+            case"settings":ops.settings(d);break;
+            default:adminDashboard(d);
+        }
     }
 
     private void employeeHome(JSONObject d){
@@ -356,8 +376,13 @@ public class MainActivity extends Activity {
     }
 
     private void security(JSONObject d){
-        content.addView(ui.section("Native app sessions"),ui.match(0,14,0,10));JSONArray a=d.optJSONArray("native_sessions");if(a==null||a.length()==0)content.addView(empty("No native sessions","This device session will appear after successful sign-in."));else for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(blank(x.optString("device_label")),x.isNull("revoked_at")?"Active":"Revoked"));c.addView(ui.muted("Last used "+blank(x.optString("last_used_at"))+" · expires "+blank(x.optString("expires_at"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
-        content.addView(ui.section("Tracking authorisations"),ui.match(0,20,0,10));JSONArray t=d.optJSONArray("tracking_tokens");if(t!=null)for(int i=0;i<t.length();i++){JSONObject x=t.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(blank(x.optString("device_label")),x.isNull("revoked_at")?"Authorised":"Revoked"));c.addView(ui.muted("Last used "+blank(x.optString("last_used_at"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
+        int current=d.optInt("current_native_token_id");
+        content.addView(ui.section("Native app sessions"),ui.match(0,14,0,10));JSONArray a=d.optJSONArray("native_sessions");int otherActive=0;
+        if(a==null||a.length()==0)content.addView(empty("No native sessions","This device session will appear after successful sign-in."));
+        else for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);boolean isCurrent=x.optInt("id")==current;boolean active=x.isNull("revoked_at");if(active&&!isCurrent)otherActive++;LinearLayout card=ui.card();card.addView(rowTitle(blank(x.optString("device_label")),isCurrent?"Current":(active?"Active":"Revoked")));card.addView(ui.muted("Last used "+blank(x.optString("last_used_at"))+" · expires "+blank(x.optString("expires_at"))),ui.match(0,4,0,0));content.addView(card,ui.match(0,0,0,8));}
+        JSONArray web=d.optJSONArray("web_sessions");if(web!=null)for(int i=0;i<web.length();i++)if(web.optJSONObject(i).isNull("revoked_at"))otherActive++;
+        if(otherActive>0){Button revoke=ui.danger("Sign Out Other Sessions");revoke.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Sign out other sessions?").setMessage("Other browser and native app sessions will be revoked. This app stays signed in.").setPositiveButton("Sign Out",(x,w)->{showBusy("Signing out other sessions…");callPost("security_revoke_others",new JSONObject(),r->{hideBusy();toast(r.optString("message"));render("security");});}).setNegativeButton("Cancel",null).show());content.addView(revoke,ui.match(0,10,0,0));}
+        content.addView(ui.section("Tracking authorisations"),ui.match(0,20,0,10));JSONArray t=d.optJSONArray("tracking_tokens");if(t!=null)for(int i=0;i<t.length();i++){JSONObject x=t.optJSONObject(i);LinearLayout card=ui.card();card.addView(rowTitle(blank(x.optString("device_label")),x.isNull("revoked_at")?"Authorised":"Revoked"));card.addView(ui.muted("Last used "+blank(x.optString("last_used_at"))),ui.match(0,4,0,0));content.addView(card,ui.match(0,0,0,8));}
         Button logout=ui.danger("Sign Out This App");logout.setOnClickListener(v->logout());content.addView(logout,ui.match(0,16,0,0));
     }
 
@@ -416,6 +441,13 @@ public class MainActivity extends Activity {
 
     private void callGet(String action,Map<String,String> q,Consumer<JSONObject> ok){net.submit(()->{try{JSONObject r=q==null?api.get(action):api.get(action,q);runOnUiThread(()->ok.accept(r));}catch(Exception e){runOnUiThread(()->handleError(e));}});}
     private void callPost(String action,JSONObject b,Consumer<JSONObject> ok){net.submit(()->{try{JSONObject r=api.post(action,b);runOnUiThread(()->ok.accept(r));}catch(Exception e){runOnUiThread(()->{hideBusy();handleError(e);});}});}
+
+    @Override public void adminPost(String action,JSONObject body,Consumer<JSONObject> ok){callPost(action,body,ok);}
+    @Override public void adminRender(String target){render(target);}
+    @Override public void adminBusy(String text){showBusy(text);}
+    @Override public void adminHideBusy(){hideBusy();}
+    @Override public void adminToast(String text){toast(text);}
+    @Override public void adminFreshLocation(Consumer<Location> callback){getFreshLocation(callback);}
     private void handleError(Exception e){if(e instanceof ApiClient.ApiException&&((ApiClient.ApiException)e).status==401){store.clear();user=null;stopService(new Intent(this,TrackingService.class));toast("Session expired. Sign in again.");showLogin();return;}toast(message(e));}
     private String message(Exception e){String m=e.getMessage();return m==null||m.isEmpty()?"Request failed.":m;}
 

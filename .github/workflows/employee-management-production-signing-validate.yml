@@ -1,7 +1,5 @@
 name: Validate Employee Management Production Signing Source
 on:
-  push:
-    branches: [ employee-management-native-production-signing-v1 ]
   workflow_dispatch:
 
 jobs:

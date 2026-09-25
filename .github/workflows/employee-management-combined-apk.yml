@@ -1,7 +1,7 @@
-name: Build Employee Management Native Admin R1 APK
+name: Build Employee Management Native Parity R2 R3 APK
 on:
   push:
-    branches: [ employee-management-native-live-v1 ]
+    branches: [ employee-management-native-parity-r2r3-v1 ]
   workflow_dispatch:
 
 jobs:
@@ -11,6 +11,20 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Apply Native Parity R2/R3 source overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f employee-combined/native-r2r3.patch.gz.b64
+          base64 -d employee-combined/native-r2r3.patch.gz.b64 | gunzip > /tmp/native-r2r3.patch
+          git apply --check /tmp/native-r2r3.patch
+          git apply /tmp/native-r2r3.patch
+          grep -q "versionCode 3300" employee-combined/app/build.gradle
+          grep -q "versionName '3.3.0-native-parity-r2r3-test'" employee-combined/app/build.gradle
+          grep -q "OfflineSyncJobService" employee-combined/app/src/main/AndroidManifest.xml
+          test -f employee-combined/app/src/main/java/com/alkeynes/employee/management/OfflineAttendanceQueue.java
+          test -f employee-combined/app/src/main/java/com/alkeynes/employee/management/OfflineSyncJobService.java
+          test -f employee-combined/app/src/main/java/com/alkeynes/employee/management/CsvExporter.java
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -18,32 +32,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build native Admin R1 APK
+      - name: Build native parity R2/R3 APK
         working-directory: employee-combined
         run: gradle --no-daemon clean assembleDebug
-      - name: Validate native package and signature
+      - name: Validate native package, version and signature
         shell: bash
         run: |
+          set -euo pipefail
           APK="employee-combined/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          "$AAPT" dump badging "$APK" | tee native-admin-r1-badging.txt
-          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-admin-r1-badging.txt
-          grep -q "versionName='3.2.0-native-admin-r1-test'" native-admin-r1-badging.txt
-          grep -q "targetSdkVersion:'35'" native-admin-r1-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-admin-r1-signature.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-admin-r1-signature.txt
-          cp "$APK" Employee-Management-Native-Admin-R1-v3.2.0.apk
-          sha256sum Employee-Management-Native-Admin-R1-v3.2.0.apk > Employee-Management-Native-Admin-R1-v3.2.0.sha256
-          zip -qr Employee-Management-Native-Admin-R1-Source-v3.2.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
+          "$AAPT" dump badging "$APK" | tee native-parity-r2r3-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-parity-r2r3-badging.txt
+          grep -q "versionName='3.3.0-native-parity-r2r3-test'" native-parity-r2r3-badging.txt
+          grep -q "targetSdkVersion:'35'" native-parity-r2r3-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-parity-r2r3-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-parity-r2r3-signature.txt
+          cp "$APK" Employee-Management-Native-Parity-R2R3-v3.3.0.apk
+          sha256sum Employee-Management-Native-Parity-R2R3-v3.3.0.apk > Employee-Management-Native-Parity-R2R3-v3.3.0.sha256
+          rm -f employee-combined/native-r2r3.patch.gz.b64
+          zip -qr Employee-Management-Native-Parity-R2R3-Source-v3.3.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: Employee-Management-Native-Admin-R1-v3.2.0
+          name: Employee-Management-Native-Parity-R2R3-v3.3.0
           path: |
-            Employee-Management-Native-Admin-R1-v3.2.0.apk
-            Employee-Management-Native-Admin-R1-v3.2.0.sha256
-            Employee-Management-Native-Admin-R1-Source-v3.2.0.zip
-            native-admin-r1-badging.txt
-            native-admin-r1-signature.txt
+            Employee-Management-Native-Parity-R2R3-v3.3.0.apk
+            Employee-Management-Native-Parity-R2R3-v3.3.0.sha256
+            Employee-Management-Native-Parity-R2R3-Source-v3.3.0.zip
+            native-parity-r2r3-badging.txt
+            native-parity-r2r3-signature.txt
           if-no-files-found: error

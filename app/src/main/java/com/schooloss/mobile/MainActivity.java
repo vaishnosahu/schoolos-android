@@ -1,1059 +1,660 @@
-package com.schooloss.mobile;
+package com.schooloss.nativepreview;
 
-import android.Manifest;
 import android.app.Activity;
-import android.app.DownloadManager;
-import android.content.ActivityNotFoundException;
-import android.content.ClipData;
-import android.content.Context;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.net.ConnectivityManager;
-import android.net.NetworkCapabilities;
-import android.net.Network;
-import android.net.Uri;
-import android.net.http.SslError;
-import android.os.Build;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
-import android.os.Environment;
-import android.os.Handler;
-import android.os.Looper;
-import android.provider.MediaStore;
+import android.text.InputType;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.MotionEvent;
-import android.view.animation.DecelerateInterpolator;
-import android.view.WindowManager;
-import android.webkit.CookieManager;
-import android.webkit.GeolocationPermissions;
-import android.webkit.JavascriptInterface;
-import android.webkit.PermissionRequest;
-import android.webkit.SslErrorHandler;
-import android.webkit.URLUtil;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.widget.ProgressBar;
-import android.widget.Toast;
-import androidx.core.content.FileProvider;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
-import androidx.webkit.WebViewCompat;
-import androidx.webkit.WebViewFeature;
-import com.google.firebase.FirebaseApp;
-import com.google.firebase.messaging.FirebaseMessaging;
-import org.json.JSONObject;
+import android.view.Window;
+import android.widget.*;
 
-import java.io.File;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.2.0";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.2.0";
-    private static final String APP_UA = " SchoolOSNative/3.2.0 Android";
-    private static final int FILE_REQ = 4101;
-    private static final int WEB_PERM_REQ = 4102;
-    private static final int GEO_PERM_REQ = 4103;
-    private static final int PUSH_PERM_REQ = 4104;
-    private static final int FILE_CAMERA_PERM_REQ = 4105;
 
-    private WebView web;
-    private ProgressBar progress;
-    private View offlinePanel;
-    private View launchOverlay;
-    private View launchLogo;
-    private View launchTitle;
-    private View launchSubtitle;
-    private View launchDot1;
-    private View launchDot2;
-    private View launchDot3;
-    private View launchRing;
-    private View launchOrb1;
-    private View launchOrb2;
-    private View launchProgress;
-    private final Handler uiHandler = new Handler(Looper.getMainLooper());
-    private long launchStartedAt = 0L;
-    private boolean launchHidden = false;
-    private int launchDotIndex = 0;
-    private boolean launchAmbientFlip = false;
-    private static final long MIN_LAUNCH_MS = 3650L;
-    private ValueCallback<Uri[]> fileCallback;
-    private Uri cameraUri;
-    private PermissionRequest pendingWebPermission;
-    private GeolocationPermissions.Callback geoCallback;
-    private String geoOrigin;
-    private String pushCsrf = "";
-    private String lastRequestedUrl = HOME;
-    private boolean showingOfflineSnapshot = false;
-    private WebChromeClient.FileChooserParams pendingChooserParams;
-    private ConnectivityManager.NetworkCallback networkCallback;
-    private final Set<String> internalHosts = new HashSet<>();
+    private enum Role {
+        ADMIN("Admin / Owner", "COMMAND CENTER", "School control, one place",
+                "Operations, people, finance and academics in one focused workspace.",
+                Color.rgb(54,87,214)),
+        TEACHER("Teacher / Staff", "TEACHING WORKSPACE", "Your teaching day",
+                "Classes, attendance, assignments and learning work without admin noise.",
+                Color.rgb(16,151,111)),
+        PARENT("Parent", "MY CHILD", "Stay close to school life",
+                "Attendance, payments, results, transport and school updates.",
+                Color.rgb(199,72,150)),
+        STUDENT("Student", "MY LEARNING", "Your school day, simplified",
+                "Schedule, learning, assignments, results and updates in one clean view.",
+                Color.rgb(231,120,44));
 
-    @Override protected void onCreate(Bundle state) {
-        super.onCreate(state);
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        getWindow().setStatusBarColor(Color.WHITE);
+        final String label;
+        final String eyebrow;
+        final String title;
+        final String subtitle;
+        final int color;
+
+        Role(String label, String eyebrow, String title, String subtitle, int color) {
+            this.label = label;
+            this.eyebrow = eyebrow;
+            this.title = title;
+            this.subtitle = subtitle;
+            this.color = color;
+        }
+    }
+
+    private final int BG = Color.rgb(247,249,253);
+    private final int TEXT = Color.rgb(25,33,50);
+    private final int MUTED = Color.rgb(106,116,140);
+    private final int LINE = Color.rgb(229,233,242);
+    private final int BLUE = Color.rgb(54,87,214);
+
+    private Role selectedRole = Role.ADMIN;
+    private boolean inWorkspace = false;
+    private String selectedTab = "Home";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setStatusBarColor(Color.rgb(248,250,255));
         getWindow().setNavigationBarColor(Color.WHITE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getWindow().setStatusBarContrastEnforced(false);
-            getWindow().setNavigationBarContrastEnforced(false);
-        }
-        getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        getWindow().getDecorView().setPadding(0,0,0,0);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            WindowManager.LayoutParams attrs = getWindow().getAttributes();
-            attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-            getWindow().setAttributes(attrs);
-        }
-        internalHosts.add("alkeynesprjects.com");
-        internalHosts.add("www.alkeynesprjects.com");
-        internalHosts.add("schooloss.com");
-        internalHosts.add("www.schooloss.com");
-        SchoolOSMessagingService.ensureChannels(this);
-        setContentView(R.layout.activity_main);
-        web = findViewById(R.id.web);
-        web.setPadding(0,0,0,0);
-        ViewGroup.LayoutParams webLp = web.getLayoutParams();
-        webLp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-        webLp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-        web.setLayoutParams(webLp);
-        web.setBackgroundColor(Color.rgb(247,249,253));
-        progress = findViewById(R.id.progress);
-        offlinePanel = findViewById(R.id.offlinePanel);
-        launchOverlay = findViewById(R.id.launchOverlay);
-        launchLogo = findViewById(R.id.launchLogo);
-        launchTitle = findViewById(R.id.launchTitle);
-        launchSubtitle = findViewById(R.id.launchSubtitle);
-        launchDot1 = findViewById(R.id.launchDot1);
-        launchDot2 = findViewById(R.id.launchDot2);
-        launchDot3 = findViewById(R.id.launchDot3);
-        launchRing = findViewById(R.id.launchRing);
-        launchOrb1 = findViewById(R.id.launchOrb1);
-        launchOrb2 = findViewById(R.id.launchOrb2);
-        launchProgress = findViewById(R.id.launchProgress);
-        findViewById(R.id.retryButton).setOnClickListener(v -> retry());
-        launchStartedAt = System.currentTimeMillis();
-        startLaunchAnimation();
-        configureWebView();
-        prepareNativeSession();
-        registerNetworkRecovery();
-        if (state != null) web.restoreState(state); else load(resolve(getIntent()));
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        renderLogin();
     }
 
-    private void configureWebView() {
-        WebView.setWebContentsDebuggingEnabled(false);
-        WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setAllowFileAccess(false);
-        s.setAllowContentAccess(true);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        s.setBuiltInZoomControls(false);
-        s.setDisplayZoomControls(false);
-        s.setUseWideViewPort(true);
-        s.setLoadWithOverviewMode(false);
-        s.setTextZoom(100);
-        s.setSupportZoom(false);
-        s.setSupportMultipleWindows(true);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
-        s.setJavaScriptCanOpenWindowsAutomatically(true);
-        s.setUserAgentString(s.getUserAgentString() + APP_UA);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) s.setSafeBrowsingEnabled(true);
+    @Override
+    public void onBackPressed() {
+        if (inWorkspace && !"Home".equals(selectedTab)) {
+            selectedTab = "Home";
+            renderWorkspace();
+            return;
+        }
+        if (inWorkspace) {
+            inWorkspace = false;
+            renderLogin();
+            return;
+        }
+        super.onBackPressed();
+    }
 
-        web.setVerticalScrollBarEnabled(false);
-        web.setHorizontalScrollBarEnabled(false);
-        web.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        web.setNestedScrollingEnabled(true);
-        web.setOnTouchListener((v, event) -> {
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN || event.getActionMasked() == MotionEvent.ACTION_MOVE) {
-                ViewParentCompat.disallow(v);
-            }
-            return false;
+    private void renderLogin() {
+        inWorkspace = false;
+        LinearLayout page = vertical();
+        page.setPadding(dp(18), dp(16), dp(18), dp(24));
+        page.setBackgroundColor(BG);
+
+        page.addView(brandRow());
+        page.addView(gap(14));
+        page.addView(loginHero());
+        page.addView(gap(16));
+
+        LinearLayout form = card();
+        form.setPadding(dp(18), dp(18), dp(18), dp(18));
+        form.addView(label("WELCOME BACK", 10, selectedRole.color, true));
+        form.addView(title("Sign in to SchoolOS", 26));
+        form.addView(body("Native Android UI preview. Choose a workspace below and review the complete mobile direction before live connectivity is added.", 13));
+        form.addView(gap(16));
+
+        form.addView(fieldLabel("Email address"));
+        form.addView(input("name@school.com", false));
+        form.addView(gap(11));
+        form.addView(fieldLabel("Password"));
+        form.addView(input("Password", true));
+        form.addView(gap(15));
+        form.addView(fieldLabel("Preview workspace"));
+        form.addView(roleGrid());
+        form.addView(gap(16));
+
+        Button open = button("Open " + selectedRole.label + " UI", selectedRole.color, Color.WHITE);
+        open.setOnClickListener(v -> {
+            inWorkspace = true;
+            selectedTab = "Home";
+            renderWorkspace();
         });
+        form.addView(open);
+        form.addView(gap(10));
+        TextView note = text("UI-only preview · no API · no database · no WebView", 11, MUTED, false);
+        note.setGravity(Gravity.CENTER);
+        form.addView(note);
 
-        CookieManager cm = CookieManager.getInstance();
-        cm.setAcceptCookie(true);
-        cm.setAcceptThirdPartyCookies(web, true);
-        web.addJavascriptInterface(new NativeBridge(), "SchoolOSNative");
-        installDocumentStartCleanup();
+        page.addView(form);
 
-        web.setWebViewClient(new WebViewClient() {
-            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (!isOnline() && !"GET".equalsIgnoreCase(request.getMethod())) {
-                    Toast.makeText(MainActivity.this, "This change needs an internet connection. Nothing was queued offline.", Toast.LENGTH_LONG).show();
-                    return true;
-                }
-                return route(request.getUrl(), view.getUrl());
-            }
-            @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                if (!showingOfflineSnapshot) lastRequestedUrl = url == null ? lastRequestedUrl : url;
-                offlinePanel.setVisibility(View.GONE);
-                web.setVisibility(View.VISIBLE);
-            }
-            @Override public void onPageFinished(WebView view, String url) {
-                CookieManager.getInstance().flush();
-                boolean login = url != null && url.contains("/schools/mobile/login.php");
-                if (login) {
-                    OfflineSnapshotStore.clearAll(MainActivity.this);
-                    showingOfflineSnapshot = false;
-                    web.clearHistory();
-                }
-                applyNativePresentation(url);
-                if (isOnline() && !login && OfflineSnapshotStore.isSafeUrl(url)) {
-                    captureSafeSnapshot(url);
-                }
-            }
-            @Override public void onReceivedSslError(WebView v, SslErrorHandler h, SslError e) {
-                h.cancel();
-                Toast.makeText(MainActivity.this, "Secure connection could not be verified.", Toast.LENGTH_LONG).show();
-            }
-            @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) showOfflineFor(request.getUrl() == null ? lastRequestedUrl : request.getUrl().toString());
-            }
-            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-                if (request.isForMainFrame() && response != null && (response.getStatusCode() == 401 || response.getStatusCode() == 419)) {
-                    OfflineSnapshotStore.clearAll(MainActivity.this);
-                    Toast.makeText(MainActivity.this, "Your SchoolOS session expired. Please sign in again.", Toast.LENGTH_LONG).show();
-                }
-            }
-        });
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(page);
+        setContentView(scroll);
+    }
 
-        web.setWebChromeClient(new WebChromeClient() {
-            @Override public void onProgressChanged(WebView v, int p) {
-                progress.setProgress(p);
-                progress.setVisibility(p >= 100 ? View.GONE : View.VISIBLE);
-            }
-            @Override public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> callback, FileChooserParams params) {
-                if (fileCallback != null) fileCallback.onReceiveValue(null);
-                fileCallback = callback;
-                if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                    pendingChooserParams = params;
-                    requestPermissions(new String[]{Manifest.permission.CAMERA}, FILE_CAMERA_PERM_REQ);
-                } else {
-                    launchFileChooser(params);
-                }
-                return true;
-            }
-            @Override public void onPermissionRequest(PermissionRequest request) {
-                runOnUiThread(() -> requestWebPermissions(request));
-            }
-            @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                geoOrigin = origin;
-                geoCallback = callback;
-                if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                    checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    callback.invoke(origin, true, false);
-                    geoCallback = null;
-                    geoOrigin = null;
-                } else {
-                    requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, GEO_PERM_REQ);
-                }
-            }
-            @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-                WebView popup = new WebView(MainActivity.this);
-                popup.setWebViewClient(new WebViewClient() {
-                    @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
-                        route(r.getUrl(), web.getUrl());
-                        v.destroy();
-                        return true;
-                    }
-                    @Override public void onPageStarted(WebView v, String url, Bitmap favicon) {
-                        route(Uri.parse(url), web.getUrl());
-                        v.stopLoading();
-                        v.destroy();
-                    }
+    private View brandRow() {
+        LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView mark = text("S", 22, Color.WHITE, true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(round(BLUE, 15, BLUE));
+        row.addView(mark, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        LinearLayout copy = vertical();
+        copy.setPadding(dp(12), 0, 0, 0);
+        copy.addView(text("SchoolOS", 20, TEXT, true));
+        copy.addView(label("SMART SCHOOL WORKSPACE", 9, MUTED, true));
+        row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView badge = text("NATIVE UI", 9, BLUE, true);
+        badge.setPadding(dp(10), dp(7), dp(10), dp(7));
+        badge.setBackground(round(Color.rgb(237,241,255), 99, Color.rgb(218,225,250)));
+        row.addView(badge);
+        return row;
+    }
+
+    private View loginHero() {
+        LinearLayout box = vertical();
+        box.setPadding(dp(20), dp(20), dp(20), dp(20));
+        box.setBackground(gradient(new int[]{
+                Color.rgb(47,88,218),
+                Color.rgb(90,74,229),
+                Color.rgb(162,72,198)
+        }, 25));
+        box.setElevation(dp(5));
+
+        box.addView(label("ONE APP · EVERY SCHOOL ROLE", 10, Color.argb(220,255,255,255), true));
+        TextView big = text("A cleaner SchoolOS experience on Android", 24, Color.WHITE, true);
+        big.setPadding(0, dp(7), 0, 0);
+        box.addView(big);
+        TextView small = text("Compact navigation, native controls and role-focused workspaces designed for daily school use.", 13, Color.argb(225,255,255,255), false);
+        small.setPadding(0, dp(8), 0, 0);
+        box.addView(small);
+
+        LinearLayout chips = horizontal();
+        chips.setPadding(0, dp(15), 0, 0);
+        String[] names = {"Admin", "Teacher", "Parent", "Student"};
+        for (int i = 0; i < names.length; i++) {
+            TextView chip = text(names[i], 10, Color.WHITE, true);
+            chip.setGravity(Gravity.CENTER);
+            chip.setPadding(dp(8), dp(7), dp(8), dp(7));
+            chip.setBackground(round(Color.argb(30,255,255,255), 99, Color.argb(45,255,255,255)));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > 0) lp.leftMargin = dp(5);
+            chips.addView(chip, lp);
+        }
+        box.addView(chips);
+        return box;
+    }
+
+    private View roleGrid() {
+        LinearLayout grid = vertical();
+        Role[] roles = Role.values();
+        for (int r = 0; r < 2; r++) {
+            LinearLayout row = horizontal();
+            for (int c = 0; c < 2; c++) {
+                Role role = roles[r * 2 + c];
+                boolean active = role == selectedRole;
+                LinearLayout item = vertical();
+                item.setPadding(dp(12), dp(11), dp(12), dp(11));
+                item.setGravity(Gravity.CENTER_VERTICAL);
+                item.setBackground(round(
+                        active ? tint(role.color, 0.10f) : Color.rgb(250,251,254),
+                        15,
+                        active ? tint(role.color, 0.32f) : LINE
+                ));
+                item.setOnClickListener(v -> {
+                    selectedRole = role;
+                    renderLogin();
                 });
-                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                transport.setWebView(popup);
-                resultMsg.sendToTarget();
-                return true;
+                item.addView(text(role.label, 12, active ? role.color : TEXT, true));
+                item.addView(text(roleHint(role), 10, MUTED, false));
+
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(66), 1f);
+                if (c > 0) lp.leftMargin = dp(8);
+                if (r > 0) lp.topMargin = dp(8);
+                row.addView(item, lp);
             }
+            grid.addView(row);
+        }
+        return grid;
+    }
+
+    private String roleHint(Role role) {
+        switch (role) {
+            case ADMIN: return "Operations & control";
+            case TEACHER: return "Classes & teaching";
+            case PARENT: return "Child & school";
+            default: return "Learning & updates";
+        }
+    }
+
+    private void renderWorkspace() {
+        inWorkspace = true;
+
+        LinearLayout root = vertical();
+        root.setBackgroundColor(BG);
+        root.addView(topBar());
+
+        FrameLayout contentFrame = new FrameLayout(this);
+        View content = "Home".equals(selectedTab) ? homeScreen() : tabScreen(selectedTab);
+        contentFrame.addView(content);
+        root.addView(contentFrame, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        root.addView(bottomNav());
+        setContentView(root);
+    }
+
+    private View topBar() {
+        LinearLayout outer = vertical();
+        outer.setPadding(dp(16), dp(11), dp(16), dp(10));
+        outer.setBackgroundColor(Color.WHITE);
+
+        LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView mark = text("S", 18, Color.WHITE, true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(round(selectedRole.color, 13, selectedRole.color));
+        row.addView(mark, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        LinearLayout copy = vertical();
+        copy.setPadding(dp(10), 0, 0, 0);
+        copy.addView(text("SchoolOS", 17, TEXT, true));
+        copy.addView(text(selectedRole.label + " workspace", 10, MUTED, false));
+        row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView profile = text(initials(selectedRole.label), 11, selectedRole.color, true);
+        profile.setGravity(Gravity.CENTER);
+        profile.setBackground(round(tint(selectedRole.color, 0.10f), 99, tint(selectedRole.color, 0.18f)));
+        profile.setOnClickListener(v -> {
+            selectedTab = "Profile";
+            renderWorkspace();
         });
+        row.addView(profile, new LinearLayout.LayoutParams(dp(38), dp(38)));
 
-        web.setDownloadListener((url, ua, disposition, mime, len) -> download(url, ua, disposition, mime));
+        outer.addView(row);
+        return outer;
     }
 
-    private void installDocumentStartCleanup() {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
-        Set<String> origins = new HashSet<>();
-        origins.add("https://alkeynesprjects.com");
-        origins.add("https://www.alkeynesprjects.com");
-        origins.add("https://schooloss.com");
-        origins.add("https://www.schooloss.com");
-        String script = "(function(){" +
-                "var sel='.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]';" +
-                "var css=sel+'{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}';" +
-                "css+='html,body{margin:0!important;padding:0!important;width:100%!important;max-width:none!important;height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;touch-action:pan-y pinch-zoom!important;-webkit-overflow-scrolling:touch!important;background:#F7F9FD!important}';" +
-                "css+='.m-stage,.m-app,.m-native-stage,.m-native-app{width:100%!important;max-width:none!important;height:auto!important;min-height:100dvh!important;margin:0!important;box-shadow:none!important;overflow-y:visible!important;touch-action:pan-y pinch-zoom!important}';" +
-                "css+='.m-content,.m-native-content,.main-area{height:auto!important;overflow-y:visible!important;touch-action:pan-y!important}';" +
-                "css+='.m-login-stage{width:100%!important;max-width:none!important;margin:0!important;padding:0!important;place-items:stretch!important}';" +
-                "css+='.m-login-card{width:100%!important;max-width:none!important;margin:0!important;min-height:100dvh!important;border-radius:0!important;box-shadow:none!important}';" +
-                "css+='.m-bottom,.m-native-bottom{left:0!important;right:0!important;transform:none!important;width:100%!important;max-width:none!important;margin:0!important}';" +
-                "css+='.m-native-topbar,.m-native-pagehead,.m-native-content{width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important}';" +
-                "css+='.native-mobile-shell,.native-mobile-shell .m-native-stage,.native-mobile-shell .m-native-app{width:100%!important;max-width:none!important;margin:0!important;box-shadow:none!important}';" +
-                "css+='.native-mobile-shell .m-native-topbar,.native-mobile-shell .m-native-bottom{width:100%!important;max-width:none!important;left:0!important;right:0!important;transform:none!important;background:#fff!important;backdrop-filter:none!important}';" +
-                "var st=document.createElement('style');st.id='schoolos-native-prepaint';st.textContent=css;" +
-                "(document.head||document.documentElement).appendChild(st);" +
-                "document.addEventListener('focusin',function(e){try{if(e.target&&e.target.matches&&e.target.matches(sel)){e.target.blur();var m=document.getElementById('mainContent');if(m&&m.focus)m.focus({preventScroll:true});}}catch(x){}},true);" +
-                "document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll(sel).forEach(function(x){x.remove();});},{once:true});" +
-                "document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#schoolosPasswordToggle,.m-password-toggle'):null;if(!b)return;var p=document.getElementById('schoolosLoginPassword')||document.querySelector('input[name=password]');if(!p)return;var v=document.getElementById('schoolosLoginPasswordVisible');e.preventDefault();e.stopImmediatePropagation();var show=b.getAttribute('aria-pressed')!=='true';if(v){if(show){v.value=p.value;p.hidden=true;p.setAttribute('aria-hidden','true');p.tabIndex=-1;v.hidden=false;v.setAttribute('aria-hidden','false');v.tabIndex=0;try{v.focus({preventScroll:true});}catch(x){v.focus();}}else{p.value=v.value;v.hidden=true;v.setAttribute('aria-hidden','true');v.tabIndex=-1;p.hidden=false;p.setAttribute('aria-hidden','false');p.tabIndex=0;try{p.focus({preventScroll:true});}catch(x){p.focus();}}}else{var val=p.value;var c=p.cloneNode(true);c.value=val;c.type=show?'text':'password';c.removeAttribute('style');c.style.setProperty('-webkit-text-security',show?'none':'disc','important');p.replaceWith(c);try{c.focus({preventScroll:true});}catch(x){c.focus();}}b.setAttribute('aria-pressed',show?'true':'false');b.setAttribute('aria-label',show?'Hide password':'Show password');b.dataset.visible=show?'1':'0';},true);" +
-                "})();";
-        WebViewCompat.addDocumentStartJavaScript(web, script, origins);
+    private String initials(String s) {
+        if (s.startsWith("Admin")) return "AO";
+        if (s.startsWith("Teacher")) return "TS";
+        if (s.startsWith("Parent")) return "P";
+        return "S";
     }
 
-    private void prepareNativeSession() {
-        CookieManager cm = CookieManager.getInstance();
-        cm.setCookie("https://alkeynesprjects.com", "schoolos_native=" + NATIVE_VERSION + "; Path=/; Secure; SameSite=Lax");
-        cm.setCookie("https://www.alkeynesprjects.com", "schoolos_native=" + NATIVE_VERSION + "; Path=/; Secure; SameSite=Lax");
-        String installId = SchoolOSApplication.installationId(this);
-        cm.setCookie("https://alkeynesprjects.com", "schoolos_install_id=" + installId + "; Path=/schools/; Secure; SameSite=Lax");
-        cm.setCookie("https://www.alkeynesprjects.com", "schoolos_install_id=" + installId + "; Path=/schools/; Secure; SameSite=Lax");
-        cm.flush();
-        android.content.SharedPreferences prefs = getSharedPreferences("schoolos_native", MODE_PRIVATE);
-        String previous = prefs.getString("version", "");
-        if (!NATIVE_VERSION.equals(previous)) {
-            web.clearCache(true);
-            web.clearHistory();
-            prefs.edit().putString("version", NATIVE_VERSION).apply();
-            Toast.makeText(this, "SchoolOS Native " + NATIVE_VERSION, Toast.LENGTH_SHORT).show();
-        }
+    private View homeScreen() {
+        LinearLayout page = vertical();
+        page.setPadding(dp(16), dp(14), dp(16), dp(20));
+
+        LinearLayout hero = vertical();
+        hero.setPadding(dp(18), dp(18), dp(18), dp(18));
+        hero.setBackground(gradient(new int[]{selectedRole.color, tint(selectedRole.color, -0.18f)}, 23));
+        hero.addView(label(selectedRole.eyebrow, 9, Color.argb(220,255,255,255), true));
+        TextView h = text(selectedRole.title, 23, Color.WHITE, true);
+        h.setPadding(0, dp(5), 0, 0);
+        hero.addView(h);
+        TextView sub = text(selectedRole.subtitle, 12, Color.argb(225,255,255,255), false);
+        sub.setPadding(0, dp(7), 0, 0);
+        hero.addView(sub);
+
+        LinearLayout status = horizontal();
+        status.setPadding(0, dp(14), 0, 0);
+        status.addView(heroMetric("TODAY", "—"), new LinearLayout.LayoutParams(0, dp(58), 1f));
+        LinearLayout.LayoutParams mid = new LinearLayout.LayoutParams(0, dp(58), 1f);
+        mid.leftMargin = dp(7);
+        mid.rightMargin = dp(7);
+        status.addView(heroMetric("UPDATES", "—"), mid);
+        status.addView(heroMetric("PENDING", "—"), new LinearLayout.LayoutParams(0, dp(58), 1f));
+        hero.addView(status);
+        page.addView(hero);
+
+        page.addView(gap(15));
+        page.addView(sectionHeading("Quick access", "Native modules mapped to the current SchoolOS role structure."));
+        page.addView(moduleGrid(homeModules(selectedRole)));
+
+        page.addView(gap(14));
+        LinearLayout notice = card();
+        notice.setPadding(dp(15), dp(14), dp(15), dp(14));
+        notice.addView(label("PREVIEW STATUS", 9, selectedRole.color, true));
+        notice.addView(text("Live data is intentionally not connected", 15, TEXT, true));
+        notice.addView(text("This APK is for UI review only. API, database, payments, uploads and notifications remain disabled until design approval.", 11, MUTED, false));
+        page.addView(notice);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(page);
+        return scroll;
     }
 
-    private Map<String,String> nativeHeaders() {
-        Map<String,String> headers = new HashMap<>();
-        headers.put("X-SchoolOS-Native", NATIVE_VERSION);
-        headers.put("X-SchoolOS-Platform", "android");
-        headers.put("X-SchoolOS-Install-ID", SchoolOSApplication.installationId(this));
-        return headers;
-    }
-
-    private final Runnable launchPulse = new Runnable() {
-        @Override public void run() {
-            if (launchHidden || launchOverlay == null || launchOverlay.getVisibility() != View.VISIBLE) return;
-            View[] dots = new View[]{launchDot1, launchDot2, launchDot3};
-            for (int i = 0; i < dots.length; i++) {
-                View dot = dots[i];
-                if (dot == null) continue;
-                boolean active = i == launchDotIndex;
-                dot.animate()
-                        .alpha(active ? 1f : .34f)
-                        .scaleX(active ? 1.28f : 1f)
-                        .scaleY(active ? 1.28f : 1f)
-                        .translationY(active ? -3f : 0f)
-                        .setDuration(180)
-                        .start();
-            }
-            launchDotIndex = (launchDotIndex + 1) % 3;
-            uiHandler.postDelayed(this, 260);
-        }
-    };
-
-    private void startLaunchAnimation() {
-        if (launchOverlay == null) return;
-        launchOverlay.setAlpha(1f);
-        launchOverlay.setVisibility(View.VISIBLE);
-        if (launchLogo != null) {
-            launchLogo.setAlpha(0f);
-            launchLogo.setScaleX(.82f);
-            launchLogo.setScaleY(.82f);
-            launchLogo.setTranslationY(16f);
-            launchLogo.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
-                    .setDuration(520).setInterpolator(new DecelerateInterpolator()).start();
-        }
-        if (launchTitle != null) {
-            launchTitle.setAlpha(0f);
-            launchTitle.setTranslationY(16f);
-            launchTitle.animate().alpha(1f).translationY(0f)
-                    .setStartDelay(120).setDuration(420).setInterpolator(new DecelerateInterpolator()).start();
-        }
-        if (launchSubtitle != null) {
-            launchSubtitle.setAlpha(0f);
-            launchSubtitle.setTranslationY(12f);
-            launchSubtitle.animate().alpha(1f).translationY(0f)
-                    .setStartDelay(210).setDuration(420).setInterpolator(new DecelerateInterpolator()).start();
-        }
-        if (launchProgress != null) {
-            launchProgress.setScaleX(.08f);
-            launchProgress.setAlpha(.55f);
-            launchProgress.setPivotX(0f);
-            launchProgress.animate()
-                    .scaleX(1f)
-                    .alpha(1f)
-                    .setStartDelay(260)
-                    .setDuration(3200)
-                    .setInterpolator(new DecelerateInterpolator())
-                    .start();
-        }
-        uiHandler.removeCallbacks(launchPulse);
-        uiHandler.postDelayed(launchPulse, 340);
-        uiHandler.removeCallbacks(launchAmbient);
-        uiHandler.postDelayed(launchAmbient, 420);
-    }
-
-    private final Runnable launchAmbient = new Runnable() {
-        @Override public void run() {
-            if (launchHidden || launchOverlay == null || launchOverlay.getVisibility() != View.VISIBLE) return;
-            launchAmbientFlip = !launchAmbientFlip;
-            float dir = launchAmbientFlip ? 1f : -1f;
-
-            if (launchOrb1 != null) {
-                launchOrb1.animate()
-                        .translationX(26f * dir)
-                        .translationY(-18f * dir)
-                        .scaleX(launchAmbientFlip ? 1.12f : .94f)
-                        .scaleY(launchAmbientFlip ? 1.12f : .94f)
-                        .alpha(launchAmbientFlip ? .24f : .13f)
-                        .setDuration(1450)
-                        .setInterpolator(new DecelerateInterpolator())
-                        .start();
-            }
-            if (launchOrb2 != null) {
-                launchOrb2.animate()
-                        .translationX(-22f * dir)
-                        .translationY(24f * dir)
-                        .scaleX(launchAmbientFlip ? .92f : 1.10f)
-                        .scaleY(launchAmbientFlip ? .92f : 1.10f)
-                        .alpha(launchAmbientFlip ? .12f : .22f)
-                        .setDuration(1550)
-                        .setInterpolator(new DecelerateInterpolator())
-                        .start();
-            }
-            if (launchLogo != null) {
-                launchLogo.animate()
-                        .rotation(launchAmbientFlip ? 1.8f : -1.8f)
-                        .scaleX(launchAmbientFlip ? 1.035f : 1f)
-                        .scaleY(launchAmbientFlip ? 1.035f : 1f)
-                        .setDuration(1050)
-                        .setInterpolator(new DecelerateInterpolator())
-                        .start();
-            }
-            if (launchRing != null) {
-                launchRing.setScaleX(.90f);
-                launchRing.setScaleY(.90f);
-                launchRing.setAlpha(.42f);
-                launchRing.animate()
-                        .scaleX(1.42f)
-                        .scaleY(1.42f)
-                        .alpha(0f)
-                        .setDuration(1150)
-                        .setInterpolator(new DecelerateInterpolator())
-                        .start();
-            }
-            uiHandler.postDelayed(this, 1250);
-        }
-    };
-
-    private void hideLaunchOverlay() {
-        if (launchHidden || launchOverlay == null) return;
-        long elapsed = System.currentTimeMillis() - launchStartedAt;
-        long delay = Math.max(0L, MIN_LAUNCH_MS - elapsed);
-        uiHandler.postDelayed(() -> {
-            if (launchHidden || launchOverlay == null) return;
-            launchHidden = true;
-            uiHandler.removeCallbacks(launchPulse);
-            uiHandler.removeCallbacks(launchAmbient);
-            launchOverlay.animate()
-                    .alpha(0f)
-                    .setDuration(430)
-                    .withEndAction(() -> {
-                        launchOverlay.setVisibility(View.GONE);
-                        restoreSystemBars();
-                    })
-                    .start();
-        }, delay);
-    }
-
-    private void restoreSystemBars() {
-        getWindow().clearFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN |
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
-                WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS |
-                WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION
-        );
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-
-        // Keep the app inside the real usable area, exactly like a standard Android app.
-        // Content begins below the status bar and ends above the system navigation bar.
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-
-        getWindow().setStatusBarColor(Color.WHITE);
-        getWindow().setNavigationBarColor(Color.WHITE);
-
-        WindowInsetsControllerCompat controller =
-                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        controller.setAppearanceLightStatusBars(true);
-        controller.setAppearanceLightNavigationBars(true);
-        controller.show(WindowInsetsCompat.Type.systemBars());
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getWindow().setStatusBarContrastEnforced(false);
-            getWindow().setNavigationBarContrastEnforced(false);
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            WindowManager.LayoutParams attrs = getWindow().getAttributes();
-            attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
-            getWindow().setAttributes(attrs);
-        }
-
-        View decor = getWindow().getDecorView();
-        decor.setPadding(0, 0, 0, 0);
-        decor.requestApplyInsets();
-        decor.requestLayout();
-
-        if (web != null) {
-            ViewGroup.LayoutParams lp = web.getLayoutParams();
-            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-            web.setLayoutParams(lp);
-            web.setPadding(0, 0, 0, 0);
-            web.requestApplyInsets();
-            web.requestLayout();
+    private String[] homeModules(Role role) {
+        switch (role) {
+            case ADMIN:
+                return new String[]{"Attendance","Students","Staff","Fees & Payments","Academics","Exams & Results","Study From Home","Transport","Reports","Settings"};
+            case TEACHER:
+                return new String[]{"Today Classes","Class Attendance","Students","Assignments","Study From Home","Notices","Results","Profile"};
+            case PARENT:
+                return new String[]{"My Child","Attendance","Fees & Payments","Results","Timetable","Notices","Transport","Study From Home"};
+            default:
+                return new String[]{"Learning","Attendance","Timetable","Assignments","Exams & Results","Notices","Study From Home","Profile"};
         }
     }
 
-    private static final class ViewParentCompat {
-        static void disallow(View view) {
-            if (view != null && view.getParent() != null) {
-                view.getParent().requestDisallowInterceptTouchEvent(true);
-            }
-        }
-    }
-
-    private void configureNativePush(String rawJson) {
-        try {
-            JSONObject cfg = new JSONObject(rawJson == null ? "{}" : rawJson);
-            if (!cfg.optBoolean("enabled", false)) return;
-            pushCsrf = cfg.optString("csrf", "");
-            if (!SchoolOSApplication.configureFirebase(this, cfg)) return;
-
-            if (Build.VERSION.SDK_INT >= 33 &&
-                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                android.content.SharedPreferences prefs = getSharedPreferences(SchoolOSApplication.PREFS, MODE_PRIVATE);
-                if (!prefs.getBoolean("notification_permission_requested", false)) {
-                    prefs.edit().putBoolean("notification_permission_requested", true).apply();
-                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, PUSH_PERM_REQ);
+    private View moduleGrid(String[] items) {
+        LinearLayout wrap = vertical();
+        for (int i = 0; i < items.length; i += 2) {
+            LinearLayout row = horizontal();
+            for (int c = 0; c < 2; c++) {
+                int idx = i + c;
+                if (idx >= items.length) {
+                    Space blank = new Space(this);
+                    row.addView(blank, new LinearLayout.LayoutParams(0, dp(1), 1f));
+                    continue;
                 }
-            }
-            syncPushToken();
-        } catch (Exception ignored) {}
-    }
-
-    private void syncPushToken() {
-        if (!SchoolOSApplication.firebaseReady(this)) return;
-        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
-            if (!task.isSuccessful() || task.getResult() == null || task.getResult().trim().isEmpty()) return;
-            String token = task.getResult().trim();
-            SchoolOSApplication.savePendingToken(this, token);
-            sendPushTokenToPage(token);
-        });
-    }
-
-    private void sendPushTokenToPage(String token) {
-        if (web == null || token == null || token.trim().isEmpty() || pushCsrf.trim().isEmpty()) return;
-        try {
-            JSONObject meta = new JSONObject();
-            meta.put("csrf", pushCsrf);
-            meta.put("installation_id", SchoolOSApplication.installationId(this));
-            meta.put("platform", "android");
-            meta.put("app_version", NATIVE_VERSION);
-            meta.put("device_model", (Build.MANUFACTURER + " " + Build.MODEL).trim());
-            meta.put("os_version", "Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")");
-            meta.put("notifications_allowed", SchoolOSApplication.notificationsAllowed(this));
-            String js = "window.SchoolOSPush&&window.SchoolOSPush.onNativeToken(" +
-                    JSONObject.quote(token) + "," + meta.toString() + ");";
-            runOnUiThread(() -> web.evaluateJavascript(js, null));
-        } catch (Exception ignored) {}
-    }
-
-    private void requestWebPermissions(PermissionRequest request) {
-        List<String> needed = new ArrayList<>();
-        for (String resource : request.getResources()) {
-            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) &&
-                checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                needed.add(Manifest.permission.CAMERA);
-            }
-            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) &&
-                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                needed.add(Manifest.permission.RECORD_AUDIO);
-            }
-        }
-        if (needed.isEmpty()) {
-            request.grant(request.getResources());
-            return;
-        }
-        pendingWebPermission = request;
-        requestPermissions(needed.toArray(new String[0]), WEB_PERM_REQ);
-    }
-
-    private void launchFileChooser(WebChromeClient.FileChooserParams params) {
-        Intent content = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        content.addCategory(Intent.CATEGORY_OPENABLE);
-        content.setType("*/*");
-        if (params != null && params.getAcceptTypes() != null && params.getAcceptTypes().length > 0) {
-            ArrayList<String> cleaned = new ArrayList<>();
-            for (String t : params.getAcceptTypes()) if (t != null && !t.trim().isEmpty()) cleaned.add(t.trim());
-            if (cleaned.size() == 1) content.setType(cleaned.get(0));
-            else if (cleaned.size() > 1) content.putExtra(Intent.EXTRA_MIME_TYPES, cleaned.toArray(new String[0]));
-        }
-        boolean multiple = params != null && params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
-        content.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
-
-        ArrayList<Intent> initial = new ArrayList<>();
-        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            Intent camera = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-            if (camera.resolveActivity(getPackageManager()) != null) {
-                try {
-                    File dir = new File(getCacheDir(), "camera");
-                    if (!dir.exists()) dir.mkdirs();
-                    File photo = File.createTempFile("schoolos_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()), ".jpg", dir);
-                    cameraUri = FileProvider.getUriForFile(this, getPackageName() + ".files", photo);
-                    camera.putExtra(MediaStore.EXTRA_OUTPUT, cameraUri);
-                    camera.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    initial.add(camera);
-                } catch (IOException ignored) {
-                    cameraUri = null;
-                }
-            }
-        }
-        Intent chooser = Intent.createChooser(content, "Choose file");
-        if (!initial.isEmpty()) chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, initial.toArray(new Intent[0]));
-        try {
-            startActivityForResult(chooser, FILE_REQ);
-        } catch (Exception e) {
-            if (fileCallback != null) fileCallback.onReceiveValue(null);
-            fileCallback = null;
-        }
-    }
-
-    private boolean route(Uri uri, String fromUrl) {
-        if (uri == null) return true;
-        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-        if ("schoolos".equals(scheme)) {
-            load(resolveDeepLink(uri));
-            return true;
-        }
-        if (("https".equals(scheme) || "http".equals(scheme)) && internalHosts.contains(host)) {
-            Uri target = normalizeNativeWorkspace(uri, fromUrl);
-            if (!isOnline()) {
-                showOfflineFor(target.toString());
-            } else {
-                showingOfflineSnapshot = false;
-                web.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
-                web.loadUrl(target.toString(), nativeHeaders());
-            }
-            return true;
-        }
-        if ("intent".equals(scheme)) {
-            try {
-                Intent intent = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME);
-                if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
-                else if (intent.getStringExtra("browser_fallback_url") != null)
-                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(intent.getStringExtra("browser_fallback_url"))));
-            } catch (Exception e) {
-                Toast.makeText(this, "Unable to open this action.", Toast.LENGTH_SHORT).show();
-            }
-            return true;
-        }
-        openExternal(uri);
-        return true;
-    }
-
-    private Uri normalizeNativeWorkspace(Uri uri, String fromUrl) {
-        String path = uri.getPath() == null ? "" : uri.getPath();
-        boolean cameFromWorkspace = fromUrl != null && fromUrl.contains("native_workspace=1");
-        boolean cameFromMobile = fromUrl != null && fromUrl.contains("/schools/mobile/");
-        boolean sfhPage = path.startsWith("/schools/study-from-home/");
-        boolean desktopSchoolPage = path.startsWith("/schools/") &&
-                !path.startsWith("/schools/mobile/") &&
-                !sfhPage &&
-                !path.contains("/assets/") &&
-                !path.endsWith("download.php") &&
-                !path.contains("gallery-media.php");
-
-        if (sfhPage) {
-            Uri.Builder b = uri.buildUpon();
-            if (uri.getQueryParameter("native_app") == null) b.appendQueryParameter("native_app", "android");
-            if (uri.getQueryParameter("native_version") == null) b.appendQueryParameter("native_version", NATIVE_VERSION);
-            if (uri.getQueryParameter("native_workspace") == null) b.appendQueryParameter("native_workspace", "1");
-            return b.build();
-        }
-
-        if ((cameFromWorkspace || cameFromMobile) && desktopSchoolPage && path.endsWith(".php")) {
-            Uri.Builder b = uri.buildUpon();
-            if (uri.getQueryParameter("view") == null) b.appendQueryParameter("view", "desktop");
-            if (uri.getQueryParameter("native_workspace") == null) b.appendQueryParameter("native_workspace", "1");
-            if (uri.getQueryParameter("native_app") == null) b.appendQueryParameter("native_app", "android");
-            if (uri.getQueryParameter("native_version") == null) b.appendQueryParameter("native_version", NATIVE_VERSION);
-            return b.build();
-        }
-        return uri;
-    }
-
-    private void openExternal(Uri uri) {
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, uri));
-        } catch (ActivityNotFoundException e) {
-            Toast.makeText(this, "No installed app can open this link.", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void applyNativePresentation(String url) {
-        boolean workspace = url != null && url.contains("native_workspace=1");
-        String css = ".sidebar,.mobile-sidebar-backdrop,.m-native-skip,.m-skip-link,.skip-link{display:none!important}" +
-                ".app-shell{display:block!important}.main-area{margin-left:0!important;width:100%!important;max-width:none!important}" +
-                ".topbar{position:sticky!important;top:0!important;z-index:30!important;padding:10px 12px!important}" +
-                ".top-actions .desktop-action,.top-actions .help-open,.top-actions .command-open,.mobile-menu{display:none!important}" +
-                ".content{padding:12px!important;max-width:none!important}.footer{padding:12px!important}" +
-                "table{font-size:12px!important}.table-wrap,.table-card,.data-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch}" +
-                ".sfh-app{width:100%!important;max-width:none!important;min-height:100dvh!important}" +
-                ".sfh-top{position:sticky!important;top:0!important;z-index:35!important}" +
-                ".sfh-main{width:100%!important;max-width:none!important;margin:0!important;padding-left:12px!important;padding-right:12px!important}" +
-                ".sfh-footer{width:100%!important}.sfh-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}";
-        String js = "(function(){" +
-                "document.documentElement.classList.add('schoolos-native');" +
-                "var kill=function(){" +
-                    "document.querySelectorAll('.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});" +
-                    "document.querySelectorAll('[data-install],#installSheet,#installBackdrop').forEach(function(x){x.style.display='none'});" +
-                "};" +
-                "kill();" +
-                "if(!window.__schoolosNativeSkipObserver){" +
-                    "window.__schoolosNativeSkipObserver=new MutationObserver(function(){kill();});" +
-                    "window.__schoolosNativeSkipObserver.observe(document.documentElement||document,{subtree:true,childList:true,attributes:false});" +
-                "}" +
-                (workspace ? "var st=document.getElementById('schoolos-native-workspace');if(!st){st=document.createElement('style');st.id='schoolos-native-workspace';st.textContent=" + quoteJs(css) + ";document.head.appendChild(st);}" : "") +
-                "kill();" +
-                "return 'ready';" +
-                "})();";
-        web.evaluateJavascript(js, value -> {
-            web.clearFocus();
-            web.setVisibility(View.VISIBLE);
-            hideLaunchOverlay();
-        });
-    }
-
-    private String quoteJs(String value) {
-        return "'" + value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n") + "'";
-    }
-
-    private void download(String url, String ua, String disposition, String mime) {
-        try {
-            DownloadManager.Request r = new DownloadManager.Request(Uri.parse(url));
-            String cookie = CookieManager.getInstance().getCookie(url);
-            if (cookie != null) r.addRequestHeader("Cookie", cookie);
-            if (ua != null) r.addRequestHeader("User-Agent", ua);
-            if (mime != null) r.setMimeType(mime);
-            String name = URLUtil.guessFileName(url, disposition, mime);
-            r.setTitle(name);
-            r.setDescription("SchoolOS download");
-            r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            r.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
-            ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(r);
-            Toast.makeText(this, "Download started", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            openExternal(Uri.parse(url));
-        }
-    }
-
-    private String resolve(Intent i) {
-        if (i != null) {
-            String pushTarget = i.getStringExtra("target_url");
-            if (pushTarget != null && !pushTarget.trim().isEmpty()) {
-                try {
-                    Uri p = Uri.parse(pushTarget.trim());
-                    if ("https".equalsIgnoreCase(p.getScheme()) && p.getHost() != null &&
-                            internalHosts.contains(p.getHost().toLowerCase(Locale.ROOT))) return p.toString();
-                } catch (Exception ignored) {}
-            }
-        }
-        Uri u = i == null ? null : i.getData();
-        if (u == null) return HOME;
-        if ("schoolos".equalsIgnoreCase(u.getScheme())) return resolveDeepLink(u);
-        if ("https".equalsIgnoreCase(u.getScheme()) && u.getHost() != null && internalHosts.contains(u.getHost().toLowerCase(Locale.ROOT)))
-            return u.toString();
-        return HOME;
-    }
-
-    private String resolveDeepLink(Uri u) {
-        String path = u.getPath();
-        String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
-        if ("return".equals(host) || "open".equals(host) || "payment".equals(host) || "oauth".equals(host)) {
-            String target = u.getQueryParameter("url");
-            if (target == null || target.trim().isEmpty()) target = u.getQueryParameter("target");
-            if (target != null && !target.trim().isEmpty()) {
-                try {
-                    Uri t = Uri.parse(target.trim());
-                    if ("https".equalsIgnoreCase(t.getScheme()) && t.getHost() != null &&
-                            internalHosts.contains(t.getHost().toLowerCase(Locale.ROOT))) return t.toString();
-                } catch (Exception ignored) {}
-            }
-            if ("payment".equals(host)) return "https://alkeynesprjects.com/schools/mobile/payments.php?native_return=1";
-            if ("oauth".equals(host)) return "https://alkeynesprjects.com/schools/study-from-home/google-integration.php?native_app=android&native_version=" + NATIVE_VERSION + "&native_workspace=1";
-            return HOME;
-        }
-        if ("sfh".equals(host)) {
-            String sfhPath = path == null ? "" : path.replaceFirst("^/", "");
-            String target = "https://alkeynesprjects.com/schools/study-from-home/" + sfhPath;
-            Uri.Builder b = Uri.parse(target).buildUpon();
-            if (u.getQuery() != null) {
-                for (String name : u.getQueryParameterNames()) {
-                    for (String value : u.getQueryParameters(name)) b.appendQueryParameter(name, value);
-                }
-            }
-            b.appendQueryParameter("native_app", "android");
-            b.appendQueryParameter("native_version", NATIVE_VERSION);
-            b.appendQueryParameter("native_workspace", "1");
-            return b.build().toString();
-        }
-        if (path == null || path.equals("/")) return HOME;
-        if (path.startsWith("/schools/"))
-            return "https://alkeynesprjects.com" + path + (u.getQuery() == null ? "" : "?" + u.getQuery());
-        return HOME + path.replaceFirst("^/", "") + (u.getQuery() == null ? "" : "?" + u.getQuery());
-    }
-
-    private void load(String url) {
-        lastRequestedUrl = url == null || url.trim().isEmpty() ? HOME : url;
-        if (!isOnline()) {
-            showOfflineFor(lastRequestedUrl);
-            return;
-        }
-        showingOfflineSnapshot = false;
-        web.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
-        offlinePanel.setVisibility(View.GONE);
-        web.setVisibility(View.VISIBLE);
-        web.loadUrl(lastRequestedUrl, nativeHeaders());
-    }
-
-    private void retry() {
-        load(lastRequestedUrl == null ? HOME : lastRequestedUrl);
-    }
-
-    private void showOfflineFor(String url) {
-        hideLaunchOverlay();
-        String target = url == null || url.trim().isEmpty() ? HOME : url;
-        String snapshot = OfflineSnapshotStore.read(MainActivity.this, target);
-        if (snapshot != null && !snapshot.trim().isEmpty()) {
-            showingOfflineSnapshot = true;
-            web.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-            offlinePanel.setVisibility(View.GONE);
-            web.setVisibility(View.VISIBLE);
-            web.loadDataWithBaseURL(target, snapshot, "text/html", "UTF-8", target);
-            Toast.makeText(this, "Showing a read-only offline copy.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        showOffline();
-    }
-
-    private void showOffline() {
-        showingOfflineSnapshot = false;
-        web.setVisibility(View.GONE);
-        offlinePanel.setVisibility(View.VISIBLE);
-        hideLaunchOverlay();
-    }
-
-    private void captureSafeSnapshot(String url) {
-        if (!OfflineSnapshotStore.isSafeUrl(url)) return;
-        String js = "(function(){try{" +
-                "if(!window.SchoolOSNative||typeof window.SchoolOSNative.cacheOfflineSnapshot!=='function')return;" +
-                "var d=document.documentElement.cloneNode(true);" +
-                "d.querySelectorAll('script,noscript,iframe,object,embed,video,audio').forEach(function(x){x.remove();});" +
-                "d.querySelectorAll('form').forEach(function(f){var box=document.createElement('div');while(f.firstChild)box.appendChild(f.firstChild);f.replaceWith(box);});" +
-                "d.querySelectorAll('input,textarea,select,button').forEach(function(x){x.remove();});" +
-                "d.querySelectorAll('[contenteditable]').forEach(function(x){x.removeAttribute('contenteditable');});" +
-                "d.querySelectorAll('a').forEach(function(a){a.removeAttribute('href');a.removeAttribute('onclick');a.setAttribute('aria-disabled','true');});" +
-                "var b=document.createElement('div');b.textContent='Offline read-only copy · reconnect for live data and actions';" +
-                "b.setAttribute('style','position:sticky;top:0;z-index:2147483647;padding:10px 14px;background:#fff4cc;color:#5b4300;font:600 13px system-ui;text-align:center;border-bottom:1px solid #ead68a');" +
-                "var body=d.querySelector('body');if(body)body.insertBefore(b,body.firstChild);" +
-                "window.SchoolOSNative.cacheOfflineSnapshot(location.href,'<!doctype html>'+d.outerHTML);" +
-                "}catch(e){}})();";
-        web.evaluateJavascript(js, null);
-    }
-
-    private void setOfflineInteractionState(boolean offline) {
-        if (web == null || showingOfflineSnapshot) return;
-        String js = "(function(){var off=" + (offline ? "true" : "false") + ";" +
-                "document.documentElement.classList.toggle('schoolos-native-offline',off);" +
-                "var n=document.getElementById('networkStatus');if(n){n.hidden=!off;}" +
-                "document.querySelectorAll('form button,form input[type=submit],form input[type=button]').forEach(function(x){" +
-                "if(off&&!x.disabled){x.dataset.nativeOfflineDisabled='1';x.disabled=true;}else if(!off&&x.dataset.nativeOfflineDisabled==='1'){x.disabled=false;delete x.dataset.nativeOfflineDisabled;}});" +
-                "})();";
-        web.evaluateJavascript(js, null);
-    }
-
-    private void registerNetworkRecovery() {
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (cm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
-        networkCallback = new ConnectivityManager.NetworkCallback() {
-            @Override public void onAvailable(Network network) {
-                uiHandler.post(() -> {
-                    setOfflineInteractionState(false);
-                    if (showingOfflineSnapshot || offlinePanel.getVisibility() == View.VISIBLE) {
-                        Toast.makeText(MainActivity.this, "Connection restored. Refreshing SchoolOS.", Toast.LENGTH_SHORT).show();
-                        load(lastRequestedUrl);
-                    }
+                String name = items[idx];
+                LinearLayout item = card();
+                item.setPadding(dp(13), dp(13), dp(13), dp(13));
+                item.setOnClickListener(v -> {
+                    selectedTab = name;
+                    renderWorkspace();
                 });
+
+                TextView icon = text(moduleInitial(name), 12, selectedRole.color, true);
+                icon.setGravity(Gravity.CENTER);
+                icon.setBackground(round(tint(selectedRole.color, 0.10f), 12, tint(selectedRole.color, 0.16f)));
+                item.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
+                TextView nameTv = text(name, 12, TEXT, true);
+                nameTv.setPadding(0, dp(9), 0, 0);
+                item.addView(nameTv);
+                item.addView(text("Open", 10, MUTED, false));
+
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(105), 1f);
+                if (c > 0) lp.leftMargin = dp(8);
+                if (i > 0) lp.topMargin = dp(8);
+                row.addView(item, lp);
             }
-            @Override public void onLost(Network network) {
-                uiHandler.post(() -> setOfflineInteractionState(true));
-            }
-        };
-        try { cm.registerDefaultNetworkCallback(networkCallback); } catch (Exception ignored) {}
+            wrap.addView(row);
+        }
+        return wrap;
     }
 
-    private boolean isOnline() {
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (cm == null || cm.getActiveNetwork() == null) return false;
-        NetworkCapabilities c = cm.getNetworkCapabilities(cm.getActiveNetwork());
-        return c != null && (c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                c.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
-                c.hasTransport(NetworkCapabilities.TRANSPORT_VPN));
+    private String moduleInitial(String name) {
+        String clean = name.replace("&", "").trim();
+        if (clean.length() == 0) return "•";
+        String[] parts = clean.split("\\s+");
+        if (parts.length > 1) return ("" + parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+        return ("" + parts[0].charAt(0)).toUpperCase();
     }
 
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != FILE_REQ || fileCallback == null) return;
-        ArrayList<Uri> result = new ArrayList<>();
-        if (resultCode == RESULT_OK) {
-            if (data != null && data.getClipData() != null) {
-                ClipData clip = data.getClipData();
-                for (int i = 0; i < clip.getItemCount(); i++) result.add(clip.getItemAt(i).getUri());
-            } else if (data != null && data.getData() != null) {
-                result.add(data.getData());
-            } else if (cameraUri != null) {
-                result.add(cameraUri);
-            }
+    private View tabScreen(String titleText) {
+        LinearLayout page = vertical();
+        page.setPadding(dp(16), dp(15), dp(16), dp(22));
+
+        TextView back = text("‹  Back", 12, selectedRole.color, true);
+        back.setPadding(0, dp(5), 0, dp(12));
+        back.setOnClickListener(v -> {
+            selectedTab = "Home";
+            renderWorkspace();
+        });
+        page.addView(back);
+
+        page.addView(label(selectedRole.eyebrow, 9, selectedRole.color, true));
+        page.addView(title(titleText, 25));
+        page.addView(body(tabSubtitle(titleText), 12));
+        page.addView(gap(14));
+
+        LinearLayout summary = card();
+        summary.setPadding(dp(15), dp(15), dp(15), dp(15));
+        summary.addView(label("LIVE DATA", 9, selectedRole.color, true));
+        summary.addView(text("Not connected in UI preview", 16, TEXT, true));
+        summary.addView(text("This section shows the approved native presentation structure only. Values, records and actions will be connected to existing SchoolOS authority in the next phase.", 11, MUTED, false));
+        page.addView(summary);
+
+        page.addView(gap(12));
+        page.addView(sectionHeading("Overview", "Representative native rows for this module."));
+        String[] rows = sampleRows(titleText);
+        for (String row : rows) {
+            LinearLayout item = card();
+            item.setPadding(dp(14), dp(13), dp(14), dp(13));
+            LinearLayout line = horizontal();
+            line.setGravity(Gravity.CENTER_VERTICAL);
+
+            TextView dot = text("•", 18, selectedRole.color, true);
+            dot.setGravity(Gravity.CENTER);
+            line.addView(dot, new LinearLayout.LayoutParams(dp(28), dp(36)));
+
+            LinearLayout copy = vertical();
+            copy.addView(text(row, 13, TEXT, true));
+            copy.addView(text("Live data will appear here after connectivity approval.", 10, MUTED, false));
+            line.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            TextView arrow = text("›", 22, MUTED, false);
+            line.addView(arrow);
+            item.addView(line);
+
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = dp(8);
+            page.addView(item, lp);
         }
-        fileCallback.onReceiveValue(result.isEmpty() ? null : result.toArray(new Uri[0]));
-        fileCallback = null;
-        cameraUri = null;
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(page);
+        return scroll;
     }
 
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
-        super.onRequestPermissionsResult(requestCode, permissions, results);
-        boolean all = results.length > 0;
-        for (int x : results) if (x != PackageManager.PERMISSION_GRANTED) all = false;
-        if (requestCode == WEB_PERM_REQ && pendingWebPermission != null) {
-            if (all) pendingWebPermission.grant(pendingWebPermission.getResources());
-            else pendingWebPermission.deny();
-            pendingWebPermission = null;
-        }
-        if (requestCode == GEO_PERM_REQ && geoCallback != null) {
-            geoCallback.invoke(geoOrigin, all, false);
-            geoCallback = null;
-            geoOrigin = null;
-        }
-        if (requestCode == PUSH_PERM_REQ) syncPushToken();
-        if (requestCode == FILE_CAMERA_PERM_REQ) {
-            WebChromeClient.FileChooserParams chooser = pendingChooserParams;
-            pendingChooserParams = null;
-            launchFileChooser(chooser);
-        }
+    private String tabSubtitle(String title) {
+        if ("Profile".equals(title)) return "Account identity and role context.";
+        if (title.toLowerCase().contains("payment") || title.toLowerCase().contains("fee")) return "Clear payment status and school finance presentation.";
+        if (title.toLowerCase().contains("attendance")) return "Fast, compact attendance presentation for daily use.";
+        if (title.toLowerCase().contains("study")) return "SchoolOS Study From Home in the same native app shell.";
+        if (title.toLowerCase().contains("transport")) return "Routes and transport information in a mobile-first presentation.";
+        return "A native Android presentation aligned with the existing SchoolOS workflow.";
     }
 
-    @Override public void onBackPressed() {
-        if (offlinePanel.getVisibility() == View.VISIBLE) {
-            retry();
-            return;
-        }
-        if (web.canGoBack()) web.goBack();
-        else super.onBackPressed();
+    private String[] sampleRows(String title) {
+        if (title.toLowerCase().contains("attendance")) return new String[]{"Today summary","Class / child view","Attendance history"};
+        if (title.toLowerCase().contains("payment") || title.toLowerCase().contains("fee")) return new String[]{"Current dues","Payment history","Receipt access"};
+        if (title.toLowerCase().contains("study")) return new String[]{"Lessons","Assignments","Live classes","Tests & reports"};
+        if (title.toLowerCase().contains("transport")) return new String[]{"Vehicle / route","Stop information","Tracking status"};
+        if (title.toLowerCase().contains("class")) return new String[]{"Today schedule","Class roster","Class actions"};
+        return new String[]{"Current status","Recent activity","Available actions"};
     }
 
-    @Override protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        load(resolve(intent));
-    }
+    private View bottomNav() {
+        LinearLayout bar = horizontal();
+        bar.setGravity(Gravity.CENTER);
+        bar.setPadding(dp(4), dp(7), dp(4), dp(7));
+        bar.setBackgroundColor(Color.WHITE);
+        bar.setElevation(dp(10));
 
-    @Override protected void onPause() {
-        CookieManager.getInstance().flush();
-        super.onPause();
-    }
+        String[] items;
+        switch (selectedRole) {
+            case ADMIN:
+                items = new String[]{"Home","Operations","Actions","Alerts","More"};
+                break;
+            case TEACHER:
+                items = new String[]{"Home","Classes","Attendance","Teaching","More"};
+                break;
+            case PARENT:
+                items = new String[]{"Home","My Child","Payments","Updates","More"};
+                break;
+            default:
+                items = new String[]{"Home","Learn","Schedule","Updates","More"};
+                break;
+        }
 
-    @Override protected void onDestroy() {
-        uiHandler.removeCallbacksAndMessages(null);
-        if (networkCallback != null) {
-            try {
-                ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-                if (cm != null) cm.unregisterNetworkCallback(networkCallback);
-            } catch (Exception ignored) {}
-            networkCallback = null;
-        }
-        super.onDestroy();
-    }
+        for (String item : items) {
+            LinearLayout cell = vertical();
+            cell.setGravity(Gravity.CENTER);
+            boolean active = item.equals(selectedTab) || ("Home".equals(item) && "Home".equals(selectedTab));
 
-    @Override protected void onResume() {
-        super.onResume();
-        if (launchHidden) restoreSystemBars();
-    }
-
-    @Override protected void onSaveInstanceState(Bundle out) {
-        web.saveState(out);
-        super.onSaveInstanceState(out);
-    }
-
-    public class NativeBridge {
-        @JavascriptInterface public String getVersion() { return NATIVE_VERSION; }
-        @JavascriptInterface public String getPlatform() { return "android"; }
-        @JavascriptInterface public String getInstallationId() { return SchoolOSApplication.installationId(MainActivity.this); }
-        @JavascriptInterface public void configurePush(String configJson) {
-            runOnUiThread(() -> configureNativePush(configJson));
-        }
-        @JavascriptInterface public void syncPushToken() {
-            runOnUiThread(MainActivity.this::syncPushToken);
-        }
-        @JavascriptInterface public void cacheOfflineSnapshot(String url, String html) {
-            if (!isOnline() || url == null || html == null) return;
-            OfflineSnapshotStore.save(MainActivity.this, url, html);
-        }
-        @JavascriptInterface public void openFile(String url, String name, String mime) {
-            NativeFileManager.perform(MainActivity.this, "open", url, name, mime, nativeHeaders(), web.getSettings().getUserAgentString());
-        }
-        @JavascriptInterface public void shareFile(String url, String name, String mime) {
-            NativeFileManager.perform(MainActivity.this, "share", url, name, mime, nativeHeaders(), web.getSettings().getUserAgentString());
-        }
-        @JavascriptInterface public void printFile(String url, String name, String mime) {
-            NativeFileManager.perform(MainActivity.this, "print", url, name, mime, nativeHeaders(), web.getSettings().getUserAgentString());
-        }
-        @JavascriptInterface public void downloadFile(String url, String name, String mime) {
-            runOnUiThread(() -> download(url, web.getSettings().getUserAgentString(), name, mime));
-        }
-        @JavascriptInterface public void share(String text, String url) {
-            runOnUiThread(() -> {
-                Intent s = new Intent(Intent.ACTION_SEND);
-                s.setType("text/plain");
-                String value = (text == null ? "" : text) + (url == null || url.trim().isEmpty() ? "" : "\n" + url);
-                s.putExtra(Intent.EXTRA_TEXT, value);
-                startActivity(Intent.createChooser(s, "Share from SchoolOS"));
+            TextView dot = text(active ? "●" : "○", 12, active ? selectedRole.color : Color.rgb(157,165,184), true);
+            dot.setGravity(Gravity.CENTER);
+            TextView label = text(item, 9, active ? selectedRole.color : MUTED, active);
+            label.setGravity(Gravity.CENTER);
+            label.setPadding(0, dp(3), 0, 0);
+            cell.addView(dot);
+            cell.addView(label);
+            cell.setOnClickListener(v -> {
+                selectedTab = item;
+                renderWorkspace();
             });
+            bar.addView(cell, new LinearLayout.LayoutParams(0, dp(50), 1f));
         }
-        @JavascriptInterface public void openExternal(String url) {
-            runOnUiThread(() -> {
-                try { MainActivity.this.openExternal(Uri.parse(url)); } catch (Exception ignored) {}
-            });
+        return bar;
+    }
+
+    private View heroMetric(String cap, String value) {
+        LinearLayout box = vertical();
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(6), dp(5), dp(6), dp(5));
+        box.setBackground(round(Color.argb(25,255,255,255), 13, Color.argb(38,255,255,255)));
+        TextView v = text(value, 18, Color.WHITE, true);
+        v.setGravity(Gravity.CENTER);
+        TextView c = text(cap, 8, Color.argb(220,255,255,255), true);
+        c.setGravity(Gravity.CENTER);
+        box.addView(v);
+        box.addView(c);
+        return box;
+    }
+
+    private View sectionHeading(String heading, String subtitle) {
+        LinearLayout box = vertical();
+        box.setPadding(0, 0, 0, dp(9));
+        box.addView(text(heading, 16, TEXT, true));
+        box.addView(text(subtitle, 10, MUTED, false));
+        return box;
+    }
+
+    private LinearLayout vertical() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        return l;
+    }
+
+    private LinearLayout horizontal() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.HORIZONTAL);
+        return l;
+    }
+
+    private LinearLayout card() {
+        LinearLayout l = vertical();
+        l.setBackground(round(Color.WHITE, 18, LINE));
+        l.setElevation(dp(2));
+        return l;
+    }
+
+    private TextView title(String value, int sp) {
+        TextView t = text(value, sp, TEXT, true);
+        t.setPadding(0, dp(5), 0, dp(4));
+        return t;
+    }
+
+    private TextView body(String value, int sp) {
+        TextView t = text(value, sp, MUTED, false);
+        t.setLineSpacing(0, 1.12f);
+        return t;
+    }
+
+    private TextView fieldLabel(String value) {
+        TextView t = text(value, 11, TEXT, true);
+        t.setPadding(0, 0, 0, dp(6));
+        return t;
+    }
+
+    private EditText input(String hint, boolean password) {
+        EditText e = new EditText(this);
+        e.setTextSize(13);
+        e.setTextColor(TEXT);
+        e.setHintTextColor(Color.rgb(155,163,182));
+        e.setHint(hint);
+        e.setSingleLine(true);
+        e.setPadding(dp(13), 0, dp(13), 0);
+        e.setBackground(round(Color.rgb(250,251,254), 14, LINE));
+        e.setInputType(password
+                ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
+                : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        e.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        return e;
+    }
+
+    private Button button(String value, int bg, int fg) {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(value);
+        b.setTextSize(13);
+        b.setTextColor(fg);
+        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setBackground(round(bg, 14, bg));
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setPadding(dp(12), dp(12), dp(12), dp(12));
+        b.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(50)));
+        return b;
+    }
+
+    private TextView label(String value, int sp, int color, boolean bold) {
+        TextView t = text(value, sp, color, bold);
+        t.setLetterSpacing(0.08f);
+        return t;
+    }
+
+    private TextView text(String value, int sp, int color, boolean bold) {
+        TextView t = new TextView(this);
+        t.setText(value);
+        t.setTextSize(sp);
+        t.setTextColor(color);
+        t.setTypeface(Typeface.DEFAULT, bold ? Typeface.BOLD : Typeface.NORMAL);
+        return t;
+    }
+
+    private View gap(int h) {
+        Space s = new Space(this);
+        s.setLayoutParams(new LinearLayout.LayoutParams(1, dp(h)));
+        return s;
+    }
+
+    private GradientDrawable round(int fill, int radius, int stroke) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(fill);
+        d.setCornerRadius(dp(radius));
+        d.setStroke(dp(1), stroke);
+        return d;
+    }
+
+    private GradientDrawable gradient(int[] colors, int radius) {
+        GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+        d.setCornerRadius(dp(radius));
+        return d;
+    }
+
+    private int tint(int color, float amount) {
+        int r = Color.red(color);
+        int g = Color.green(color);
+        int b = Color.blue(color);
+        if (amount >= 0) {
+            r = (int) (r + (255 - r) * amount);
+            g = (int) (g + (255 - g) * amount);
+            b = (int) (b + (255 - b) * amount);
+        } else {
+            float f = 1f + amount;
+            r = (int) (r * f);
+            g = (int) (g * f);
+            b = (int) (b * f);
         }
+        return Color.rgb(clamp(r), clamp(g), clamp(b));
+    }
+
+    private int clamp(int n) {
+        return Math.max(0, Math.min(255, n));
+    }
+
+    private int dp(int v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
     }
 }

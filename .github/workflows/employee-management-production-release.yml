@@ -1,6 +1,8 @@
 name: Employee Management Production Release
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -58,6 +60,13 @@ jobs:
           grep -q "versionCode 3420" employee-combined/app/build.gradle
           grep -q "versionName '3.4.2-production'" employee-combined/app/build.gradle
           grep -q "tracking_recheck_seconds" employee-combined/app/src/main/java/com/alkeynes/employee/management/TrackingService.java
+          base64 -d employee-combined/saas-v350.patch.gz.b64 | gunzip > /tmp/saas-v350.patch
+          git apply --check /tmp/saas-v350.patch
+          git apply /tmp/saas-v350.patch
+          grep -q "versionCode 3500" employee-combined/app/build.gradle
+          grep -q "versionName '3.5.0-saas'" employee-combined/app/build.gradle
+          grep -q "company_code" employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java
+          grep -q "subscription_blocked" employee-combined/app/src/main/java/com/alkeynes/employee/management/TrackingService.java
       - name: Require protected signing secrets
         shell: bash
         run: |
@@ -94,25 +103,32 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           "$AAPT" dump badging "$APK" | tee production-badging.txt
           grep -q "package: name='com.alkeynes.employee.management.nativeui'" production-badging.txt
-          grep -q "versionCode='3420'" production-badging.txt
-          grep -q "versionName='3.4.2-production'" production-badging.txt
+          grep -q "versionCode='3500'" production-badging.txt
+          grep -q "versionName='3.5.0-saas'" production-badging.txt
           grep -q "targetSdkVersion:'35'" production-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee production-signature.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" production-signature.txt
-          cp "$APK" Employee-Management-Production-v3.4.2.apk
-          sha256sum Employee-Management-Production-v3.4.2.apk > Employee-Management-Production-v3.4.2.sha256
-          zip -qr Employee-Management-Production-Source-v3.4.1.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
+          cp "$APK" Employee-Management-SaaS-Final-v3.5.0.apk
+          sha256sum Employee-Management-SaaS-Final-v3.5.0.apk > Employee-Management-SaaS-Final-v3.5.0.sha256
+          rm -rf "$RUNNER_TEMP/employee-management-saas-source"
+          mkdir -p "$RUNNER_TEMP/employee-management-saas-source"
+          cp -a employee-combined/app "$RUNNER_TEMP/employee-management-saas-source/app"
+          cp employee-combined/build.gradle employee-combined/settings.gradle employee-combined/gradle.properties "$RUNNER_TEMP/employee-management-saas-source/"
+          rm -rf "$RUNNER_TEMP/employee-management-saas-source/app/build" "$RUNNER_TEMP/employee-management-saas-source/.gradle"
+          (cd "$RUNNER_TEMP/employee-management-saas-source" && zip -qr "$GITHUB_WORKSPACE/Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip" .)
+          sha256sum Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip > Employee-Management-SaaS-Final-Android-Source-v3.5.0.sha256
       - name: Remove temporary keystore
         if: always()
         shell: bash
         run: rm -f "$RUNNER_TEMP/employee-management-release.jks"
       - uses: actions/upload-artifact@v4
         with:
-          name: Employee-Management-Production-v3.4.2
+          name: Employee-Management-SaaS-Final-v3.5.0
           path: |
-            Employee-Management-Production-v3.4.2.apk
-            Employee-Management-Production-v3.4.2.sha256
-            Employee-Management-Production-Source-v3.4.1.zip
+            Employee-Management-SaaS-Final-v3.5.0.apk
+            Employee-Management-SaaS-Final-v3.5.0.sha256
+            Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip
+            Employee-Management-SaaS-Final-Android-Source-v3.5.0.sha256
             production-badging.txt
             production-signature.txt
           if-no-files-found: error

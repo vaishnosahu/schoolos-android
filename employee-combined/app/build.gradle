@@ -8,8 +8,8 @@ android {
         applicationId 'com.alkeynes.employee.management.nativeui'
         minSdk 26
         targetSdk 35
-        versionCode 3100
-        versionName '3.1.0-native-live-test'
+        versionCode 3200
+        versionName '3.2.0-native-admin-r1-test'
     }
 
     buildTypes {

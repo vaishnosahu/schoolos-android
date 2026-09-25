@@ -36,6 +36,7 @@ jobs:
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-ui-signature.txt
           cp "$APK" Employee-Management-Native-UI-Preview-v3.0.0.apk
           sha256sum Employee-Management-Native-UI-Preview-v3.0.0.apk > Employee-Management-Native-UI-Preview-v3.0.0.sha256
+          zip -qr Employee-Management-Native-UI-Source-v3.0.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
       - uses: actions/upload-artifact@v4
         with:
           name: Employee-Management-Native-UI-Preview-v3.0.0
@@ -44,4 +45,5 @@ jobs:
             Employee-Management-Native-UI-Preview-v3.0.0.sha256
             native-ui-badging.txt
             native-ui-signature.txt
+            Employee-Management-Native-UI-Source-v3.0.0.zip
           if-no-files-found: error

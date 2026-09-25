@@ -1,6 +1,7 @@
 package com.schooloss.nativeapp;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -17,6 +18,8 @@ import android.widget.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -65,6 +68,9 @@ public class MainActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private JSONObject session;
     private JSONObject homeData;
+    private final List<Integer> attendanceStudentIds = new ArrayList<>();
+    private final List<Spinner> attendanceStatusInputs = new ArrayList<>();
+    private final List<EditText> attendanceRemarkInputs = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -636,6 +642,19 @@ public class MainActivity extends Activity {
         JSONArray metrics=data.optJSONArray("metrics");
         if(metrics!=null&&metrics.length()>0){page.addView(gap(12));page.addView(metricGrid(metrics,false));}
 
+        if("messages".equals(selectedTab)&&data.optBoolean("can_compose",false)){
+            page.addView(gap(12));
+            Button compose=button("New Conversation",selectedRole.color,Color.WHITE);
+            compose.setOnClickListener(v -> loadMessageCompose());
+            page.addView(compose);
+        }
+        if(("updates".equals(selectedTab)||"alerts".equals(selectedTab))){
+            page.addView(gap(12));
+            Button readAll=button("Mark All Notifications Read",Color.WHITE,selectedRole.color);
+            readAll.setBackground(round(Color.WHITE,14,tint(selectedRole.color,.22f)));
+            readAll.setOnClickListener(v -> markAllNotifications());
+            page.addView(readAll);
+        }
         if("profile".equals(selectedTab)||"more".equals(selectedTab))addAccountControls(page);
 
         JSONArray rows=data.optJSONArray("rows");
@@ -667,28 +686,280 @@ public class MainActivity extends Activity {
             line.addView(copy,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));
             item.addView(line);
 
+            String type=r.optString("type","");
             String target=r.optString("module","");
-            if(!target.isEmpty())item.setOnClickListener(v -> openTab(target));
             int id=r.optInt("id",0);
-            if("notification".equals(r.optString("type",""))&&!r.optBoolean("read",false)&&id>0){
+
+            if("attendance_context".equals(type)){
+                final int classId=r.optInt("class_id",id);
+                final int sectionId=r.optInt("section_id",0);
+                item.setOnClickListener(v -> loadAttendanceRegister(classId,sectionId,currentDate()));
+            }else if("conversation".equals(type)&&id>0){
+                final int conversationId=id;
+                item.setOnClickListener(v -> loadMessageThread(conversationId));
+            }else if(!target.isEmpty()){
+                item.setOnClickListener(v -> openTab(target));
+            }
+
+            if("notification".equals(type)&&!r.optBoolean("read",false)&&id>0){
                 Button mark=button("Mark read",tint(selectedRole.color,.08f),selectedRole.color);
                 mark.setBackground(round(tint(selectedRole.color,.08f),12,tint(selectedRole.color,.20f)));
                 mark.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(42)));
-                mark.setOnClickListener(v -> markNotification(id));
+                final int notificationId=id;
+                mark.setOnClickListener(v -> markNotification(notificationId));
                 item.addView(gap(7));item.addView(mark);
             }
-            if("announcement".equals(r.optString("type",""))&&r.optBoolean("requires_ack",false)&&!r.optBoolean("acknowledged",false)&&id>0){
+            if("announcement".equals(type)&&r.optBoolean("requires_ack",false)&&!r.optBoolean("acknowledged",false)&&id>0){
                 Button ack=button("Acknowledge",tint(selectedRole.color,.08f),selectedRole.color);
                 ack.setBackground(round(tint(selectedRole.color,.08f),12,tint(selectedRole.color,.20f)));
                 ack.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(42)));
-                ack.setOnClickListener(v -> ackAnnouncement(id));
+                final int announcementId=id;
+                ack.setOnClickListener(v -> ackAnnouncement(announcementId));
                 item.addView(gap(7));item.addView(ack);
+            }
+            if("transport_trip".equals(type)&&id>0){
+                JSONArray actions=r.optJSONArray("actions");
+                if(actions!=null&&actions.length()>0){
+                    LinearLayout controls=horizontal();controls.setPadding(0,dp(8),0,0);
+                    for(int a=0;a<actions.length();a++){
+                        JSONObject action=actions.optJSONObject(a);if(action==null)continue;
+                        String key=action.optString("key","");
+                        String labelText=action.optString("label",pretty(key));
+                        Button b=button(labelText,"trip_cancel".equals(key)?Color.WHITE:selectedRole.color,"trip_cancel".equals(key)?Color.rgb(180,55,65):Color.WHITE);
+                        if("trip_cancel".equals(key))b.setBackground(round(Color.WHITE,12,Color.rgb(245,205,212)));
+                        final int tripId=id;final String actionKey=key;
+                        b.setOnClickListener(v -> confirmTransportAction(tripId,actionKey,labelText));
+                        LinearLayout.LayoutParams blp=new LinearLayout.LayoutParams(0,dp(42),1f);if(a>0)blp.leftMargin=dp(6);controls.addView(b,blp);
+                    }
+                    item.addView(controls);
+                }
             }
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);
             if(i>0)lp.topMargin=dp(8);
             list.addView(item,lp);
         }
         return list;
+    }
+
+    private String currentDate(){
+        java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("yyyy-MM-dd",java.util.Locale.US);
+        return f.format(new java.util.Date());
+    }
+
+    private void loadAttendanceRegister(int classId,int sectionId,String date){
+        renderLoading("Opening attendance","Loading the class register…");
+        io.execute(() -> {
+            try{
+                String q="class_id="+classId+"&section_id="+sectionId+"&date="+date;
+                JSONObject r=api.get("attendance_register",q);
+                JSONObject data=r.optJSONObject("data");
+                if(data==null)throw new Exception("Attendance register is unavailable.");
+                ui.post(() -> renderAttendanceRegister(data));
+            }catch(Exception e){ui.post(() -> renderConnectionError("Could not open attendance",message(e)));}
+        });
+    }
+
+    private void renderAttendanceRegister(JSONObject data){
+        attendanceStudentIds.clear();attendanceStatusInputs.clear();attendanceRemarkInputs.clear();
+        LinearLayout root=vertical();root.setBackgroundColor(BG);root.addView(topBar());
+        LinearLayout page=vertical();page.setPadding(dp(16),dp(14),dp(16),dp(24));
+
+        TextView back=text("‹  Attendance",12,selectedRole.color,true);back.setPadding(0,dp(4),0,dp(12));back.setOnClickListener(v -> openTab("attendance"));page.addView(back);
+        page.addView(label("ATTENDANCE REGISTER",9,selectedRole.color,true));
+        page.addView(title(data.optString("class_name","Attendance"),24));
+
+        LinearLayout dateCard=card();dateCard.setPadding(dp(13),dp(12),dp(13),dp(12));
+        dateCard.addView(fieldLabel("Attendance date"));
+        EditText date=input(data.optString("date",currentDate()),false);date.setText(data.optString("date",currentDate()));date.setInputType(InputType.TYPE_CLASS_DATETIME|InputType.TYPE_DATETIME_VARIATION_DATE);
+        dateCard.addView(date);
+        Button reload=button("Load Date",Color.WHITE,selectedRole.color);reload.setBackground(round(Color.WHITE,12,tint(selectedRole.color,.22f)));reload.setOnClickListener(v -> loadAttendanceRegister(data.optInt("class_id"),data.optInt("section_id"),date.getText().toString().trim()));
+        dateCard.addView(gap(7));dateCard.addView(reload);page.addView(dateCard);
+
+        String state=data.optString("submission_status","open");
+        page.addView(gap(12));page.addView(sectionHeading("Students",data.optInt("student_count",0)+" students · "+pretty(state)));
+
+        JSONArray valid=data.optJSONArray("valid_statuses");List<String> options=new ArrayList<>();
+        if(valid!=null)for(int i=0;i<valid.length();i++)options.add(valid.optString(i));
+        if(options.isEmpty()){options.add("present");options.add("absent");options.add("late");options.add("half_day");options.add("leave");options.add("holiday");}
+        ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,options);
+
+        JSONArray rows=data.optJSONArray("rows");
+        if(rows!=null)for(int i=0;i<rows.length();i++){
+            JSONObject s=rows.optJSONObject(i);if(s==null)continue;
+            LinearLayout item=card();item.setPadding(dp(13),dp(12),dp(13),dp(12));
+            item.addView(text(s.optString("name","Student"),13,TEXT,true));
+            String idLine=s.optString("admission_no","");if(!s.optString("roll_no","").isEmpty())idLine+=(idLine.isEmpty()?"":" · ")+"Roll "+s.optString("roll_no","");
+            if(!idLine.isEmpty())item.addView(text(idLine,10,MUTED,false));
+
+            Spinner status=new Spinner(this);status.setAdapter(adapter);int pos=options.indexOf(s.optString("status","present"));status.setSelection(pos<0?0:pos);
+            item.addView(status,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(48)));
+            EditText remarks=input("Remarks (optional)",false);remarks.setText(s.optString("remarks",""));item.addView(remarks);
+
+            attendanceStudentIds.add(s.optInt("id"));attendanceStatusInputs.add(status);attendanceRemarkInputs.add(remarks);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);if(i>0)lp.topMargin=dp(8);page.addView(item,lp);
+        }
+
+        if(data.optBoolean("can_mark",false)){
+            page.addView(gap(12));Button save=button("Submit Attendance",selectedRole.color,Color.WHITE);
+            save.setOnClickListener(v -> submitAttendance(data,date.getText().toString().trim()));page.addView(save);
+        }else{
+            page.addView(gap(12));page.addView(body(data.optBoolean("locked",false)?"This register is locked.":"Attendance editing is not available for this date or role.",11));
+        }
+
+        if(data.optBoolean("can_manage",false)){
+            page.addView(gap(8));
+            if(data.optBoolean("locked",false)){
+                Button reopen=button("Reopen Register",Color.WHITE,Color.rgb(180,55,65));reopen.setBackground(round(Color.WHITE,14,Color.rgb(245,205,212)));
+                reopen.setOnClickListener(v -> showReopenDialog(data,date.getText().toString().trim()));page.addView(reopen);
+            }else{
+                Button lock=button("Lock Register",Color.WHITE,selectedRole.color);lock.setBackground(round(Color.WHITE,14,tint(selectedRole.color,.22f)));
+                lock.setOnClickListener(v -> confirmAttendanceLock(data,date.getText().toString().trim()));page.addView(lock);
+            }
+        }
+
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f));root.addView(bottomNav());setContentView(root);
+    }
+
+    private void submitAttendance(JSONObject register,String date){
+        renderLoading("Submitting attendance","Applying SchoolOS attendance rules…");
+        io.execute(() -> {
+            try{
+                JSONObject b=new JSONObject();b.put("class_id",register.optInt("class_id"));b.put("section_id",register.optInt("section_id"));b.put("attendance_date",date);
+                JSONArray statuses=new JSONArray();
+                for(int i=0;i<attendanceStudentIds.size();i++){
+                    JSONObject row=new JSONObject();row.put("student_id",attendanceStudentIds.get(i));row.put("status",String.valueOf(attendanceStatusInputs.get(i).getSelectedItem()));row.put("remarks",attendanceRemarkInputs.get(i).getText().toString().trim());statuses.put(row);
+                }
+                b.put("statuses",statuses);JSONObject r=api.post("attendance_save",b);JSONObject updated=r.optJSONObject("register");
+                ui.post(() -> {Toast.makeText(this,r.optString("message","Attendance saved."),Toast.LENGTH_SHORT).show();if(updated!=null)renderAttendanceRegister(updated);else loadAttendanceRegister(register.optInt("class_id"),register.optInt("section_id"),date);});
+            }catch(Exception e){ui.post(() -> renderConnectionError("Attendance was not saved",message(e)));}
+        });
+    }
+
+    private void confirmAttendanceLock(JSONObject register,String date){
+        new AlertDialog.Builder(this).setTitle("Lock attendance register?").setMessage("After locking, normal attendance editing is blocked until an attendance manager reopens it.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Lock",(d,w) -> attendanceControl("attendance_lock",register,date,null)).show();
+    }
+
+    private void showReopenDialog(JSONObject register,String date){
+        EditText reason=input("Reason to reopen",false);
+        LinearLayout box=vertical();box.setPadding(dp(18),dp(8),dp(18),0);box.addView(reason);
+        new AlertDialog.Builder(this).setTitle("Reopen attendance register").setView(box).setNegativeButton("Cancel",null).setPositiveButton("Reopen",(d,w) -> {
+            String value=reason.getText().toString().trim();if(value.isEmpty()){Toast.makeText(this,"Reopen reason is required.",Toast.LENGTH_SHORT).show();return;}attendanceControl("attendance_reopen",register,date,value);
+        }).show();
+    }
+
+    private void attendanceControl(String action,JSONObject register,String date,String reason){
+        renderLoading("Updating register","Applying attendance manager controls…");
+        io.execute(() -> {
+            try{JSONObject b=new JSONObject();b.put("class_id",register.optInt("class_id"));b.put("section_id",register.optInt("section_id"));b.put("attendance_date",date);if(reason!=null)b.put("reason",reason);JSONObject r=api.post(action,b);JSONObject updated=r.optJSONObject("register");ui.post(() -> {Toast.makeText(this,r.optString("message","Attendance updated."),Toast.LENGTH_SHORT).show();if(updated!=null)renderAttendanceRegister(updated);});}
+            catch(Exception e){ui.post(() -> renderConnectionError("Register update failed",message(e)));}
+        });
+    }
+
+    private void loadMessageThread(int id){
+        renderLoading("Opening conversation","Loading the secure message thread…");
+        io.execute(() -> {
+            try{JSONObject r=api.get("message_thread","id="+id);JSONObject data=r.optJSONObject("data");if(data==null)throw new Exception("Conversation is unavailable.");ui.post(() -> renderMessageThread(data));}
+            catch(Exception e){ui.post(() -> renderConnectionError("Could not open conversation",message(e)));}
+        });
+    }
+
+    private void renderMessageThread(JSONObject data){
+        LinearLayout root=vertical();root.setBackgroundColor(BG);root.addView(topBar());
+        LinearLayout page=vertical();page.setPadding(dp(16),dp(14),dp(16),dp(24));
+        TextView back=text("‹  Messages",12,selectedRole.color,true);back.setPadding(0,dp(4),0,dp(12));back.setOnClickListener(v -> openTab("messages"));page.addView(back);
+        page.addView(label(data.optString("category","MESSAGE").toUpperCase(),9,selectedRole.color,true));page.addView(title(data.optString("subject","Conversation"),24));
+        page.addView(body(pretty(data.optString("status","open"))+(data.optString("student","").isEmpty()?"":" · "+data.optString("student","")),11));
+
+        JSONArray messages=data.optJSONArray("messages");page.addView(gap(12));
+        if(messages!=null)for(int i=0;i<messages.length();i++){
+            JSONObject m=messages.optJSONObject(i);if(m==null)continue;LinearLayout bubble=card();bubble.setPadding(dp(13),dp(11),dp(13),dp(11));
+            bubble.addView(text((m.optBoolean("mine",false)?"You":m.optString("sender","User"))+" · "+m.optString("created_at",""),9,m.optBoolean("mine",false)?selectedRole.color:MUTED,true));
+            TextView bodyText=text(m.optString("body",""),12,TEXT,false);bodyText.setPadding(0,dp(5),0,0);bubble.addView(bodyText);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);lp.topMargin=dp(7);page.addView(bubble,lp);
+        }
+
+        if(data.optBoolean("can_reply",false)){
+            page.addView(gap(12));page.addView(fieldLabel("Reply"));
+            EditText reply=new EditText(this);reply.setHint("Write a reply…");reply.setTextSize(13);reply.setTextColor(TEXT);reply.setHintTextColor(MUTED);reply.setMinLines(3);reply.setGravity(Gravity.TOP);reply.setPadding(dp(12),dp(10),dp(12),dp(10));reply.setBackground(round(Color.WHITE,14,LINE));page.addView(reply);
+            Button send=button("Send Reply",selectedRole.color,Color.WHITE);send.setOnClickListener(v -> sendMessageReply(data.optInt("id"),reply.getText().toString()));page.addView(gap(8));page.addView(send);
+        }
+        if(data.optBoolean("can_resolve",false)){
+            Button resolve=button("Resolve Conversation",Color.WHITE,selectedRole.color);resolve.setBackground(round(Color.WHITE,14,tint(selectedRole.color,.22f)));resolve.setOnClickListener(v -> resolveConversation(data.optInt("id")));
+            page.addView(gap(8));page.addView(resolve);
+        }
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f));root.addView(bottomNav());setContentView(root);
+    }
+
+    private void sendMessageReply(int id,String textValue){
+        String value=textValue.trim();if(value.isEmpty()){Toast.makeText(this,"Message cannot be blank.",Toast.LENGTH_SHORT).show();return;}
+        renderLoading("Sending reply","Delivering through SchoolOS communication authority…");
+        io.execute(() -> {try{JSONObject b=new JSONObject();b.put("conversation_id",id);b.put("body",value);JSONObject r=api.post("message_reply",b);JSONObject thread=r.optJSONObject("thread");ui.post(() -> {Toast.makeText(this,r.optString("message","Reply sent."),Toast.LENGTH_SHORT).show();if(thread!=null)renderMessageThread(thread);else loadMessageThread(id);});}catch(Exception e){ui.post(() -> renderConnectionError("Reply was not sent",message(e)));}});
+    }
+
+    private void resolveConversation(int id){
+        new AlertDialog.Builder(this).setTitle("Resolve conversation?").setMessage("The thread will remain available and can reopen if another reply is sent.").setNegativeButton("Cancel",null).setPositiveButton("Resolve",(d,w) -> {
+            renderLoading("Resolving conversation","Updating SchoolOS message status…");
+            io.execute(() -> {try{JSONObject b=new JSONObject();b.put("conversation_id",id);JSONObject r=api.post("message_resolve",b);JSONObject thread=r.optJSONObject("thread");ui.post(() -> {Toast.makeText(this,r.optString("message","Conversation resolved."),Toast.LENGTH_SHORT).show();if(thread!=null)renderMessageThread(thread);});}catch(Exception e){ui.post(() -> renderConnectionError("Conversation was not resolved",message(e)));}});
+        }).show();
+    }
+
+    private void loadMessageCompose(){
+        renderLoading("New conversation","Loading permitted SchoolOS contacts…");
+        io.execute(() -> {try{JSONObject r=api.get("message_compose");JSONObject data=r.optJSONObject("data");if(data==null)throw new Exception("New conversations are unavailable.");ui.post(() -> renderMessageCompose(data));}catch(Exception e){ui.post(() -> renderConnectionError("Could not start a conversation",message(e)));}});
+    }
+
+    private void renderMessageCompose(JSONObject data){
+        if(!data.optBoolean("can_start",false)){Toast.makeText(this,"Starting new conversations is disabled for this role.",Toast.LENGTH_SHORT).show();openTab("messages");return;}
+        LinearLayout root=vertical();root.setBackgroundColor(BG);root.addView(topBar());
+        LinearLayout page=vertical();page.setPadding(dp(16),dp(14),dp(16),dp(24));
+        TextView back=text("‹  Messages",12,selectedRole.color,true);back.setPadding(0,dp(4),0,dp(12));back.setOnClickListener(v -> openTab("messages"));page.addView(back);
+        page.addView(label("NEW CONVERSATION",9,selectedRole.color,true));page.addView(title("Start a SchoolOS message",24));page.addView(body("Contacts and student context are limited by your existing communication scope.",11));
+
+        page.addView(gap(12));page.addView(fieldLabel("Subject"));EditText subject=input("Conversation subject",false);page.addView(subject);
+
+        JSONArray categories=data.optJSONArray("categories");List<String> catLabels=new ArrayList<>();if(categories!=null)for(int i=0;i<categories.length();i++)catLabels.add(categories.optString(i));if(catLabels.isEmpty())catLabels.add("general");
+        Spinner category=new Spinner(this);category.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,catLabels));int defaultPos=catLabels.indexOf(data.optString("default_category",""));if(defaultPos>=0)category.setSelection(defaultPos);
+        page.addView(gap(10));page.addView(fieldLabel("Category"));page.addView(category);
+
+        JSONArray participants=data.optJSONArray("participants");List<String> participantLabels=new ArrayList<>();List<Integer> participantIds=new ArrayList<>();
+        if(participants!=null)for(int i=0;i<participants.length();i++){JSONObject u=participants.optJSONObject(i);if(u==null)continue;participantIds.add(u.optInt("id"));participantLabels.add(u.optString("name","User")+" · "+u.optString("role","User"));}
+        Spinner participant=new Spinner(this);participant.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,participantLabels));
+        page.addView(gap(10));page.addView(fieldLabel("Participant"));page.addView(participant);
+
+        JSONArray students=data.optJSONArray("students");List<String> studentLabels=new ArrayList<>();List<Integer> studentIds=new ArrayList<>();studentLabels.add("None");studentIds.add(0);
+        if(students!=null)for(int i=0;i<students.length();i++){JSONObject s=students.optJSONObject(i);if(s==null)continue;studentIds.add(s.optInt("id"));studentLabels.add(s.optString("admission_no","")+" · "+s.optString("name","Student"));}
+        Spinner student=new Spinner(this);student.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,studentLabels));
+        page.addView(gap(10));page.addView(fieldLabel("Student context (optional)"));page.addView(student);
+
+        page.addView(gap(10));page.addView(fieldLabel("First message"));EditText bodyInput=new EditText(this);bodyInput.setHint("Write your message…");bodyInput.setTextSize(13);bodyInput.setTextColor(TEXT);bodyInput.setHintTextColor(MUTED);bodyInput.setMinLines(4);bodyInput.setGravity(Gravity.TOP);bodyInput.setPadding(dp(12),dp(10),dp(12),dp(10));bodyInput.setBackground(round(Color.WHITE,14,LINE));page.addView(bodyInput);
+
+        Button send=button("Open Conversation",selectedRole.color,Color.WHITE);send.setOnClickListener(v -> {
+            if(participantIds.isEmpty()){Toast.makeText(this,"No permitted participant is available.",Toast.LENGTH_SHORT).show();return;}
+            createConversation(subject.getText().toString(),String.valueOf(category.getSelectedItem()),participantIds.get(participant.getSelectedItemPosition()),studentIds.get(student.getSelectedItemPosition()),bodyInput.getText().toString());
+        });page.addView(gap(12));page.addView(send);
+
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(page);root.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f));root.addView(bottomNav());setContentView(root);
+    }
+
+    private void createConversation(String subject,String category,int participantId,int studentId,String bodyText){
+        if(subject.trim().isEmpty()){Toast.makeText(this,"Conversation subject is required.",Toast.LENGTH_SHORT).show();return;}
+        renderLoading("Opening conversation","Applying SchoolOS communication scope…");
+        io.execute(() -> {try{JSONObject b=new JSONObject();b.put("subject",subject.trim());b.put("category",category);b.put("participant_user_id",participantId);b.put("student_id",studentId);b.put("body",bodyText.trim());JSONObject r=api.post("message_create",b);JSONObject thread=r.optJSONObject("thread");ui.post(() -> {Toast.makeText(this,r.optString("message","Conversation opened."),Toast.LENGTH_SHORT).show();if(thread!=null)renderMessageThread(thread);else openTab("messages");});}catch(Exception e){ui.post(() -> renderConnectionError("Conversation was not opened",message(e)));}});
+    }
+
+    private void confirmTransportAction(int tripId,String actionKey,String labelText){
+        String status="trip_start".equals(actionKey)?"running":("trip_complete".equals(actionKey)?"completed":"cancelled");
+        new AlertDialog.Builder(this).setTitle(labelText+"?").setMessage("This will update the live SchoolOS trip status.").setNegativeButton("Cancel",null).setPositiveButton(labelText,(d,w) -> transportTripStatus(tripId,status)).show();
+    }
+
+    private void transportTripStatus(int tripId,String status){
+        renderLoading("Updating trip","Applying SchoolOS transport controls…");
+        io.execute(() -> {try{JSONObject b=new JSONObject();b.put("trip_id",tripId);b.put("status",status);JSONObject r=api.post("transport_trip_status",b);ui.post(() -> {Toast.makeText(this,r.optString("message","Trip updated."),Toast.LENGTH_SHORT).show();loadModule("transport");});}catch(Exception e){ui.post(() -> renderConnectionError("Trip update failed",message(e)));}});
+    }
+
+    private void markAllNotifications(){
+        io.execute(() -> {try{JSONObject r=api.post("notification_read_all",new JSONObject());ui.post(() -> {Toast.makeText(this,r.optString("message","Notifications updated."),Toast.LENGTH_SHORT).show();loadModule("updates");});}catch(Exception e){ui.post(() -> Toast.makeText(this,message(e),Toast.LENGTH_SHORT).show());}});
     }
 
     private void addAccountControls(LinearLayout page){

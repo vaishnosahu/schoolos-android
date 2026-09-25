@@ -240,7 +240,19 @@ public final class ApiClient {
     }
 
     private static String safeFilename(String name) {
-        String n = name == null ? "schoolos-file" : name.replaceAll("[\\\\/:*?\\"<>|\\r\\n]+", "_").trim();
+        String source = name == null ? "schoolos-file" : name;
+        StringBuilder clean = new StringBuilder();
+        for (int i = 0; i < source.length(); i++) {
+            char ch = source.charAt(i);
+            if (ch == '\\' || ch == '/' || ch == ':' || ch == '*' || ch == '?' ||
+                    ch == '"' || ch == '<' || ch == '>' || ch == '|' ||
+                    ch == '\r' || ch == '\n') {
+                clean.append('_');
+            } else {
+                clean.append(ch);
+            }
+        }
+        String n = clean.toString().trim();
         if (n.isEmpty()) n = "schoolos-file";
         if (n.length() > 180) n = n.substring(n.length() - 180);
         return n;

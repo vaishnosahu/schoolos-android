@@ -1,4 +1,4 @@
-name: Build SchoolOS Native Live R2
+name: Build SchoolOS Native Live R3
 on:
   pull_request:
     branches: [ main ]
@@ -41,14 +41,14 @@ jobs:
             echo "::error::Unexpected sensitive permission in R2"
             exit 1
           fi
-          cp "$APK" SchoolOS-Native-Live-R2.apk
-          sha256sum SchoolOS-Native-Live-R2.apk > apk-sha256.txt
+          cp "$APK" SchoolOS-Native-Live-R3.apk
+          sha256sum SchoolOS-Native-Live-R3.apk > apk-sha256.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SchoolOS-Native-Live-R2
+          name: SchoolOS-Native-Live-R3
           path: |
-            SchoolOS-Native-Live-R2.apk
+            SchoolOS-Native-Live-R3.apk
             apk-badging.txt
             apk-permissions.txt
             apk-signature.txt

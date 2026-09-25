@@ -1,17 +1,12 @@
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#3657D6</item>
+        <item name="colorPrimaryVariant">#2948BC</item>
+        <item name="colorSecondary">#6C4EE3</item>
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#3657D6</item>
-        <item name="android:statusBarColor">#FFFFFF</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">#F8FAFF</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:enforceStatusBarContrast">false</item>
-        <item name="android:enforceNavigationBarContrast">false</item>
-        <item name="android:windowBackground">@drawable/launch_background</item>
-        <item name="android:windowLayoutInDisplayCutoutMode">default</item>
-        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 </resources>

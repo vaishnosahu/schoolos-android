@@ -1,4 +1,4 @@
-name: Build Employee Management Native Parity R2 R3 APK
+name: Build Employee Management Native Live Map Pro v3.4 APK
 on:
   push:
     branches: [ employee-management-native-parity-r2r3-v1 ]
@@ -31,8 +31,13 @@ jobs:
           s=s.replace('c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status")),ui.match(0,4,0,0));','c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status"))),ui.match(0,4,0,0));')
           p.write_text(s)
           PY
-          grep -q "versionCode 3300" employee-combined/app/build.gradle
-          grep -q "versionName '3.3.0-native-parity-r2r3-test'" employee-combined/app/build.gradle
+          test -f employee-combined/native-live-map-v34.patch.gz.b64
+          base64 -d employee-combined/native-live-map-v34.patch.gz.b64 | gunzip > /tmp/live-map-v34.patch
+          git apply --check /tmp/live-map-v34.patch
+          git apply /tmp/live-map-v34.patch
+          grep -q "versionCode 3400" employee-combined/app/build.gradle
+          grep -q "versionName '3.4.0-live-map-pro-test'" employee-combined/app/build.gradle
+          grep -q 'switchLiveMapStyle("satellite")' employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java
           grep -q "OfflineSyncJobService" employee-combined/app/src/main/AndroidManifest.xml
           test -f employee-combined/app/src/main/java/com/alkeynes/employee/management/OfflineAttendanceQueue.java
           test -f employee-combined/app/src/main/java/com/alkeynes/employee/management/OfflineSyncJobService.java
@@ -44,10 +49,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build native parity R2/R3 APK
+      - name: Build native Live Map Pro v3.4 APK
         working-directory: employee-combined
         run: gradle --no-daemon clean assembleDebug
-      - name: Validate native package, version and signature
+      - name: Validate native Live Map Pro package, version and signature
         shell: bash
         run: |
           set -euo pipefail
@@ -55,23 +60,23 @@ jobs:
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          "$AAPT" dump badging "$APK" | tee native-parity-r2r3-badging.txt
-          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-parity-r2r3-badging.txt
-          grep -q "versionName='3.3.0-native-parity-r2r3-test'" native-parity-r2r3-badging.txt
-          grep -q "targetSdkVersion:'35'" native-parity-r2r3-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-parity-r2r3-signature.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-parity-r2r3-signature.txt
-          cp "$APK" Employee-Management-Native-Parity-R2R3-v3.3.0.apk
-          sha256sum Employee-Management-Native-Parity-R2R3-v3.3.0.apk > Employee-Management-Native-Parity-R2R3-v3.3.0.sha256
-          rm -f employee-combined/native-r2r3.patch.gz.b64
-          zip -qr Employee-Management-Native-Parity-R2R3-Source-v3.3.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
+          "$AAPT" dump badging "$APK" | tee native-live-map-v34-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-live-map-v34-badging.txt
+          grep -q "versionName='3.4.0-live-map-pro-test'" native-live-map-v34-badging.txt
+          grep -q "targetSdkVersion:'35'" native-live-map-v34-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-live-map-v34-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-live-map-v34-signature.txt
+          cp "$APK" Employee-Management-Native-LiveMap-Pro-v3.4.0.apk
+          sha256sum Employee-Management-Native-LiveMap-Pro-v3.4.0.apk > Employee-Management-Native-LiveMap-Pro-v3.4.0.sha256
+          rm -f employee-combined/native-r2r3.patch.gz.b64 employee-combined/native-live-map-v34.patch.gz.b64
+          zip -qr Employee-Management-Native-LiveMap-Pro-Source-v3.4.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: Employee-Management-Native-Parity-R2R3-v3.3.0
+          name: Employee-Management-Native-LiveMap-Pro-v3.4.0
           path: |
-            Employee-Management-Native-Parity-R2R3-v3.3.0.apk
-            Employee-Management-Native-Parity-R2R3-v3.3.0.sha256
-            Employee-Management-Native-Parity-R2R3-Source-v3.3.0.zip
-            native-parity-r2r3-badging.txt
-            native-parity-r2r3-signature.txt
+            Employee-Management-Native-LiveMap-Pro-v3.4.0.apk
+            Employee-Management-Native-LiveMap-Pro-v3.4.0.sha256
+            Employee-Management-Native-LiveMap-Pro-Source-v3.4.0.zip
+            native-live-map-v34-badging.txt
+            native-live-map-v34-signature.txt
           if-no-files-found: error

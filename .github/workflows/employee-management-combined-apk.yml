@@ -21,15 +21,20 @@ jobs:
       - name: Build direct-install test APK
         working-directory: employee-combined
         run: gradle --no-daemon clean assembleDebug
-      - name: Validate APK package
+      - name: Validate APK package and signature
         shell: bash
         run: |
           APK="employee-combined/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee employee-apk-badging.txt
           grep -q "package: name='com.alkeynes.employee.management'" employee-apk-badging.txt
           grep -q "targetSdkVersion:'35'" employee-apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee employee-apk-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" employee-apk-signature.txt
           cp "$APK" Employee-Management-Combined-Test-v2.3.1.apk
           sha256sum Employee-Management-Combined-Test-v2.3.1.apk > Employee-Management-Combined-Test-v2.3.1.sha256
       - uses: actions/upload-artifact@v4
@@ -39,4 +44,5 @@ jobs:
             Employee-Management-Combined-Test-v2.3.1.apk
             Employee-Management-Combined-Test-v2.3.1.sha256
             employee-apk-badging.txt
+            employee-apk-signature.txt
           if-no-files-found: error

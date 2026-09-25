@@ -36,7 +36,8 @@ public class MainActivity extends Activity {
     private MapView mapView;
     private Consumer<Location> pendingLocationAction;
     private static final int REQ_LOCATION=501, REQ_NOTIFICATION=502;
-    private boolean notificationPermissionAsked=false;\n    private boolean backgroundGuideShown=false;
+    private boolean notificationPermissionAsked=false;
+    private boolean backgroundGuideShown=false;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);

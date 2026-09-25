@@ -53,8 +53,8 @@ jobs:
           p.write_text(s)
           PY
           base64 -d employee-combined/production-tracking-v342.patch.gz.b64 | gunzip > /tmp/production-tracking-v342.patch
-          git apply --check /tmp/production-tracking-v342.patch
-          git apply /tmp/production-tracking-v342.patch
+          git apply -p0 --check /tmp/production-tracking-v342.patch
+          git apply -p0 /tmp/production-tracking-v342.patch
           grep -q "versionCode 3420" employee-combined/app/build.gradle
           grep -q "versionName '3.4.2-production'" employee-combined/app/build.gradle
           grep -q "tracking_recheck_seconds" employee-combined/app/src/main/java/com/alkeynes/employee/management/TrackingService.java

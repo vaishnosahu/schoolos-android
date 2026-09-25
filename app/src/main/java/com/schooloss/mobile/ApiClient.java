@@ -29,6 +29,10 @@ public final class ApiClient {
         return request("GET", action, null, null);
     }
 
+    public JSONObject get(String action, String extraQuery) throws Exception {
+        return request("GET", action, extraQuery, null);
+    }
+
     public JSONObject getModule(String name) throws Exception {
         return request("GET", "module", "name=" + URLEncoder.encode(name, "UTF-8"), null);
     }
@@ -48,7 +52,7 @@ public final class ApiClient {
         c.setRequestMethod(method);
         c.setRequestProperty("Accept", "application/json");
         c.setRequestProperty("X-SchoolOS-Native", "android");
-        c.setRequestProperty("User-Agent", "SchoolOSNative/4.0.0 Android");
+        c.setRequestProperty("User-Agent", "SchoolOSNative/3.0.0 Android");
 
         String cookie = prefs.getString("cookie", "");
         if (!cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);

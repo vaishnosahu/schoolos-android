@@ -1,0 +1,73 @@
+name: Validate Employee Management Production Signing Source
+on:
+  push:
+    branches: [ employee-management-native-production-signing-v1 ]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Materialize Native v3.4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d employee-combined/native-r2r3.patch.gz.b64 | gunzip > /tmp/native-r2r3.patch
+          git apply --check /tmp/native-r2r3.patch
+          git apply /tmp/native-r2r3.patch
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("employee-combined/app/src/main/java/com/alkeynes/employee/management/AdminOperations.java")
+          s=p.read_text()
+          s=s.replace('c.addView(ui.muted(x.optString("work_date")+" · "+shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out"))),ui.match(0,4,0,0));','c.addView(ui.muted(x.optString("work_date")+" · "+shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out")))),ui.match(0,4,0,0));')
+          s=s.replace('card.addView(ui.muted("Ended "+(x.isNull("ended_at")?"Open":x.optString("ended_at")),ui.match(0,3,0,0));','card.addView(ui.muted("Ended "+(x.isNull("ended_at")?"Open":x.optString("ended_at"))),ui.match(0,3,0,0));')
+          p.write_text(s)
+          p=Path("employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java")
+          s=p.read_text()
+          s=s.replace('c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status")),ui.match(0,4,0,0));','c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status"))),ui.match(0,4,0,0));')
+          p.write_text(s)
+          PY
+          base64 -d employee-combined/native-live-map-v34.patch.gz.b64 | gunzip > /tmp/live-map-v34.patch
+          git apply --check /tmp/live-map-v34.patch
+          git apply /tmp/live-map-v34.patch
+      - name: Apply production signing-ready Gradle configuration
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("employee-combined/app/build.gradle")
+          s=p.read_text()
+          s=s.replace("versionCode 3400","versionCode 3410")
+          s=s.replace("versionName '3.4.0-live-map-pro-test'","versionName '3.4.1-production'")
+          s=s.replace("android {\n","def releaseKeystorePath = System.getenv('EMS_ANDROID_KEYSTORE_PATH')\ndef releaseStorePassword = System.getenv('EMS_ANDROID_KEYSTORE_PASSWORD')\ndef releaseKeyAlias = System.getenv('EMS_ANDROID_KEY_ALIAS')\ndef releaseKeyPassword = System.getenv('EMS_ANDROID_KEY_PASSWORD')\ndef releaseSigningReady = [releaseKeystorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it != null && !it.trim().isEmpty() }\n\nandroid {\n",1)
+          s=s.replace("    buildTypes {\n","    signingConfigs {\n        release {\n            if (releaseSigningReady) {\n                storeFile file(releaseKeystorePath)\n                storePassword releaseStorePassword\n                keyAlias releaseKeyAlias\n                keyPassword releaseKeyPassword\n                enableV1Signing true\n                enableV2Signing true\n                enableV3Signing true\n                enableV4Signing true\n            }\n        }\n    }\n\n    buildTypes {\n",1)
+          s=s.replace("        release {\n            minifyEnabled false","        release {\n            if (releaseSigningReady) {\n                signingConfig signingConfigs.release\n            }\n            minifyEnabled false",1)
+          p.write_text(s)
+          PY
+          grep -q "versionCode 3410" employee-combined/app/build.gradle
+          grep -q "versionName '3.4.1-production'" employee-combined/app/build.gradle
+          grep -q "EMS_ANDROID_KEYSTORE_PATH" employee-combined/app/build.gradle
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compile signing-ready source
+        working-directory: employee-combined
+        run: gradle --no-daemon clean assembleDebug
+      - name: Validate package/version
+        shell: bash
+        run: |
+          APK="employee-combined/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee signing-ready-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management.nativeui'" signing-ready-badging.txt
+          grep -q "versionCode='3410'" signing-ready-badging.txt
+          grep -q "versionName='3.4.1-production'" signing-ready-badging.txt
+          grep -q "targetSdkVersion:'35'" signing-ready-badging.txt

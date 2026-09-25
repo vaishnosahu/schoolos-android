@@ -1,7 +1,7 @@
-name: Build Employee Management Native Live APK
+name: Build Employee Management Native Admin R1 APK
 on:
   push:
-    branches: [ employee-management-native-live-v1 ]
+    branches: [ employee-management-native-admin-r1-v1 ]
   workflow_dispatch:
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build native live APK
+      - name: Build native Admin R1 APK
         working-directory: employee-combined
         run: gradle --no-daemon clean assembleDebug
       - name: Validate native package and signature
@@ -28,12 +28,12 @@ jobs:
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          "$AAPT" dump badging "$APK" | tee native-live-badging.txt
-          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-live-badging.txt
-          grep -q "versionName='3.1.0-native-live-test'" native-live-badging.txt
-          grep -q "targetSdkVersion:'35'" native-live-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-live-signature.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-live-signature.txt
+          "$AAPT" dump badging "$APK" | tee native-admin-r1-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-admin-r1-badging.txt
+          grep -q "versionName='3.1.0-native-admin-r1-test'" native-admin-r1-badging.txt
+          grep -q "targetSdkVersion:'35'" native-admin-r1-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-admin-r1-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-admin-r1-signature.txt
           cp "$APK" Employee-Management-Native-Live-v3.1.0.apk
           sha256sum Employee-Management-Native-Live-v3.1.0.apk > Employee-Management-Native-Live-v3.1.0.sha256
           zip -qr Employee-Management-Native-Live-Source-v3.1.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
@@ -44,6 +44,6 @@ jobs:
             Employee-Management-Native-Live-v3.1.0.apk
             Employee-Management-Native-Live-v3.1.0.sha256
             Employee-Management-Native-Live-Source-v3.1.0.zip
-            native-live-badging.txt
-            native-live-signature.txt
+            native-admin-r1-badging.txt
+            native-admin-r1-signature.txt
           if-no-files-found: error

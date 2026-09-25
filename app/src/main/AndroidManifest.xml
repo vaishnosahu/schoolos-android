@@ -19,6 +19,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"/>
         </provider>
+        <activity android:name=".features.attendance.AttendanceActivity" android:exported="false"/>
+        <activity android:name=".features.messages.MessagesActivity" android:exported="false"/>
+        <activity android:name=".features.sfh.StudyFromHomeActivity" android:exported="false"/>
+        <activity android:name=".features.results.ResultsActivity" android:exported="false"/>
+        <activity android:name=".features.gallery.GalleryActivity" android:exported="false"/>
+        <activity android:name=".features.transport.TransportActivity" android:exported="false"/>
+        <activity android:name=".features.common.ModuleActivity" android:exported="false"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

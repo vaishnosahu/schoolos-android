@@ -1,52 +1,92 @@
-# Employee Management — Native Android UI Preview v3.0.0
+# Employee Management — Native Live Android v3.1.0
 
-This branch is a design-first Android-native preview.
+This is the Android-native live integration build. It does not render PHP pages in a WebView.
 
-## Locked scope
-- No WebView
-- No PHP page rendering inside the APK
-- No live API calls
-- No database writes
-- No attendance punch actions
-- No GPS/background tracking
-- No production authentication
-- No new Employee Management business functionality
+## Architecture
+Android native UI -> HTTPS native API -> existing PHP/MySQL authority.
 
-## Purpose
-Lock the Android-native design and navigation before connecting the approved server/API authority.
+The APK never contains MySQL credentials. The access token is stored locally using Android Keystore-backed AES/GCM; the server stores only token hashes.
 
-## Employee UI coverage
-- Native role selector / login presentation
+## Backend deployment
+Upload the Native Live backend patch to the alkeynesprjects.com root so it lands under employee-management/.
+
+Import once:
+employee-management/database/migrations/2026-09-25-native-app-api.sql
+
+Native application API:
+employee-management/api/native-v1.php
+
+Background GPS endpoint reused:
+employee-management/api/mobile-geo-ping.php
+
+## Native login
+The same existing Employee Management email/password is used.
+- admin/hr/manager accounts route to native Admin UI
+- employee accounts route to native Employee UI
+- app access token and employee tracking token are separate
+- no password is retained by the background location service
+
+## Employee workflows connected
 - Home
-- Attendance
-- Leave
-- Timesheets & overtime
-- Field visits
-- Expenses
-- Payroll
-- Notifications
-- Security
+- Attendance state
+- Clock In
+- Break Start / End
+- Clock Out
+- authorised work locations
+- native foreground/background GPS service
+- Leave balances/history + request
+- Timesheets + overtime requests
+- Field visits + GPS check-in/out
+- Expense history + submission
+- Payroll records
+- Notifications + mark read
 - Profile
-- Native bottom navigation
+- Security/session views
 
-## Admin UI coverage
+## Admin workflows connected
 - Dashboard
-- Employees
+- Employees directory
 - Attendance
-- Native Live Map visual layout
-- Organisation
-- Work locations
+- Native MapLibre Live Map with accepted GPS points/routes
+- Organisation records
+- Locations
 - Shifts
 - Holidays
-- Leave management
-- Timesheets & overtime
+- Leave approvals
+- Timesheet/OT review
 - Field visits
-- Expenses
-- Payroll
-- Reports
+- Expense approvals
+- Payroll records
+- Reports summary
 - Notifications
 - Security
-- Settings
-- Native bottom navigation
+- Settings read view
 
-All visible placeholder values use dashes or are explicitly marked as UI preview so they cannot be confused with production data.
+High-impact setup/payroll mutation screens remain governed by the existing server authority; this build does not duplicate payroll calculation logic inside Android.
+
+## Tracking rules
+The Android service submits device GPS only when server rules allow it. The server still validates:
+- active user/employee
+- active attendance session
+- live tracking enabled
+- shift-only policy when enabled
+- coordinate validity
+- maximum GPS accuracy
+- movement/ping throttling
+
+Tracking cannot bypass Android Force Stop, location being switched off, revoked permissions, device power-off, or OEM restrictions.
+
+## Test order
+1. Deploy backend patch.
+2. Import the native app migration once.
+3. Install the Native Live test APK.
+4. Login as Admin and verify Dashboard, Employees, Attendance and Live Map.
+5. Login as Employee on the test device.
+6. Clock In with precise location permission.
+7. Confirm the persistent tracking notification.
+8. Move outdoors and verify accepted movement on Admin Live Map.
+9. Test screen-off tracking.
+10. Test Break, Clock Out, Leave, Field Visit and Expense flows.
+
+## Test signing
+v3.1.0 is a direct-install debug/test-signed build. Final production release must use a dedicated permanent signing key so later APK updates install over the production app.

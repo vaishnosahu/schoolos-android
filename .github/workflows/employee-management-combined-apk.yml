@@ -1,7 +1,7 @@
-name: Build Employee Management Native UI Preview
+name: Build Employee Management Native Live APK
 on:
   push:
-    branches: [ employee-management-native-ui-design-v1 ]
+    branches: [ employee-management-native-live-v1 ]
   workflow_dispatch:
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build native UI preview APK
+      - name: Build native live APK
         working-directory: employee-combined
         run: gradle --no-daemon clean assembleDebug
       - name: Validate native package and signature
@@ -28,22 +28,22 @@ jobs:
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          "$AAPT" dump badging "$APK" | tee native-ui-badging.txt
-          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-ui-badging.txt
-          grep -q "versionName='3.0.0-ui-preview'" native-ui-badging.txt
-          grep -q "targetSdkVersion:'35'" native-ui-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-ui-signature.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-ui-signature.txt
-          cp "$APK" Employee-Management-Native-UI-Preview-v3.0.0.apk
-          sha256sum Employee-Management-Native-UI-Preview-v3.0.0.apk > Employee-Management-Native-UI-Preview-v3.0.0.sha256
-          zip -qr Employee-Management-Native-UI-Source-v3.0.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
+          "$AAPT" dump badging "$APK" | tee native-live-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-live-badging.txt
+          grep -q "versionName='3.1.0-native-live-test'" native-live-badging.txt
+          grep -q "targetSdkVersion:'35'" native-live-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-live-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-live-signature.txt
+          cp "$APK" Employee-Management-Native-Live-v3.1.0.apk
+          sha256sum Employee-Management-Native-Live-v3.1.0.apk > Employee-Management-Native-Live-v3.1.0.sha256
+          zip -qr Employee-Management-Native-Live-Source-v3.1.0.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: Employee-Management-Native-UI-Preview-v3.0.0
+          name: Employee-Management-Native-Live-v3.1.0
           path: |
-            Employee-Management-Native-UI-Preview-v3.0.0.apk
-            Employee-Management-Native-UI-Preview-v3.0.0.sha256
-            native-ui-badging.txt
-            native-ui-signature.txt
-            Employee-Management-Native-UI-Source-v3.0.0.zip
+            Employee-Management-Native-Live-v3.1.0.apk
+            Employee-Management-Native-Live-v3.1.0.sha256
+            Employee-Management-Native-Live-Source-v3.1.0.zip
+            native-live-badging.txt
+            native-live-signature.txt
           if-no-files-found: error

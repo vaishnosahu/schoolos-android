@@ -1,0 +1,59 @@
+name: Build Employee Management Native Live Map v3.4.0
+on:
+  push:
+    branches: [ employee-management-native-live-map-v34 ]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Materialize v3.4 source snapshot
+        shell: bash
+        run: |
+          rm -rf employee-combined
+          unzip -q native-live-map-v34-source.zip
+          grep -q "versionCode 3400" employee-combined/app/build.gradle
+          grep -q "versionName '3.4.0-live-map-pro-test'" employee-combined/app/build.gradle
+          grep -q 'switchLiveMapStyle("satellite")' employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java
+          ! grep -R "WebView" -n employee-combined/app/src/main/java
+      - name: Build native Live Map v3.4 APK
+        working-directory: employee-combined
+        run: gradle --no-daemon clean assembleDebug
+      - name: Validate package and signature
+        shell: bash
+        run: |
+          APK="employee-combined/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee native-live-map-v34-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management.nativeui'" native-live-map-v34-badging.txt
+          grep -q "versionCode='3400'" native-live-map-v34-badging.txt
+          grep -q "versionName='3.4.0-live-map-pro-test'" native-live-map-v34-badging.txt
+          grep -q "targetSdkVersion:'35'" native-live-map-v34-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee native-live-map-v34-signature.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" native-live-map-v34-signature.txt
+          cp "$APK" Employee-Management-Native-LiveMap-Pro-v3.4.0.apk
+          sha256sum Employee-Management-Native-LiveMap-Pro-v3.4.0.apk > Employee-Management-Native-LiveMap-Pro-v3.4.0.sha256
+          cp native-live-map-v34-source.zip Employee-Management-Native-LiveMap-Pro-Source-v3.4.0.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Employee-Management-Native-LiveMap-Pro-v3.4.0
+          path: |
+            Employee-Management-Native-LiveMap-Pro-v3.4.0.apk
+            Employee-Management-Native-LiveMap-Pro-v3.4.0.sha256
+            Employee-Management-Native-LiveMap-Pro-Source-v3.4.0.zip
+            native-live-map-v34-badging.txt
+            native-live-map-v34-signature.txt
+          if-no-files-found: error

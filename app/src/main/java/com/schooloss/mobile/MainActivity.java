@@ -302,7 +302,7 @@ public class MainActivity extends Activity {
                 ));
                 item.setOnClickListener(v -> {
                     selectedRole = role;
-                    renderLogin();
+                    renderLogin(null);
                 });
                 item.addView(text(role.label, 12, active ? role.color : TEXT, true));
                 item.addView(text(roleHint(role), 10, MUTED, false));

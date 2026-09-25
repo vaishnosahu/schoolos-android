@@ -1,0 +1,22 @@
+name: Fetch Public APK Signer Utility
+on:
+  push:
+    branches: [ employee-management-native-production-signing-v1 ]
+  workflow_dispatch:
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download public uber-apk-signer
+        run: |
+          curl -fL "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar" -o uber-apk-signer-1.3.0.jar
+          sha256sum uber-apk-signer-1.3.0.jar > uber-apk-signer-1.3.0.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-apk-signer-tool
+          path: |
+            uber-apk-signer-1.3.0.jar
+            uber-apk-signer-1.3.0.sha256
+          if-no-files-found: error

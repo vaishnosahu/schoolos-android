@@ -141,8 +141,17 @@ public class MainActivity extends Activity implements AdminOperations.Host {
     }
 
     private boolean allowedTarget(String s){
-        if(isAdmin())return Arrays.asList("dashboard","people","attendance","map","more","organisation","locations","shifts","holidays","admin_leave","timesheets","field","expenses","payroll","reports","notifications","security","settings").contains(s);
+        if(isAdmin()){
+            if(("payroll".equals(s)||"settings".equals(s))&&!canManageAllRole())return false;
+            return Arrays.asList("dashboard","people","attendance","map","more","organisation","locations","shifts","holidays","admin_leave","timesheets","field","expenses","payroll","reports","notifications","security","settings").contains(s);
+        }
         return Arrays.asList("home","attendance","leave","more","profile","timesheets","field","expenses","payroll","notifications","security").contains(s);
+    }
+
+    private boolean canManageAllRole(){
+        if(user==null)return false;
+        String r=user.optString("role_key","");
+        return "super_admin".equals(r)||"company_admin".equals(r)||"hr".equals(r);
     }
 
     private String actionForScreen(String s){
@@ -388,8 +397,8 @@ public class MainActivity extends Activity implements AdminOperations.Host {
 
     private void adminMore(){
         content.addView(ui.section("Organisation"),ui.match(0,14,0,10));menu("Organisation","Branches, departments, designations","organisation");menu("Work Locations","Geofence sites","locations");menu("Shifts","Schedules and assignments","shifts");menu("Holidays","Holiday calendar","holidays");
-        content.addView(ui.section("Operations"),ui.match(0,22,0,10));menu("Leave","Requests and approvals","admin_leave");menu("Timesheets & OT","Time and overtime review","timesheets");menu("Field Visits","Field assignments","field");menu("Expenses","Claims and approvals","expenses");menu("Payroll","Generated payroll","payroll");menu("Reports","Operational summaries","reports");
-        content.addView(ui.section("Control"),ui.match(0,22,0,10));menu("Notifications","Operational updates","notifications");menu("Security","Sessions and devices","security");menu("Settings","Attendance/tracking policy","settings");
+        content.addView(ui.section("Operations"),ui.match(0,22,0,10));menu("Leave","Requests and approvals","admin_leave");menu("Timesheets & OT","Time and overtime review","timesheets");menu("Field Visits","Field assignments","field");menu("Expenses","Claims and approvals","expenses");if(canManageAllRole())menu("Payroll","Generated payroll","payroll");menu("Reports","Operational summaries","reports");
+        content.addView(ui.section("Control"),ui.match(0,22,0,10));menu("Notifications","Operational updates","notifications");menu("Security","Sessions and devices","security");if(canManageAllRole())menu("Settings","Attendance/tracking policy","settings");
     }
 
     private void reviewButtons(LinearLayout c,String action,int id,String returnScreen){

@@ -1,11 +1,11 @@
 plugins { id 'com.android.application' }
 
 android {
-    namespace 'com.schooloss.nativepreview'
+    namespace 'com.schooloss.nativeapp'
     compileSdk 35
 
     signingConfigs {
-        preview {
+        livePreview {
             storeFile rootProject.file('schoolos-stable-debug.keystore')
             storePassword 'android'
             keyAlias 'androiddebugkey'
@@ -16,23 +16,23 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.schooloss.nativepreview'
+        applicationId 'com.schooloss.nativeapp'
         minSdk 24
         targetSdk 35
-        versionCode 1001001
-        versionName '1.0.1-ui-preview'
+        versionCode 2000000
+        versionName '2.0.0-live-r2'
     }
 
     buildTypes {
-        debug {
-            signingConfig signingConfigs.preview
-            applicationIdSuffix ''
-            versionNameSuffix ''
-        }
         release {
             minifyEnabled false
             shrinkResources false
-            signingConfig signingConfigs.preview
+            signingConfig signingConfigs.livePreview
+        }
+        debug {
+            signingConfig signingConfigs.livePreview
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
         }
     }
 

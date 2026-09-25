@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
     private MapView mapView;
     private Consumer<Location> pendingLocationAction;
     private static final int REQ_LOCATION=501, REQ_NOTIFICATION=502;
-    private boolean permissionGuideShown=false;
+    private boolean notificationPermissionAsked=false;\n    private boolean backgroundGuideShown=false;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -402,9 +402,9 @@ public class MainActivity extends Activity {
         JSONObject s=st.optJSONObject("session");if(s!=null&&!s.isNull("clock_in_at"))store.put("clock_in_at",s.optString("clock_in_at"));else store.remove("clock_in_at");
         if(!st.optBoolean("should_track")){stopService(new Intent(this,TrackingService.class));return;}
         if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED)return;
-        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!permissionGuideShown){permissionGuideShown=true;requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},REQ_NOTIFICATION);}
+        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!notificationPermissionAsked){notificationPermissionAsked=true;requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},REQ_NOTIFICATION);}
         Intent i=new Intent(this,TrackingService.class);if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);
-        if(Build.VERSION.SDK_INT>=29&&checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)!=PackageManager.PERMISSION_GRANTED&&!permissionGuideShown){permissionGuideShown=true;new AlertDialog.Builder(this).setTitle("Keep tracking active with the screen off").setMessage("For reliable screen-off tracking during an active work session, allow background location for Employee Management Native in Android app settings.").setPositiveButton("Open Settings",(d,w)->startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:"+getPackageName())))).setNegativeButton("Later",null).show();}
+        if(Build.VERSION.SDK_INT>=29&&checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)!=PackageManager.PERMISSION_GRANTED&&!backgroundGuideShown){backgroundGuideShown=true;new AlertDialog.Builder(this).setTitle("Keep tracking active with the screen off").setMessage("For reliable screen-off tracking during an active work session, allow background location for Employee Management Native in Android app settings.").setPositiveButton("Open Settings",(d,w)->startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:"+getPackageName())))).setNegativeButton("Later",null).show();}
     }
 
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){
@@ -415,7 +415,7 @@ public class MainActivity extends Activity {
 
     private void callGet(String action,Map<String,String> q,Consumer<JSONObject> ok){net.submit(()->{try{JSONObject r=q==null?api.get(action):api.get(action,q);runOnUiThread(()->ok.accept(r));}catch(Exception e){runOnUiThread(()->handleError(e));}});}
     private void callPost(String action,JSONObject b,Consumer<JSONObject> ok){net.submit(()->{try{JSONObject r=api.post(action,b);runOnUiThread(()->ok.accept(r));}catch(Exception e){runOnUiThread(()->{hideBusy();handleError(e);});}});}
-    private void handleError(Exception e){if(e instanceof ApiClient.ApiException&&((ApiClient.ApiException)e).status==401){store.clear();stopService(new Intent(this,TrackingService.class));toast("Session expired. Sign in again.");showLogin();return;}toast(message(e));}
+    private void handleError(Exception e){if(e instanceof ApiClient.ApiException&&((ApiClient.ApiException)e).status==401){store.clear();user=null;stopService(new Intent(this,TrackingService.class));toast("Session expired. Sign in again.");showLogin();return;}toast(message(e));}
     private String message(Exception e){String m=e.getMessage();return m==null||m.isEmpty()?"Request failed.":m;}
 
     private void logout(){showBusy("Signing out…");callPost("logout",new JSONObject(),r->{hideBusy();store.clear();stopService(new Intent(this,TrackingService.class));user=null;showLogin();});}

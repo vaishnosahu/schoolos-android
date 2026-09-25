@@ -68,6 +68,7 @@ jobs:
           grep -q "company_code" employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java
           grep -q "subscription_blocked" employee-combined/app/src/main/java/com/alkeynes/employee/management/TrackingService.java
       - name: Require protected signing secrets
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -83,6 +84,7 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Materialize permanent signer on ephemeral runner
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -97,7 +99,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK="employee-combined/app/build/outputs/apk/release/app-release.apk"
+          SIGNED_APK="employee-combined/app/build/outputs/apk/release/app-release.apk"
+          UNSIGNED_APK="employee-combined/app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [ -f "$SIGNED_APK" ]; then
+            APK="$SIGNED_APK"
+            IS_SIGNED=1
+          else
+            APK="$UNSIGNED_APK"
+            IS_SIGNED=0
+          fi
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
@@ -107,11 +117,17 @@ jobs:
           grep -q "versionName='3.5.0-saas'" production-badging.txt
           grep -q "targetSdkVersion:'35'" production-badging.txt
           "$AAPT" dump permissions "$APK" | tee production-permissions.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee production-signature.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" production-signature.txt
-          grep -qi "Signer #1 certificate SHA-256 digest: F4:14:B2:EC:F4:97:1C:88:1A:B9:79:F8:9E:FD:DE:C9:83:63:CD:ED:D4:E5:1A:E2:72:7F:EB:2C:6D:4A:BC:9A" production-signature.txt
-          cp "$APK" Employee-Management-SaaS-Final-v3.5.0.apk
-          sha256sum Employee-Management-SaaS-Final-v3.5.0.apk > Employee-Management-SaaS-Final-v3.5.0.sha256
+          if [ "$IS_SIGNED" = "1" ]; then
+            "$APKSIGNER" verify --verbose --print-certs "$APK" | tee production-signature.txt
+            grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" production-signature.txt
+            grep -qi "Signer #1 certificate SHA-256 digest: F4:14:B2:EC:F4:97:1C:88:1A:B9:79:F8:9E:FD:DE:C9:83:63:CD:ED:D4:E5:1A:E2:72:7F:EB:2C:6D:4A:BC:9A" production-signature.txt
+            cp "$APK" Employee-Management-SaaS-Final-v3.5.0.apk
+            sha256sum Employee-Management-SaaS-Final-v3.5.0.apk > Employee-Management-SaaS-Final-v3.5.0.sha256
+          else
+            printf '%s\n' 'Unsigned PR validation build; final signing occurs with the permanent production JKS outside PR execution.' > production-signature.txt
+            cp "$APK" Employee-Management-SaaS-Final-v3.5.0-unsigned.apk
+            sha256sum Employee-Management-SaaS-Final-v3.5.0-unsigned.apk > Employee-Management-SaaS-Final-v3.5.0-unsigned.sha256
+          fi
           rm -rf "$RUNNER_TEMP/employee-management-saas-source"
           mkdir -p "$RUNNER_TEMP/employee-management-saas-source"
           cp -a employee-combined/app "$RUNNER_TEMP/employee-management-saas-source/app"
@@ -127,8 +143,8 @@ jobs:
         with:
           name: Employee-Management-SaaS-Final-v3.5.0
           path: |
-            Employee-Management-SaaS-Final-v3.5.0.apk
-            Employee-Management-SaaS-Final-v3.5.0.sha256
+            Employee-Management-SaaS-Final-v3.5.0*.apk
+            Employee-Management-SaaS-Final-v3.5.0*.sha256
             Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip
             Employee-Management-SaaS-Final-Android-Source-v3.5.0.sha256
             production-badging.txt

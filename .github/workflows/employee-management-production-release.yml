@@ -111,6 +111,9 @@ jobs:
           test -f "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          APKSIGNER_JAR="$(dirname "$APKSIGNER")/lib/apksigner.jar"
+          test -f "$APKSIGNER_JAR"
+          cp "$APKSIGNER_JAR" apksigner.jar
           "$AAPT" dump badging "$APK" | tee production-badging.txt
           grep -q "package: name='com.alkeynes.employee.management.nativeui'" production-badging.txt
           grep -q "versionCode='3500'" production-badging.txt
@@ -150,4 +153,5 @@ jobs:
             production-badging.txt
             production-permissions.txt
             production-signature.txt
+            apksigner.jar
           if-no-files-found: error

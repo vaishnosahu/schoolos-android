@@ -1,0 +1,34 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.alkeynes.employee.management'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.alkeynes.employee.management.nativeui'
+        minSdk 26
+        targetSdk 35
+        versionCode 3200
+        versionName '3.2.0-native-admin-r1-test'
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ''
+            versionNameSuffix ''
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'org.maplibre.gl:android-sdk-opengl:13.6.1'
+}

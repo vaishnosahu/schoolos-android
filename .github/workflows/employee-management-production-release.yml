@@ -1,0 +1,157 @@
+name: Employee Management Production Release
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      EMS_ANDROID_KEYSTORE_B64: ${{ secrets.EMS_ANDROID_KEYSTORE_B64 }}
+      EMS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.EMS_ANDROID_KEYSTORE_PASSWORD }}
+      EMS_ANDROID_KEY_ALIAS: ${{ secrets.EMS_ANDROID_KEY_ALIAS }}
+      EMS_ANDROID_KEY_PASSWORD: ${{ secrets.EMS_ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Materialize Native v3.4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d employee-combined/native-r2r3.patch.gz.b64 | gunzip > /tmp/native-r2r3.patch
+          git apply --check /tmp/native-r2r3.patch
+          git apply /tmp/native-r2r3.patch
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("employee-combined/app/src/main/java/com/alkeynes/employee/management/AdminOperations.java")
+          s=p.read_text()
+          s=s.replace('c.addView(ui.muted(x.optString("work_date")+" · "+shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out"))),ui.match(0,4,0,0));','c.addView(ui.muted(x.optString("work_date")+" · "+shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out")))),ui.match(0,4,0,0));')
+          s=s.replace('card.addView(ui.muted("Ended "+(x.isNull("ended_at")?"Open":x.optString("ended_at")),ui.match(0,3,0,0));','card.addView(ui.muted("Ended "+(x.isNull("ended_at")?"Open":x.optString("ended_at"))),ui.match(0,3,0,0));')
+          p.write_text(s)
+          p=Path("employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java")
+          s=p.read_text()
+          s=s.replace('c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status")),ui.match(0,4,0,0));','c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status"))),ui.match(0,4,0,0));')
+          p.write_text(s)
+          PY
+          base64 -d employee-combined/native-live-map-v34.patch.gz.b64 | gunzip > /tmp/live-map-v34.patch
+          git apply --check /tmp/live-map-v34.patch
+          git apply /tmp/live-map-v34.patch
+      - name: Apply production signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("employee-combined/app/build.gradle")
+          s=p.read_text()
+          s=s.replace("versionCode 3400","versionCode 3410")
+          s=s.replace("versionName '3.4.0-live-map-pro-test'","versionName '3.4.1-production'")
+          s=s.replace("android {\n","def releaseKeystorePath = System.getenv('EMS_ANDROID_KEYSTORE_PATH')\ndef releaseStorePassword = System.getenv('EMS_ANDROID_KEYSTORE_PASSWORD')\ndef releaseKeyAlias = System.getenv('EMS_ANDROID_KEY_ALIAS')\ndef releaseKeyPassword = System.getenv('EMS_ANDROID_KEY_PASSWORD')\ndef releaseSigningReady = [releaseKeystorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it != null && !it.trim().isEmpty() }\n\nandroid {\n",1)
+          s=s.replace("    buildTypes {\n","    signingConfigs {\n        release {\n            if (releaseSigningReady) {\n                storeFile file(releaseKeystorePath)\n                storePassword releaseStorePassword\n                keyAlias releaseKeyAlias\n                keyPassword releaseKeyPassword\n                enableV1Signing true\n                enableV2Signing true\n                enableV3Signing true\n                enableV4Signing true\n            }\n        }\n    }\n\n    buildTypes {\n",1)
+          s=s.replace("        release {\n            minifyEnabled false","        release {\n            if (releaseSigningReady) {\n                signingConfig signingConfigs.release\n            }\n            minifyEnabled false",1)
+          p.write_text(s)
+          PY
+          base64 -d employee-combined/production-tracking-v342.patch.gz.b64 | gunzip > /tmp/production-tracking-v342.patch
+          git apply -p0 --check /tmp/production-tracking-v342.patch
+          git apply -p0 /tmp/production-tracking-v342.patch
+          grep -q "versionCode 3420" employee-combined/app/build.gradle
+          grep -q "versionName '3.4.2-production'" employee-combined/app/build.gradle
+          grep -q "tracking_recheck_seconds" employee-combined/app/src/main/java/com/alkeynes/employee/management/TrackingService.java
+          base64 -d employee-combined/saas-v350.patch.gz.b64 | gunzip > /tmp/saas-v350.patch
+          git apply --check /tmp/saas-v350.patch
+          git apply /tmp/saas-v350.patch
+          grep -q "versionCode 3500" employee-combined/app/build.gradle
+          grep -q "versionName '3.5.0-saas'" employee-combined/app/build.gradle
+          grep -q "company_code" employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java
+          grep -q "subscription_blocked" employee-combined/app/src/main/java/com/alkeynes/employee/management/TrackingService.java
+      - name: Require protected signing secrets
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EMS_ANDROID_KEYSTORE_B64"
+          test -n "$EMS_ANDROID_KEYSTORE_PASSWORD"
+          test -n "$EMS_ANDROID_KEY_ALIAS"
+          test -n "$EMS_ANDROID_KEY_PASSWORD"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Materialize permanent signer on ephemeral runner
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/employee-management-release.jks"
+          printf '%s' "$EMS_ANDROID_KEYSTORE_B64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          echo "EMS_ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+      - name: Build signed production APK
+        working-directory: employee-combined
+        run: gradle --no-daemon clean assembleRelease
+      - name: Verify production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNED_APK="employee-combined/app/build/outputs/apk/release/app-release.apk"
+          UNSIGNED_APK="employee-combined/app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [ -f "$SIGNED_APK" ]; then
+            APK="$SIGNED_APK"
+            IS_SIGNED=1
+          else
+            APK="$UNSIGNED_APK"
+            IS_SIGNED=0
+          fi
+          test -f "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          APKSIGNER_JAR="$(dirname "$APKSIGNER")/lib/apksigner.jar"
+          test -f "$APKSIGNER_JAR"
+          cp "$APKSIGNER_JAR" apksigner.jar
+          "$AAPT" dump badging "$APK" | tee production-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management.nativeui'" production-badging.txt
+          grep -q "versionCode='3500'" production-badging.txt
+          grep -q "versionName='3.5.0-saas'" production-badging.txt
+          grep -q "targetSdkVersion:'35'" production-badging.txt
+          "$AAPT" dump permissions "$APK" | tee production-permissions.txt
+          if [ "$IS_SIGNED" = "1" ]; then
+            "$APKSIGNER" verify --verbose --print-certs "$APK" | tee production-signature.txt
+            grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" production-signature.txt
+            grep -qi "Signer #1 certificate SHA-256 digest: F4:14:B2:EC:F4:97:1C:88:1A:B9:79:F8:9E:FD:DE:C9:83:63:CD:ED:D4:E5:1A:E2:72:7F:EB:2C:6D:4A:BC:9A" production-signature.txt
+            cp "$APK" Employee-Management-SaaS-Final-v3.5.0.apk
+            sha256sum Employee-Management-SaaS-Final-v3.5.0.apk > Employee-Management-SaaS-Final-v3.5.0.sha256
+          else
+            printf '%s\n' 'Unsigned PR validation build; final signing occurs with the permanent production JKS outside PR execution.' > production-signature.txt
+            cp "$APK" Employee-Management-SaaS-Final-v3.5.0-unsigned.apk
+            sha256sum Employee-Management-SaaS-Final-v3.5.0-unsigned.apk > Employee-Management-SaaS-Final-v3.5.0-unsigned.sha256
+          fi
+          rm -rf "$RUNNER_TEMP/employee-management-saas-source"
+          mkdir -p "$RUNNER_TEMP/employee-management-saas-source"
+          cp -a employee-combined/app "$RUNNER_TEMP/employee-management-saas-source/app"
+          cp employee-combined/build.gradle employee-combined/settings.gradle employee-combined/gradle.properties "$RUNNER_TEMP/employee-management-saas-source/"
+          rm -rf "$RUNNER_TEMP/employee-management-saas-source/app/build" "$RUNNER_TEMP/employee-management-saas-source/.gradle"
+          (cd "$RUNNER_TEMP/employee-management-saas-source" && zip -qr "$GITHUB_WORKSPACE/Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip" .)
+          sha256sum Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip > Employee-Management-SaaS-Final-Android-Source-v3.5.0.sha256
+      - name: Remove temporary keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/employee-management-release.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Employee-Management-SaaS-Final-v3.5.0
+          path: |
+            Employee-Management-SaaS-Final-v3.5.0*.apk
+            Employee-Management-SaaS-Final-v3.5.0*.sha256
+            Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip
+            Employee-Management-SaaS-Final-Android-Source-v3.5.0.sha256
+            production-badging.txt
+            production-permissions.txt
+            production-signature.txt
+            apksigner.jar
+          if-no-files-found: error

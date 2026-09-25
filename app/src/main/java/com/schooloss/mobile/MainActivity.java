@@ -1,10 +1,12 @@
-package com.schooloss.nativepreview;
+package com.schooloss.nativeapp;
 
 import android.app.Activity;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -12,8 +14,11 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.*;
 
-import java.util.ArrayList;
-import java.util.List;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
 
@@ -54,7 +59,12 @@ public class MainActivity extends Activity {
 
     private Role selectedRole = Role.ADMIN;
     private boolean inWorkspace = false;
-    private String selectedTab = "Home";
+    private String selectedTab = "home";
+    private ApiClient api;
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private JSONObject session;
+    private JSONObject homeData;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,30 +73,85 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(248,250,255));
         getWindow().setNavigationBarColor(Color.WHITE);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        renderLogin();
+        api = new ApiClient(this);
+        renderLoading("Opening SchoolOS", "Checking your secure school session…");
+        restoreSession();
+    }
+
+    @Override
+    protected void onDestroy() {
+        io.shutdownNow();
+        super.onDestroy();
     }
 
     @Override
     public void onBackPressed() {
-        if (inWorkspace && !"Home".equals(selectedTab)) {
-            selectedTab = "Home";
+        if (inWorkspace && !"home".equals(selectedTab)) {
+            selectedTab = "home";
             renderWorkspace();
             return;
         }
         if (inWorkspace) {
-            inWorkspace = false;
-            renderLogin();
+            moveTaskToBack(true);
             return;
         }
         super.onBackPressed();
     }
 
-    private void renderLogin() {
+    private void restoreSession() {
+        io.execute(() -> {
+            try {
+                JSONObject s = api.get("session");
+                ui.post(() -> acceptSession(s));
+            } catch (Exception e) {
+                ui.post(() -> renderLogin(null));
+            }
+        });
+    }
+
+    private void acceptSession(JSONObject s) {
+        session = s;
+        if (s.optBoolean("school_required", false)) {
+            renderSchoolChooser(s.optJSONArray("memberships"));
+            return;
+        }
+        setRoleFromSession();
+        inWorkspace = true;
+        renderLoading("Loading your workspace", "Syncing live SchoolOS data…");
+        loadHome();
+    }
+
+    private void loadHome() {
+        io.execute(() -> {
+            try {
+                JSONObject r = api.get("home");
+                JSONObject d = r.optJSONObject("data");
+                JSONObject s = r.optJSONObject("session");
+                if (d == null) throw new Exception("SchoolOS did not return home data.");
+                if (s != null) session = s;
+                homeData = d;
+                ui.post(() -> {
+                    setRoleFromSession();
+                    selectedTab = "home";
+                    inWorkspace = true;
+                    renderWorkspace();
+                });
+            } catch (Exception e) {
+                ui.post(() -> renderConnectionError("Could not load SchoolOS", message(e)));
+            }
+        });
+    }
+
+    private void renderLogin(String initialError) {
         inWorkspace = false;
+        session = null;
+        homeData = null;
+        selectedTab = "home";
+        selectedRole = Role.ADMIN;
+
         LinearLayout page = vertical();
         page.setPadding(dp(18), dp(16), dp(18), dp(24));
         page.setBackgroundColor(BG);
-
         page.addView(brandRow());
         page.addView(gap(14));
         page.addView(loginHero());
@@ -94,33 +159,38 @@ public class MainActivity extends Activity {
 
         LinearLayout form = card();
         form.setPadding(dp(18), dp(18), dp(18), dp(18));
-        form.addView(label("WELCOME BACK", 10, selectedRole.color, true));
+        form.addView(label("WELCOME BACK", 10, BLUE, true));
         form.addView(title("Sign in to SchoolOS", 26));
-        form.addView(body("Native Android UI preview. Choose a workspace below and review the complete mobile direction before live connectivity is added.", 13));
-        form.addView(gap(16));
+        form.addView(body("Use your existing SchoolOS account. Your school, role and permissions are resolved by the existing SchoolOS authority.", 13));
+        form.addView(gap(14));
+
+        TextView error = text("", 11, Color.rgb(190,45,60), true);
+        error.setPadding(dp(12), dp(10), dp(12), dp(10));
+        error.setBackground(round(Color.rgb(255,244,245), 12, Color.rgb(250,210,216)));
+        error.setVisibility(View.GONE);
+        if (initialError != null && !initialError.isEmpty()) {
+            error.setText(initialError);
+            error.setVisibility(View.VISIBLE);
+        }
+        form.addView(error);
+        form.addView(gap(10));
 
         form.addView(fieldLabel("Email address"));
-        form.addView(input("name@school.com", false));
+        EditText email = input("name@school.com", false);
+        form.addView(email);
         form.addView(gap(11));
         form.addView(fieldLabel("Password"));
-        form.addView(input("Password", true));
+        EditText password = input("Password", true);
+        form.addView(password);
         form.addView(gap(15));
-        form.addView(fieldLabel("Preview workspace"));
-        form.addView(roleGrid());
-        form.addView(gap(16));
 
-        Button open = button("Open " + selectedRole.label + " UI", selectedRole.color, Color.WHITE);
-        open.setOnClickListener(v -> {
-            inWorkspace = true;
-            selectedTab = "Home";
-            renderWorkspace();
-        });
+        Button open = button("Sign In", BLUE, Color.WHITE);
+        open.setOnClickListener(v -> doLogin(email, password, open, error));
         form.addView(open);
         form.addView(gap(10));
-        TextView note = text("UI-only preview · no API · no database · no WebView", 11, MUTED, false);
+        TextView note = text("Secure native session · existing SchoolOS database · role-aware access", 11, MUTED, false);
         note.setGravity(Gravity.CENTER);
         form.addView(note);
-
         page.addView(form);
 
         ScrollView scroll = new ScrollView(this);
@@ -129,7 +199,36 @@ public class MainActivity extends Activity {
         setContentView(scroll);
     }
 
-    private View brandRow() {
+    private void doLogin(EditText email, EditText password, Button button, TextView error) {
+        String e = email.getText().toString().trim();
+        String p = password.getText().toString();
+        if (e.isEmpty() || p.isEmpty()) {
+            error.setText("Enter your SchoolOS email and password.");
+            error.setVisibility(View.VISIBLE);
+            return;
+        }
+        button.setEnabled(false);
+        button.setText("Signing in…");
+        error.setVisibility(View.GONE);
+        io.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("email", e);
+                body.put("password", p);
+                JSONObject s = api.post("login", body);
+                ui.post(() -> acceptSession(s));
+            } catch (Exception ex) {
+                ui.post(() -> {
+                    button.setEnabled(true);
+                    button.setText("Sign In");
+                    error.setText(message(ex));
+                    error.setVisibility(View.VISIBLE);
+                });
+            }
+        });
+    }
+
+    private View brandRow()    private View brandRow() {
         LinearLayout row = horizontal();
         row.setGravity(Gravity.CENTER_VERTICAL);
 
@@ -229,19 +328,19 @@ public class MainActivity extends Activity {
 
     private void renderWorkspace() {
         inWorkspace = true;
-
         LinearLayout root = vertical();
         root.setBackgroundColor(BG);
         root.addView(topBar());
 
         FrameLayout contentFrame = new FrameLayout(this);
-        View content = "Home".equals(selectedTab) ? homeScreen() : tabScreen(selectedTab);
-        contentFrame.addView(content);
+        if ("home".equals(selectedTab)) contentFrame.addView(homeScreen());
+        else contentFrame.addView(moduleLoadingScreen());
         root.addView(contentFrame, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         root.addView(bottomNav());
         setContentView(root);
+        if (!"home".equals(selectedTab)) loadModule(selectedTab);
     }
 
     private View topBar() {
@@ -260,16 +359,16 @@ public class MainActivity extends Activity {
         LinearLayout copy = vertical();
         copy.setPadding(dp(10), 0, 0, 0);
         copy.addView(text("SchoolOS", 17, TEXT, true));
-        copy.addView(text(selectedRole.label + " workspace", 10, MUTED, false));
+        JSONObject school = session == null ? null : session.optJSONObject("school");
+        String schoolName = school == null ? selectedRole.label + " workspace" : school.optString("name", selectedRole.label + " workspace");
+        copy.addView(text(schoolName + " · " + selectedRole.label, 10, MUTED, false));
         row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView profile = text(initials(selectedRole.label), 11, selectedRole.color, true);
+        String name = session == null ? selectedRole.label : session.optString("name", selectedRole.label);
+        TextView profile = text(initials(name), 11, selectedRole.color, true);
         profile.setGravity(Gravity.CENTER);
         profile.setBackground(round(tint(selectedRole.color, 0.10f), 99, tint(selectedRole.color, 0.18f)));
-        profile.setOnClickListener(v -> {
-            selectedTab = "Profile";
-            renderWorkspace();
-        });
+        profile.setOnClickListener(v -> openTab("profile"));
         row.addView(profile, new LinearLayout.LayoutParams(dp(38), dp(38)));
 
         outer.addView(row);
@@ -277,49 +376,47 @@ public class MainActivity extends Activity {
     }
 
     private String initials(String s) {
-        if (s.startsWith("Admin")) return "AO";
-        if (s.startsWith("Teacher")) return "TS";
-        if (s.startsWith("Parent")) return "P";
-        return "S";
+        String value = s == null ? "" : s.trim();
+        if (value.isEmpty()) return "SO";
+        String[] parts = value.split("\\s+");
+        String out = "";
+        for (int i=0; i<Math.min(2,parts.length); i++) if (!parts[i].isEmpty()) out += parts[i].substring(0,1).toUpperCase();
+        return out.isEmpty() ? "SO" : out;
     }
 
     private View homeScreen() {
         LinearLayout page = vertical();
         page.setPadding(dp(16), dp(14), dp(16), dp(20));
 
+        JSONObject heroData = homeData == null ? null : homeData.optJSONObject("hero");
         LinearLayout hero = vertical();
         hero.setPadding(dp(18), dp(18), dp(18), dp(18));
         hero.setBackground(gradient(new int[]{selectedRole.color, tint(selectedRole.color, -0.18f)}, 23));
-        hero.addView(label(selectedRole.eyebrow, 9, Color.argb(220,255,255,255), true));
-        TextView h = text(selectedRole.title, 23, Color.WHITE, true);
+        hero.addView(label(heroData == null ? selectedRole.eyebrow : heroData.optString("eyebrow", selectedRole.eyebrow), 9, Color.argb(220,255,255,255), true));
+        TextView h = text(heroData == null ? selectedRole.title : heroData.optString("title", selectedRole.title), 23, Color.WHITE, true);
         h.setPadding(0, dp(5), 0, 0);
         hero.addView(h);
-        TextView sub = text(selectedRole.subtitle, 12, Color.argb(225,255,255,255), false);
+        TextView sub = text(heroData == null ? selectedRole.subtitle : heroData.optString("subtitle", selectedRole.subtitle), 12, Color.argb(225,255,255,255), false);
         sub.setPadding(0, dp(7), 0, 0);
         hero.addView(sub);
 
-        LinearLayout status = horizontal();
-        status.setPadding(0, dp(14), 0, 0);
-        status.addView(heroMetric("TODAY", "—"), new LinearLayout.LayoutParams(0, dp(58), 1f));
-        LinearLayout.LayoutParams mid = new LinearLayout.LayoutParams(0, dp(58), 1f);
-        mid.leftMargin = dp(7);
-        mid.rightMargin = dp(7);
-        status.addView(heroMetric("UPDATES", "—"), mid);
-        status.addView(heroMetric("PENDING", "—"), new LinearLayout.LayoutParams(0, dp(58), 1f));
-        hero.addView(status);
+        JSONArray metrics = homeData == null ? null : homeData.optJSONArray("metrics");
+        if (metrics != null && metrics.length() > 0) hero.addView(metricGrid(metrics, true));
         page.addView(hero);
 
-        page.addView(gap(15));
-        page.addView(sectionHeading("Quick access", "Native modules mapped to the current SchoolOS role structure."));
-        page.addView(moduleGrid(homeModules(selectedRole)));
+        addContextSwitcher(page);
 
-        page.addView(gap(14));
-        LinearLayout notice = card();
-        notice.setPadding(dp(15), dp(14), dp(15), dp(14));
-        notice.addView(label("PREVIEW STATUS", 9, selectedRole.color, true));
-        notice.addView(text("Live data is intentionally not connected", 15, TEXT, true));
-        notice.addView(text("This APK is for UI review only. API, database, payments, uploads and notifications remain disabled until design approval.", 11, MUTED, false));
-        page.addView(notice);
+        page.addView(gap(15));
+        page.addView(sectionHeading("Quick access", "Live modules mapped to your current SchoolOS role and permissions."));
+        JSONArray modules = homeData == null ? null : homeData.optJSONArray("modules");
+        if (modules != null) page.addView(moduleGrid(modules));
+
+        JSONArray rows = homeData == null ? null : homeData.optJSONArray("rows");
+        if (rows != null && rows.length() > 0) {
+            page.addView(gap(14));
+            page.addView(sectionHeading("Today", "Live SchoolOS workspace snapshot"));
+            page.addView(rowsList(rows));
+        }
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -327,7 +424,112 @@ public class MainActivity extends Activity {
         return scroll;
     }
 
-    private String[] homeModules(Role role) {
+    private void addContextSwitcher(LinearLayout page) {
+        if (session == null) return;
+        String role = session.optString("role", "admin");
+        if ("parent".equals(role)) {
+            JSONArray kids = session.optJSONArray("children");
+            if (kids != null && kids.length() > 1) {
+                page.addView(gap(12));
+                page.addView(sectionHeading("Child context", "Choose which linked child you are viewing."));
+                LinearLayout holder = vertical();
+                for (int i=0;i<kids.length();i++) {
+                    JSONObject k = kids.optJSONObject(i); if (k == null) continue;
+                    TextView item = text((k.optBoolean("selected",false) ? "✓  " : "") + k.optString("name","Child"), 11, k.optBoolean("selected",false) ? selectedRole.color : TEXT, true);
+                    item.setPadding(dp(12),dp(11),dp(12),dp(11));
+                    item.setBackground(round(k.optBoolean("selected",false) ? tint(selectedRole.color,.10f) : Color.WHITE,13,k.optBoolean("selected",false) ? tint(selectedRole.color,.25f) : LINE));
+                    final int id = k.optInt("id");
+                    item.setOnClickListener(v -> selectChild(id));
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    if (i>0) lp.topMargin=dp(6);
+                    holder.addView(item,lp);
+                }
+                page.addView(holder);
+            }
+        } else if ("teacher".equals(role)) {
+            JSONArray contexts = session.optJSONArray("teaching_contexts");
+            if (contexts != null && contexts.length() > 1) {
+                page.addView(gap(12));
+                page.addView(sectionHeading("Teaching context", "Switch your current allocation."));
+                LinearLayout holder = vertical();
+                for (int i=0;i<contexts.length();i++) {
+                    JSONObject x=contexts.optJSONObject(i); if(x==null)continue;
+                    TextView item=text(x.optString("label","Teaching context"),11,TEXT,true);
+                    item.setPadding(dp(12),dp(11),dp(12),dp(11));
+                    item.setBackground(round(Color.WHITE,13,LINE));
+                    final String key=x.optString("key","");
+                    item.setOnClickListener(v -> selectTeachingContext(key));
+                    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);
+                    if(i>0)lp.topMargin=dp(6);
+                    holder.addView(item,lp);
+                }
+                page.addView(holder);
+            }
+        }
+    }
+
+    private View metricGrid(JSONArray metrics, boolean heroStyle) {
+        LinearLayout wrap=vertical();
+        wrap.setPadding(0,dp(12),0,0);
+        for(int i=0;i<metrics.length();i+=2){
+            LinearLayout row=horizontal();
+            for(int j=0;j<2;j++){
+                int idx=i+j;
+                if(idx>=metrics.length()){row.addView(new Space(this),new LinearLayout.LayoutParams(0,1,1f));continue;}
+                JSONObject m=metrics.optJSONObject(idx); if(m==null)continue;
+                LinearLayout box=vertical(); box.setGravity(Gravity.CENTER);
+                box.setBackground(round(heroStyle?Color.argb(25,255,255,255):Color.WHITE,13,heroStyle?Color.argb(38,255,255,255):LINE));
+                box.addView(centerText(m.optString("value","—"),17,heroStyle?Color.WHITE:TEXT,true));
+                box.addView(centerText(m.optString("label",""),9,heroStyle?Color.argb(220,255,255,255):MUTED,true));
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(60),1f);
+                if(j>0)lp.leftMargin=dp(7);
+                if(i>0)lp.topMargin=dp(7);
+                row.addView(box,lp);
+            }
+            wrap.addView(row);
+        }
+        return wrap;
+    }
+
+    private TextView centerText(String value,int sp,int color,boolean bold){
+        TextView t=text(value,sp,color,bold);t.setGravity(Gravity.CENTER);return t;
+    }
+
+    private View moduleGrid(JSONArray items) {
+        LinearLayout wrap = vertical();
+        for (int i = 0; i < items.length(); i += 2) {
+            LinearLayout row = horizontal();
+            for (int col = 0; col < 2; col++) {
+                int idx = i + col;
+                if (idx >= items.length()) {
+                    row.addView(new Space(this), new LinearLayout.LayoutParams(0, dp(1), 1f));
+                    continue;
+                }
+                JSONObject m=items.optJSONObject(idx); if(m==null)continue;
+                String key=m.optString("key","");
+                String name=m.optString("label",key);
+                LinearLayout item = card();
+                item.setPadding(dp(13), dp(13), dp(13), dp(13));
+                item.setOnClickListener(v -> openTab(key));
+                TextView icon = text(moduleInitial(name), 12, selectedRole.color, true);
+                icon.setGravity(Gravity.CENTER);
+                icon.setBackground(round(tint(selectedRole.color, 0.10f), 12, tint(selectedRole.color, 0.16f)));
+                item.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
+                TextView nameTv = text(name, 12, TEXT, true);
+                nameTv.setPadding(0, dp(8), 0, 0);
+                item.addView(nameTv);
+                item.addView(text(m.optString("subtitle","Open"), 9, MUTED, false));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(112), 1f);
+                if (col > 0) lp.leftMargin = dp(8);
+                if (i > 0) lp.topMargin = dp(8);
+                row.addView(item, lp);
+            }
+            wrap.addView(row);
+        }
+        return wrap;
+    }
+
+    private String[] homeModules    private String[] homeModules(Role role) {
         switch (role) {
             case ADMIN:
                 return new String[]{"Attendance","Students","Staff","Fees & Payments","Academics","Exams & Results","Study From Home","Transport","Reports","Settings"};
@@ -387,64 +589,216 @@ public class MainActivity extends Activity {
     }
 
     private View tabScreen(String titleText) {
-        LinearLayout page = vertical();
-        page.setPadding(dp(16), dp(15), dp(16), dp(22));
-
-        TextView back = text("‹  Back", 12, selectedRole.color, true);
-        back.setPadding(0, dp(5), 0, dp(12));
-        back.setOnClickListener(v -> {
-            selectedTab = "Home";
-            renderWorkspace();
-        });
-        page.addView(back);
-
-        page.addView(label(selectedRole.eyebrow, 9, selectedRole.color, true));
-        page.addView(title(titleText, 25));
-        page.addView(body(tabSubtitle(titleText), 12));
-        page.addView(gap(14));
-
-        LinearLayout summary = card();
-        summary.setPadding(dp(15), dp(15), dp(15), dp(15));
-        summary.addView(label("LIVE DATA", 9, selectedRole.color, true));
-        summary.addView(text("Not connected in UI preview", 16, TEXT, true));
-        summary.addView(text("This section shows the approved native presentation structure only. Values, records and actions will be connected to existing SchoolOS authority in the next phase.", 11, MUTED, false));
-        page.addView(summary);
-
-        page.addView(gap(12));
-        page.addView(sectionHeading("Overview", "Representative native rows for this module."));
-        String[] rows = sampleRows(titleText);
-        for (String row : rows) {
-            LinearLayout item = card();
-            item.setPadding(dp(14), dp(13), dp(14), dp(13));
-            LinearLayout line = horizontal();
-            line.setGravity(Gravity.CENTER_VERTICAL);
-
-            TextView dot = text("•", 18, selectedRole.color, true);
-            dot.setGravity(Gravity.CENTER);
-            line.addView(dot, new LinearLayout.LayoutParams(dp(28), dp(36)));
-
-            LinearLayout copy = vertical();
-            copy.addView(text(row, 13, TEXT, true));
-            copy.addView(text("Live data will appear here after connectivity approval.", 10, MUTED, false));
-            line.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-            TextView arrow = text("›", 22, MUTED, false);
-            line.addView(arrow);
-            item.addView(line);
-
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = dp(8);
-            page.addView(item, lp);
-        }
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(page);
-        return scroll;
+        return moduleLoadingScreen();
     }
 
-    private String tabSubtitle(String title) {
+    private View moduleLoadingScreen() {
+        LinearLayout page=vertical();
+        page.setGravity(Gravity.CENTER);
+        page.setPadding(dp(24),dp(24),dp(24),dp(24));
+        ProgressBar progress=new ProgressBar(this);
+        page.addView(progress);
+        TextView t=text("Loading live SchoolOS data…",12,MUTED,true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0,dp(12),0,0);
+        page.addView(t);
+        return page;
+    }
+
+    private void loadModule(String name) {
+        io.execute(() -> {
+            try {
+                JSONObject r=api.getModule(name);
+                JSONObject data=r.optJSONObject("data");
+                if(data==null)throw new Exception("SchoolOS did not return module data.");
+                ui.post(() -> renderModuleScreen(data));
+            } catch(Exception e) {
+                ui.post(() -> renderConnectionError("Could not load this module",message(e)));
+            }
+        });
+    }
+
+    private void renderModuleScreen(JSONObject data) {
+        LinearLayout root=vertical();
+        root.setBackgroundColor(BG);
+        root.addView(topBar());
+
+        LinearLayout page=vertical();
+        page.setPadding(dp(16),dp(15),dp(16),dp(22));
+        TextView back=text("‹  Home",12,selectedRole.color,true);
+        back.setPadding(0,dp(5),0,dp(12));
+        back.setOnClickListener(v -> openTab("home"));
+        page.addView(back);
+        page.addView(label(selectedRole.eyebrow,9,selectedRole.color,true));
+        page.addView(title(data.optString("title",pretty(selectedTab)),25));
+        page.addView(body(data.optString("subtitle","Live SchoolOS data"),12));
+
+        JSONArray metrics=data.optJSONArray("metrics");
+        if(metrics!=null&&metrics.length()>0){page.addView(gap(12));page.addView(metricGrid(metrics,false));}
+
+        if("profile".equals(selectedTab)||"more".equals(selectedTab))addAccountControls(page);
+
+        JSONArray rows=data.optJSONArray("rows");
+        page.addView(gap(13));
+        page.addView(sectionHeading("Overview",rows==null||rows.length()==0?"No records are available for this context.":rows.length()+" live records"));
+        if(rows!=null)page.addView(rowsList(rows));
+
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(page);
+        root.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f));
+        root.addView(bottomNav());
+        setContentView(root);
+    }
+
+    private View rowsList(JSONArray rows) {
+        LinearLayout list=vertical();
+        for(int i=0;i<rows.length();i++){
+            JSONObject r=rows.optJSONObject(i); if(r==null)continue;
+            LinearLayout item=card();item.setPadding(dp(13),dp(12),dp(13),dp(12));
+            LinearLayout line=horizontal();line.setGravity(Gravity.CENTER_VERTICAL);
+            TextView lead=text(moduleInitial(r.optString("title","•")),11,selectedRole.color,true);
+            lead.setGravity(Gravity.CENTER);lead.setBackground(round(tint(selectedRole.color,.10f),11,tint(selectedRole.color,.17f)));
+            line.addView(lead,new LinearLayout.LayoutParams(dp(34),dp(34)));
+            LinearLayout copy=vertical();copy.setPadding(dp(10),0,dp(5),0);
+            copy.addView(text(r.optString("title","Record"),12,TEXT,true));
+            if(!r.optString("subtitle","").isEmpty())copy.addView(text(r.optString("subtitle",""),10,MUTED,false));
+            if(!r.optString("meta","").isEmpty())copy.addView(text(r.optString("meta",""),9,selectedRole.color,true));
+            line.addView(copy,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));
+            item.addView(line);
+
+            String target=r.optString("module","");
+            if(!target.isEmpty())item.setOnClickListener(v -> openTab(target));
+            int id=r.optInt("id",0);
+            if("notification".equals(r.optString("type",""))&&!r.optBoolean("read",false)&&id>0){
+                Button mark=button("Mark read",tint(selectedRole.color,.08f),selectedRole.color);
+                mark.setBackground(round(tint(selectedRole.color,.08f),12,tint(selectedRole.color,.20f)));
+                mark.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(42)));
+                mark.setOnClickListener(v -> markNotification(id));
+                item.addView(gap(7));item.addView(mark);
+            }
+            if("announcement".equals(r.optString("type",""))&&r.optBoolean("requires_ack",false)&&!r.optBoolean("acknowledged",false)&&id>0){
+                Button ack=button("Acknowledge",tint(selectedRole.color,.08f),selectedRole.color);
+                ack.setBackground(round(tint(selectedRole.color,.08f),12,tint(selectedRole.color,.20f)));
+                ack.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(42)));
+                ack.setOnClickListener(v -> ackAnnouncement(id));
+                item.addView(gap(7));item.addView(ack);
+            }
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);
+            if(i>0)lp.topMargin=dp(8);
+            list.addView(item,lp);
+        }
+        return list;
+    }
+
+    private void addAccountControls(LinearLayout page){
+        if(session==null)return;
+        JSONArray memberships=session.optJSONArray("memberships");
+        if(memberships!=null&&memberships.length()>1){
+            page.addView(gap(14));
+            page.addView(sectionHeading("School workspace","Switch between schools linked to this account."));
+            for(int i=0;i<memberships.length();i++){
+                JSONObject m=memberships.optJSONObject(i);if(m==null)continue;
+                boolean active=m.optBoolean("selected",false);
+                Button b=button((active?"✓  ":"")+m.optString("name","School"),active?selectedRole.color:Color.WHITE,active?Color.WHITE:TEXT);
+                if(!active)b.setBackground(round(Color.WHITE,14,LINE));
+                final int schoolId=m.optInt("school_id",0);
+                b.setEnabled(!active);
+                b.setOnClickListener(v -> switchSchool(schoolId));
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(48));
+                if(i>0)lp.topMargin=dp(7);
+                page.addView(b,lp);
+            }
+        }
+        page.addView(gap(14));
+        Button logout=button("Sign out of SchoolOS",Color.WHITE,Color.rgb(180,50,60));
+        logout.setBackground(round(Color.WHITE,14,Color.rgb(245,210,215)));
+        logout.setOnClickListener(v -> logout());
+        page.addView(logout);
+    }
+
+    private void openTab(String key){
+        selectedTab=key==null||key.isEmpty()?"home":key;
+        renderWorkspace();
+    }
+
+    private void markNotification(int id){
+        io.execute(() -> {
+            try{JSONObject b=new JSONObject();b.put("id",id);api.post("notification_read",b);ui.post(() -> loadModule("updates"));}
+            catch(Exception e){ui.post(() -> Toast.makeText(this,message(e),Toast.LENGTH_SHORT).show());}
+        });
+    }
+
+    private void ackAnnouncement(int id){
+        io.execute(() -> {
+            try{JSONObject b=new JSONObject();b.put("id",id);api.post("ack_announcement",b);ui.post(() -> loadModule("updates"));}
+            catch(Exception e){ui.post(() -> Toast.makeText(this,message(e),Toast.LENGTH_SHORT).show());}
+        });
+    }
+
+    private void selectChild(int id){
+        renderLoading("Switching child","Loading the selected student context…");
+        io.execute(() -> {
+            try{JSONObject b=new JSONObject();b.put("child_id",id);session=api.post("select_child",b);JSONObject h=api.get("home");homeData=h.optJSONObject("data");JSONObject s=h.optJSONObject("session");if(s!=null)session=s;ui.post(() -> {selectedTab="home";setRoleFromSession();renderWorkspace();});}
+            catch(Exception e){ui.post(() -> renderConnectionError("Could not switch child",message(e)));}
+        });
+    }
+
+    private void selectTeachingContext(String key){
+        renderLoading("Switching class","Applying your teaching allocation…");
+        io.execute(() -> {
+            try{JSONObject b=new JSONObject();b.put("key",key);session=api.post("select_teaching_context",b);JSONObject h=api.get("home");homeData=h.optJSONObject("data");JSONObject s=h.optJSONObject("session");if(s!=null)session=s;ui.post(() -> {selectedTab="home";setRoleFromSession();renderWorkspace();});}
+            catch(Exception e){ui.post(() -> renderConnectionError("Could not switch class",message(e)));}
+        });
+    }
+
+    private void switchSchool(int id){
+        renderLoading("Switching school","Applying your SchoolOS workspace…");
+        io.execute(() -> {
+            try{JSONObject b=new JSONObject();b.put("school_id",id);JSONObject s=api.post("switch_school",b);ui.post(() -> acceptSession(s));}
+            catch(Exception e){ui.post(() -> renderConnectionError("School switch failed",message(e)));}
+        });
+    }
+
+    private void logout(){
+        renderLoading("Signing out","Closing the secure SchoolOS session…");
+        io.execute(() -> {try{api.post("logout",new JSONObject());}catch(Exception ignore){}api.clearSession();ui.post(() -> renderLogin(null));});
+    }
+
+    private void renderSchoolChooser(JSONArray memberships){
+        LinearLayout page=vertical();page.setPadding(dp(18),dp(18),dp(18),dp(24));page.setBackgroundColor(BG);
+        page.addView(brandRow());page.addView(gap(16));page.addView(title("Select your SchoolOS workspace",25));page.addView(body("Choose the school you want to open.",12));
+        if(memberships!=null)for(int i=0;i<memberships.length();i++){JSONObject m=memberships.optJSONObject(i);if(m==null)continue;LinearLayout item=card();item.setPadding(dp(15),dp(14),dp(15),dp(14));item.addView(text(m.optString("name","School"),15,TEXT,true));item.addView(text(m.optString("role_name","School member"),10,MUTED,false));final int id=m.optInt("school_id",0);item.setOnClickListener(v -> switchSchool(id));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);lp.topMargin=dp(8);page.addView(item,lp);}
+        ScrollView scroll=new ScrollView(this);scroll.addView(page);setContentView(scroll);
+    }
+
+    private void renderLoading(String heading,String sub){
+        LinearLayout page=vertical();page.setGravity(Gravity.CENTER);page.setPadding(dp(28),dp(28),dp(28),dp(28));page.setBackgroundColor(BG);
+        TextView mark=text("S",24,Color.WHITE,true);mark.setGravity(Gravity.CENTER);mark.setBackground(round(BLUE,18,BLUE));page.addView(mark,new LinearLayout.LayoutParams(dp(58),dp(58)));
+        page.addView(gap(15));page.addView(centerText(heading,20,TEXT,true));TextView s=centerText(sub,11,MUTED,false);s.setPadding(0,dp(6),0,dp(15));page.addView(s);page.addView(new ProgressBar(this));setContentView(page);
+    }
+
+    private void renderConnectionError(String heading,String detail){
+        LinearLayout page=vertical();page.setGravity(Gravity.CENTER);page.setPadding(dp(24),dp(24),dp(24),dp(24));page.setBackgroundColor(BG);
+        LinearLayout box=card();box.setPadding(dp(20),dp(20),dp(20),dp(20));box.addView(label("SCHOOLOS CONNECTION",9,Color.rgb(190,55,70),true));box.addView(title(heading,22));box.addView(body(detail,12));box.addView(gap(14));
+        Button retry=button("Try Again",BLUE,Color.WHITE);retry.setOnClickListener(v -> {if(inWorkspace)loadHome();else restoreSession();});box.addView(retry);
+        Button sign=button("Return to Sign In",Color.WHITE,TEXT);sign.setBackground(round(Color.WHITE,14,LINE));sign.setOnClickListener(v -> {api.clearSession();renderLogin(null);});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(50));lp.topMargin=dp(8);box.addView(sign,lp);
+        page.addView(box,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));setContentView(page);
+    }
+
+    private String message(Exception e){String m=e.getMessage();return m==null||m.trim().isEmpty()?"SchoolOS could not complete this request. Check your connection and try again.":m;}
+
+    private void setRoleFromSession(){
+        String role=session==null?"admin":session.optString("role","admin");
+        if("teacher".equals(role))selectedRole=Role.TEACHER;
+        else if("parent".equals(role))selectedRole=Role.PARENT;
+        else if("student".equals(role))selectedRole=Role.STUDENT;
+        else selectedRole=Role.ADMIN;
+    }
+
+    private String pretty(String s){if(s==null)return"";String[] parts=s.replace('_',' ').split(" ");StringBuilder b=new StringBuilder();for(String p:parts){if(p.isEmpty())continue;if(b.length()>0)b.append(' ');b.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));}return b.toString();}
+
+    private String tabSubtitle    private String tabSubtitle(String title) {
         if ("Profile".equals(title)) return "Account identity and role context.";
         if (title.toLowerCase().contains("payment") || title.toLowerCase().contains("fee")) return "Clear payment status and school finance presentation.";
         if (title.toLowerCase().contains("attendance")) return "Fast, compact attendance presentation for daily use.";
@@ -469,44 +823,23 @@ public class MainActivity extends Activity {
         bar.setBackgroundColor(Color.WHITE);
         bar.setElevation(dp(10));
 
-        String[] items;
-        switch (selectedRole) {
-            case ADMIN:
-                items = new String[]{"Home","Operations","Actions","Alerts","More"};
-                break;
-            case TEACHER:
-                items = new String[]{"Home","Classes","Attendance","Teaching","More"};
-                break;
-            case PARENT:
-                items = new String[]{"Home","My Child","Payments","Updates","More"};
-                break;
-            default:
-                items = new String[]{"Home","Learn","Schedule","Updates","More"};
-                break;
-        }
-
-        for (String item : items) {
-            LinearLayout cell = vertical();
-            cell.setGravity(Gravity.CENTER);
-            boolean active = item.equals(selectedTab) || ("Home".equals(item) && "Home".equals(selectedTab));
-
-            TextView dot = text(active ? "●" : "○", 12, active ? selectedRole.color : Color.rgb(157,165,184), true);
-            dot.setGravity(Gravity.CENTER);
-            TextView label = text(item, 9, active ? selectedRole.color : MUTED, active);
-            label.setGravity(Gravity.CENTER);
-            label.setPadding(0, dp(3), 0, 0);
-            cell.addView(dot);
-            cell.addView(label);
-            cell.setOnClickListener(v -> {
-                selectedTab = item;
-                renderWorkspace();
-            });
-            bar.addView(cell, new LinearLayout.LayoutParams(0, dp(50), 1f));
+        JSONArray nav=session==null?null:session.optJSONArray("nav");
+        if(nav==null)return bar;
+        for(int i=0;i<nav.length();i++){
+            JSONObject n=nav.optJSONObject(i);if(n==null)continue;
+            String key=n.optString("key","home");
+            String caption=n.optString("label",pretty(key));
+            boolean active=key.equals(selectedTab);
+            LinearLayout cell=vertical();cell.setGravity(Gravity.CENTER);
+            TextView dot=text(active?"●":"○",12,active?selectedRole.color:Color.rgb(157,165,184),true);dot.setGravity(Gravity.CENTER);
+            TextView label=text(caption,9,active?selectedRole.color:MUTED,active);label.setGravity(Gravity.CENTER);label.setPadding(0,dp(3),0,0);
+            cell.addView(dot);cell.addView(label);cell.setOnClickListener(v -> openTab(key));
+            bar.addView(cell,new LinearLayout.LayoutParams(0,dp(50),1f));
         }
         return bar;
     }
 
-    private View heroMetric(String cap, String value) {
+    private View heroMetric    private View heroMetric(String cap, String value) {
         LinearLayout box = vertical();
         box.setGravity(Gravity.CENTER);
         box.setPadding(dp(6), dp(5), dp(6), dp(5));

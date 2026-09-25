@@ -1,0 +1,42 @@
+name: Build Employee Management Combined APK
+on:
+  push:
+    branches: [ employee-management-combined-apk-v1 ]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build direct-install test APK
+        working-directory: employee-combined
+        run: gradle --no-daemon clean assembleDebug
+      - name: Validate APK package
+        shell: bash
+        run: |
+          APK="employee-combined/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee employee-apk-badging.txt
+          grep -q "package: name='com.alkeynes.employee.management'" employee-apk-badging.txt
+          grep -q "targetSdkVersion:'35'" employee-apk-badging.txt
+          cp "$APK" Employee-Management-Combined-Test-v2.3.1.apk
+          sha256sum Employee-Management-Combined-Test-v2.3.1.apk > Employee-Management-Combined-Test-v2.3.1.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Employee-Management-Combined-APK-v2.3.1
+          path: |
+            Employee-Management-Combined-Test-v2.3.1.apk
+            Employee-Management-Combined-Test-v2.3.1.sha256
+            employee-apk-badging.txt
+          if-no-files-found: error

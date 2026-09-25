@@ -1,875 +1,447 @@
 package com.alkeynes.employee.management;
 
-import android.app.Activity;
-import android.graphics.*;
-import android.graphics.drawable.GradientDrawable;
+import android.Manifest;
+import android.app.*;
+import android.content.*;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.location.*;
 import android.os.*;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.*;
 import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
 import android.widget.*;
+import org.json.*;
+import org.maplibre.android.MapLibre;
+import org.maplibre.android.annotations.*;
+import org.maplibre.android.camera.CameraUpdateFactory;
+import org.maplibre.android.geometry.LatLng;
+import org.maplibre.android.maps.*;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 public class MainActivity extends Activity {
-    private static final int NAVY = Color.rgb(15,39,71);
-    private static final int BLUE = Color.rgb(23,105,224);
-    private static final int BG = Color.rgb(244,247,251);
-    private static final int TEXT = Color.rgb(20,32,51);
-    private static final int MUTED = Color.rgb(104,118,138);
-    private static final int BORDER = Color.rgb(222,229,238);
-    private static final int GREEN = Color.rgb(24,139,86);
-    private static final int AMBER = Color.rgb(199,132,20);
-    private static final int RED = Color.rgb(190,63,63);
-
     private FrameLayout root;
-    private String role = "";
-    private String screen = "";
+    private LinearLayout content;
+    private Ui ui;
+    private SecureStore store;
+    private ApiClient api;
+    private final ExecutorService net=Executors.newFixedThreadPool(3);
+    private final Handler main=new Handler(Looper.getMainLooper());
+    private JSONObject user;
+    private String screen="";
+    private MapView mapView;
+    private Consumer<Location> pendingLocationAction;
+    private static final int REQ_LOCATION=501, REQ_NOTIFICATION=502;
+    private boolean permissionGuideShown=false;
 
-    @Override public void onCreate(Bundle state) {
+    @Override public void onCreate(Bundle state){
         super.onCreate(state);
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(Color.WHITE);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        root = new FrameLayout(this);
-        root.setBackgroundColor(BG);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            int top, bottom;
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets i = insets.getInsets(WindowInsets.Type.systemBars());
-                top = i.top; bottom = i.bottom;
-            } else {
-                top = insets.getSystemWindowInsetTop(); bottom = insets.getSystemWindowInsetBottom();
-            }
-            v.setPadding(0, top, 0, bottom);
-            return insets;
+        MapLibre.getInstance(this);
+        store=new SecureStore(this); api=new ApiClient(store); ui=new Ui(this);
+        getWindow().setStatusBarColor(Ui.BG); getWindow().setNavigationBarColor(Color.WHITE);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        root=new FrameLayout(this); root.setBackgroundColor(Ui.BG);
+        root.setOnApplyWindowInsetsListener((v,insets)->{
+            int top,bottom;
+            if(Build.VERSION.SDK_INT>=30){android.graphics.Insets i=insets.getInsets(WindowInsets.Type.systemBars());top=i.top;bottom=i.bottom;}
+            else{top=insets.getSystemWindowInsetTop();bottom=insets.getSystemWindowInsetBottom();}
+            v.setPadding(0,top,0,bottom);return insets;
         });
-        setContentView(root);
-        root.requestApplyInsets();
-        showRoleSelector();
+        setContentView(root);root.requestApplyInsets();
+        boot();
     }
 
-    private void showRoleSelector() {
-        role = ""; screen = "";
-        root.removeAllViews();
-
-        ScrollView sv = new ScrollView(this);
-        LinearLayout page = column();
-        page.setPadding(dp(22), dp(34), dp(22), dp(32));
-        sv.addView(page, matchWrap());
-
-        ImageView logo = new ImageView(this);
-        logo.setImageResource(R.drawable.ic_employee_management);
-        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(72), dp(72));
-        ilp.gravity = Gravity.CENTER_HORIZONTAL;
-        page.addView(logo, ilp);
-
-        TextView app = tv("Employee Management", 27, NAVY, true);
-        app.setGravity(Gravity.CENTER);
-        app.setPadding(0, dp(14), 0, 0);
-        page.addView(app, matchWrap());
-
-        TextView subtitle = tv("Native Android UI Preview", 14, MUTED, false);
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(5), 0, dp(22));
-        page.addView(subtitle, matchWrap());
-
-        page.addView(infoBanner("DESIGN PREVIEW", "100% native Android interface. No WebView, live API, database write, attendance punch or GPS tracking is enabled in this preview build."), matchWrap());
-
-        LinearLayout login = card();
-        login.addView(label("Sign in"));
-        login.addView(muted("Final native login layout preview"));
-        EditText email = input("Work email", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText password = input("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        login.addView(email, matchWrapMargin(0, 14, 0, 0));
-        login.addView(password, matchWrapMargin(0, 10, 0, 0));
-        Button signIn = primaryButton("Sign in");
-        signIn.setOnClickListener(v -> previewToast("Authentication wiring will be connected after the native design is locked."));
-        login.addView(signIn, matchWrapMargin(0, 14, 0, 0));
-        page.addView(login, matchWrapMargin(0, 18, 0, 0));
-
-        TextView choose = section("Preview role");
-        page.addView(choose, matchWrapMargin(0, 24, 0, 10));
-
-        Button employee = primaryButton("Open Employee UI Preview");
-        employee.setOnClickListener(v -> render("employee", "home"));
-        page.addView(employee, matchWrap());
-
-        Button admin = secondaryButton("Open Admin UI Preview");
-        admin.setOnClickListener(v -> render("admin", "dashboard"));
-        page.addView(admin, matchWrapMargin(0, 10, 0, 0));
-
-        TextView note = muted("This preview intentionally uses placeholder presentation states so no sample value can be mistaken for live company data.");
-        note.setGravity(Gravity.CENTER);
-        page.addView(note, matchWrapMargin(8, 20, 8, 0));
-
-        root.addView(sv, matchMatch());
+    private void boot(){
+        if(store.get("access_token")==null){showLogin();return;}
+        showBusy("Restoring secure session…");
+        callGet("bootstrap",null,r->{
+            hideBusy();
+            user=r.optJSONObject("user");
+            JSONObject a=r.optJSONObject("attendance");
+            if(a!=null)syncTracking(a);
+            String requested=getIntent()!=null?getIntent().getStringExtra("open_screen"):null;
+            if(requested!=null)getIntent().removeExtra("open_screen");
+            render(requested!=null?requested:(isAdmin()?"dashboard":"home"));
+        });
     }
 
-    private void render(String newRole, String newScreen) {
-        role = newRole; screen = newScreen;
-        root.removeAllViews();
+    private boolean isAdmin(){return user!=null&&user.optBoolean("is_admin",false);}
+    private boolean isEmployeeRole(){return user!=null&&"employee".equals(user.optString("role_key"));}
 
-        LinearLayout shell = column();
-        shell.setBackgroundColor(BG);
-        root.addView(shell, matchMatch());
+    private void showLogin(){
+        cleanupMap();root.removeAllViews();
+        ScrollView sv=new ScrollView(this);
+        LinearLayout page=ui.column();page.setPadding(ui.dp(22),ui.dp(34),ui.dp(22),ui.dp(34));sv.addView(page,new ScrollView.LayoutParams(-1,-2));
 
-        shell.addView(topBar(), new LinearLayout.LayoutParams(-1, dp(72)));
+        ImageView logo=new ImageView(this);logo.setImageResource(R.drawable.ic_employee_management);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp(72),ui.dp(72));lp.gravity=Gravity.CENTER_HORIZONTAL;page.addView(logo,lp);
+        TextView title=ui.text("Employee Management",27,Ui.NAVY,true);title.setGravity(Gravity.CENTER);page.addView(title,ui.match(0,14,0,0));
+        TextView sub=ui.text("Native Android",14,Ui.MUTED,false);sub.setGravity(Gravity.CENTER);page.addView(sub,ui.match(0,4,0,22));
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        LinearLayout content = column();
-        content.setPadding(dp(16), dp(14), dp(16), dp(22));
-        scroll.addView(content, matchWrap());
-        shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        LinearLayout card=ui.card();card.addView(ui.label("Sign in"));
+        card.addView(ui.muted("Use your existing Employee Management account."),ui.match(0,4,0,0));
+        EditText email=ui.input("Work email",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText pass=ui.input("Password",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        card.addView(email,ui.match(0,14,0,0));card.addView(pass,ui.match(0,10,0,0));
+        Button login=ui.primary("Sign in");
+        card.addView(login,ui.match(0,14,0,0));
+        TextView status=ui.muted("");status.setGravity(Gravity.CENTER);card.addView(status,ui.match(0,10,0,0));
+        page.addView(card,ui.match());
 
-        if ("employee".equals(role)) buildEmployeeScreen(content, screen);
-        else buildAdminScreen(content, screen);
+        LinearLayout security=ui.softCard();
+        security.addView(ui.label("Secure native session"));
+        security.addView(ui.muted("The app connects only to the Employee Management HTTPS API. Database credentials are never stored in the APK."),ui.match(0,5,0,0));
+        page.addView(security,ui.match(0,14,0,0));
 
-        shell.addView(bottomNav(), new LinearLayout.LayoutParams(-1, dp(68)));
+        login.setOnClickListener(v->{
+            String e=email.getText().toString().trim(),p=pass.getText().toString();
+            if(e.isEmpty()||p.isEmpty()){status.setText("Enter your email and password.");return;}
+            status.setText("Signing in…");login.setEnabled(false);
+            final String deviceId=Settings.Secure.getString(getContentResolver(),Settings.Secure.ANDROID_ID);
+            final String label=Build.MANUFACTURER+" "+Build.MODEL;
+            net.submit(()->{
+                try{
+                    JSONObject r=api.login(e,p,deviceId,label);
+                    store.put("access_token",r.optString("access_token"));
+                    String tt=r.optString("tracking_token",null);if(tt!=null&&!tt.isEmpty())store.put("tracking_token",tt);
+                    user=r.getJSONObject("user");
+                    runOnUiThread(()->{hideKeyboard();render(isAdmin()?"dashboard":"home");syncBootstrap();});
+                }catch(Exception ex){runOnUiThread(()->{login.setEnabled(true);status.setText(message(ex));});}
+            });
+        });
+        root.addView(sv,new FrameLayout.LayoutParams(-1,-1));
     }
 
-    private View topBar() {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(16), dp(8), dp(12), dp(8));
-        bar.setBackgroundColor(Color.WHITE);
-        bar.setElevation(dp(2));
+    private void syncBootstrap(){
+        callGet("bootstrap",null,r->{user=r.optJSONObject("user");JSONObject a=r.optJSONObject("attendance");if(a!=null)syncTracking(a);});
+    }
 
-        LinearLayout titles = column();
-        TextView brand = tv("Employee Management", 12, MUTED, true);
-        TextView title = tv(pageTitle(screen), 20, NAVY, true);
-        titles.addView(brand, matchWrap());
-        titles.addView(title, matchWrap());
-        bar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+    private void render(String target){
+        if(target==null||target.isEmpty())target=isAdmin()?"dashboard":"home";
+        if(!allowedTarget(target))target=isAdmin()?"dashboard":"home";
+        screen=target; cleanupMap(); root.removeAllViews();
 
-        TextView preview = pill("UI PREVIEW", BLUE, Color.WHITE);
-        bar.addView(preview, wrapWrapMargin(6,0,8,0));
+        LinearLayout shell=ui.column();shell.setBackgroundColor(Ui.BG);root.addView(shell,new FrameLayout.LayoutParams(-1,-1));
+        shell.addView(topBar(),new LinearLayout.LayoutParams(-1,ui.dp(72)));
+        ScrollView sv=new ScrollView(this);sv.setFillViewport(true);
+        content=ui.column();content.setPadding(ui.dp(16),ui.dp(14),ui.dp(16),ui.dp(24));sv.addView(content,new ScrollView.LayoutParams(-1,-2));
+        shell.addView(sv,new LinearLayout.LayoutParams(-1,0,1f));
+        shell.addView(bottomNav(),new LinearLayout.LayoutParams(-1,ui.dp(68)));
 
-        TextView r = pill("employee".equals(role) ? "EMPLOYEE" : "ADMIN", NAVY, Color.WHITE);
-        bar.addView(r, wrapWrap());
+        if("more".equals(screen)){if(isAdmin())adminMore();else employeeMore();return;}
+        content.addView(loadingCard(),ui.match());
+        Map<String,String> q=null;
+        String action=actionForScreen(screen);
+        callGet(action,q,r->{content.removeAllViews();JSONObject d=r.optJSONObject("data");if(d==null)d=new JSONObject();if(isAdmin())buildAdmin(d);else buildEmployee(d);});
+    }
+
+    private boolean allowedTarget(String s){
+        if(isAdmin())return Arrays.asList("dashboard","people","attendance","map","more","organisation","locations","shifts","holidays","admin_leave","timesheets","field","expenses","payroll","reports","notifications","security","settings").contains(s);
+        return Arrays.asList("home","attendance","leave","more","profile","timesheets","field","expenses","payroll","notifications","security").contains(s);
+    }
+
+    private String actionForScreen(String s){
+        if(!isAdmin()){
+            switch(s){case"home":return"employee_home";case"attendance":return"employee_attendance";case"leave":return"employee_leave";case"profile":return"profile";case"timesheets":return"employee_timesheets";case"field":return"employee_field";case"expenses":return"employee_expenses";case"payroll":return"employee_payroll";case"notifications":return"notifications";case"security":return"security";default:return"employee_home";}
+        }
+        switch(s){case"dashboard":return"admin_dashboard";case"people":return"admin_employees";case"attendance":return"admin_attendance";case"map":return"admin_live_map";case"organisation":return"admin_organisation";case"locations":return"admin_locations";case"shifts":return"admin_shifts";case"holidays":return"admin_holidays";case"admin_leave":return"admin_leave";case"timesheets":return"admin_timesheets";case"field":return"admin_field";case"expenses":return"admin_expenses";case"payroll":return"admin_payroll";case"reports":return"admin_reports";case"notifications":return"notifications";case"security":return"security";case"settings":return"admin_settings";default:return"admin_dashboard";}
+    }
+
+    private View topBar(){
+        LinearLayout bar=new LinearLayout(this);bar.setOrientation(LinearLayout.HORIZONTAL);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(ui.dp(16),ui.dp(8),ui.dp(12),ui.dp(8));bar.setBackgroundColor(Color.WHITE);bar.setElevation(ui.dp(2));
+        LinearLayout tx=ui.column();tx.addView(ui.text("Employee Management",12,Ui.MUTED,true));tx.addView(ui.text(pageTitle(screen),20,Ui.NAVY,true));bar.addView(tx,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView role=ui.pill(isAdmin()?"ADMIN":"EMPLOYEE",Ui.NAVY,Color.WHITE);bar.addView(role,ui.wrap());
         return bar;
     }
 
-    private View bottomNav() {
-        LinearLayout nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.HORIZONTAL);
-        nav.setGravity(Gravity.CENTER);
-        nav.setPadding(dp(4), dp(5), dp(4), dp(5));
-        nav.setBackgroundColor(Color.WHITE);
-        nav.setElevation(dp(8));
-
-        if ("employee".equals(role)) {
-            nav.addView(navItem("Home", "home", "⌂"), weight());
-            nav.addView(navItem("Attendance", "attendance", "◎"), weight());
-            nav.addView(navItem("Leave", "leave", "◫"), weight());
-            nav.addView(navItem("More", "more", "☷"), weight());
-            nav.addView(navItem("Profile", "profile", "○"), weight());
-        } else {
-            nav.addView(navItem("Home", "dashboard", "⌂"), weight());
-            nav.addView(navItem("People", "people", "♙"), weight());
-            nav.addView(navItem("Attendance", "attendance", "◎"), weight());
-            nav.addView(navItem("Live Map", "map", "⌖"), weight());
-            nav.addView(navItem("More", "more", "☷"), weight());
+    private View bottomNav(){
+        LinearLayout nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);nav.setGravity(Gravity.CENTER);nav.setPadding(ui.dp(4),ui.dp(5),ui.dp(4),ui.dp(5));nav.setBackgroundColor(Color.WHITE);nav.setElevation(ui.dp(8));
+        if(isAdmin()){
+            nav.addView(navItem("Home","dashboard","⌂"),ui.weight());nav.addView(navItem("People","people","♙"),ui.weight());nav.addView(navItem("Attendance","attendance","◎"),ui.weight());nav.addView(navItem("Live Map","map","⌖"),ui.weight());nav.addView(navItem("More","more","☷"),ui.weight());
+        }else{
+            nav.addView(navItem("Home","home","⌂"),ui.weight());nav.addView(navItem("Attendance","attendance","◎"),ui.weight());nav.addView(navItem("Leave","leave","◫"),ui.weight());nav.addView(navItem("More","more","☷"),ui.weight());nav.addView(navItem("Profile","profile","○"),ui.weight());
         }
         return nav;
     }
 
-    private View navItem(String label, String target, String icon) {
-        boolean active = target.equals(screen) || ("more".equals(target) && isMoreScreen(screen));
-        LinearLayout item = column();
-        item.setGravity(Gravity.CENTER);
-        item.setPadding(dp(2), dp(3), dp(2), dp(2));
-        TextView i = tv(icon, 20, active ? BLUE : MUTED, false);
-        i.setGravity(Gravity.CENTER);
-        TextView l = tv(label, 10, active ? NAVY : MUTED, active);
-        l.setGravity(Gravity.CENTER);
-        item.addView(i, matchWrap());
-        item.addView(l, matchWrap());
-        item.setOnClickListener(v -> render(role, target));
-        return item;
+    private View navItem(String label,String target,String icon){
+        boolean active=target.equals(screen)||("more".equals(target)&&isMoreScreen(screen));
+        LinearLayout item=ui.column();item.setGravity(Gravity.CENTER);item.setPadding(ui.dp(2),ui.dp(3),ui.dp(2),ui.dp(2));
+        TextView i=ui.text(icon,20,active?Ui.BLUE:Ui.MUTED,false);i.setGravity(Gravity.CENTER);TextView l=ui.text(label,10,active?Ui.NAVY:Ui.MUTED,active);l.setGravity(Gravity.CENTER);
+        item.addView(i,ui.match());item.addView(l,ui.match());item.setOnClickListener(v->render(target));return item;
     }
 
-    private boolean isMoreScreen(String s) {
-        return Arrays.asList("timesheets","field","expenses","payroll","notifications","security","settings","reports","organisation","locations","shifts","holidays","admin_leave").contains(s);
+    private boolean isMoreScreen(String s){return Arrays.asList("timesheets","field","expenses","payroll","notifications","security","settings","reports","organisation","locations","shifts","holidays","admin_leave").contains(s);}
+
+    private View loadingCard(){LinearLayout c=ui.softCard();ProgressBar p=new ProgressBar(this);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ui.dp(34),ui.dp(34));lp.gravity=Gravity.CENTER_HORIZONTAL;c.addView(p,lp);TextView t=ui.muted("Loading secure data…");t.setGravity(Gravity.CENTER);c.addView(t,ui.match(0,8,0,0));return c;}
+
+    private void buildEmployee(JSONObject d){
+        switch(screen){case"home":employeeHome(d);break;case"attendance":employeeAttendance(d);break;case"leave":employeeLeave(d);break;case"profile":employeeProfile(d);break;case"timesheets":employeeTimesheets(d);break;case"field":employeeField(d);break;case"expenses":employeeExpenses(d);break;case"payroll":employeePayroll(d);break;case"notifications":notifications(d);break;case"security":security(d);break;default:employeeHome(d);}
     }
 
-    private void buildEmployeeScreen(LinearLayout c, String s) {
-        addPreviewNotice(c);
-        switch (s) {
-            case "attendance": employeeAttendance(c); break;
-            case "leave": employeeLeave(c); break;
-            case "profile": employeeProfile(c); break;
-            case "more": employeeMore(c); break;
-            case "timesheets": employeeTimesheets(c); break;
-            case "field": employeeField(c); break;
-            case "expenses": employeeExpenses(c); break;
-            case "payroll": employeePayroll(c); break;
-            case "notifications": employeeNotifications(c); break;
-            case "security": employeeSecurity(c); break;
-            default: employeeHome(c);
+    private void buildAdmin(JSONObject d){
+        switch(screen){case"dashboard":adminDashboard(d);break;case"people":adminPeople(d);break;case"attendance":adminAttendance(d);break;case"map":adminMap(d);break;case"organisation":adminOrganisation(d);break;case"locations":adminLocations(d);break;case"shifts":adminShifts(d);break;case"holidays":adminHolidays(d);break;case"admin_leave":adminLeave(d);break;case"timesheets":adminTimesheets(d);break;case"field":adminField(d);break;case"expenses":adminExpenses(d);break;case"payroll":adminPayroll(d);break;case"reports":adminReports(d);break;case"notifications":notifications(d);break;case"security":security(d);break;case"settings":adminSettings(d);break;default:adminDashboard(d);}
+    }
+
+    private void employeeHome(JSONObject d){
+        JSONObject u=d.optJSONObject("user"),a=d.optJSONObject("attendance"),month=d.optJSONObject("month");
+        LinearLayout hero=ui.darkCard();hero.addView(ui.text(greeting(),14,Color.rgb(206,218,235),false));hero.addView(ui.text(u!=null?u.optString("name","Employee"):"Employee",25,Color.WHITE,true),ui.match(0,4,0,0));hero.addView(ui.pill(a!=null&&a.optBoolean("active")?"WORKING":"NOT CLOCKED IN",Color.rgb(38,82,130),Color.WHITE),ui.wrap());content.addView(hero,ui.match(0,12,0,0));
+        content.addView(ui.section("Today"),ui.match(0,20,0,10));
+        LinearLayout today=ui.card();JSONObject shift=a!=null?a.optJSONObject("shift"):null;JSONObject session=a!=null?a.optJSONObject("session"):null;
+        today.addView(rowTitle("Today's shift",shift!=null?shift.optString("name","Assigned"):"Not assigned"));
+        if(shift!=null)today.addView(ui.kv("Hours",shortTime(shift.optString("start_time"))+" – "+shortTime(shift.optString("end_time"))),ui.match());
+        today.addView(ui.kv("Attendance",a!=null&&a.optBoolean("active")?"Clocked in "+shortTime(session!=null?session.optString("clock_in_at"):""):"No active session"),ui.match());
+        Button att=ui.primary(a!=null&&a.optBoolean("active")?"Open Attendance":"Clock In");att.setOnClickListener(v->render("attendance"));today.addView(att,ui.match(0,14,0,0));content.addView(today,ui.match());
+        content.addView(ui.section("Quick snapshot"),ui.match(0,20,0,10));
+        addMetricPair("Worked today",session!=null?minutes(session.optInt("work_minutes")):"0h 0m","Month present",month!=null?String.valueOf(month.optInt("sessions")):"0");
+        addMetricPair("Late days",month!=null?String.valueOf(month.optInt("late_days")):"0","Leave used",fmt(d.optDouble("used_leave",0))+" d");
+        addMetricPair("Active visits",String.valueOf(d.optInt("active_visits",0)),"Role",user.optString("role_name","Employee"));
+    }
+
+    private void employeeAttendance(JSONObject d){
+        JSONObject st=d.optJSONObject("state");if(st==null)st=new JSONObject();syncTracking(st);
+        boolean active=st.optBoolean("active"),br=st.optBoolean("break_active");JSONObject s=st.optJSONObject("session");
+        LinearLayout state=ui.darkCard();TextView clock=ui.text(new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date()),42,Color.WHITE,true);clock.setGravity(Gravity.CENTER);state.addView(clock,ui.match());
+        TextView status=ui.text(active?(br?"ON BREAK":"CLOCKED IN"):"NOT CLOCKED IN",13,Color.rgb(204,219,237),true);status.setGravity(Gravity.CENTER);state.addView(status,ui.match(0,5,0,0));
+        if(active&&s!=null){TextView since=ui.text("Since "+shortTime(s.optString("clock_in_at")),13,Color.WHITE,false);since.setGravity(Gravity.CENTER);state.addView(since,ui.match(0,4,0,0));}
+        content.addView(state,ui.match(0,12,0,0));
+
+        LinearLayout gps=ui.card();gps.addView(rowTitle("Location authority","Server validated"));gps.addView(ui.kv("Maximum accuracy",Math.round(st.optDouble("max_accuracy_m",200))+" m"),ui.match());gps.addView(ui.kv("Live tracking",st.optBoolean("tracking_enabled")?"Enabled":"Disabled"),ui.match());content.addView(gps,ui.match(0,12,0,0));
+
+        if(!active){Button b=ui.primary("Clock In");b.setOnClickListener(v->attendanceAction("clock_in"));content.addView(b,ui.match(0,12,0,0));}
+        else{
+            Button b=ui.secondary(br?"End Break":"Start Break");b.setOnClickListener(v->attendanceAction(br?"break_end":"break_start"));content.addView(b,ui.match(0,12,0,0));
+            Button out=ui.danger("Clock Out");out.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Clock out?").setMessage("This will end your active work session.").setPositiveButton("Clock Out",(x,w)->attendanceAction("clock_out")).setNegativeButton("Cancel",null).show());content.addView(out,ui.match(0,8,0,0));
         }
+
+        content.addView(ui.section("Authorised work locations"),ui.match(0,22,0,10));
+        JSONArray locs=st.optJSONArray("locations");if(locs==null||locs.length()==0)content.addView(empty("No work location assigned","Clock-in may be blocked when geofencing is required."));
+        else for(int i=0;i<locs.length();i++){JSONObject x=locs.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("name"),x.optInt("radius_meters")+" m"));c.addView(ui.muted(x.optString("address","Assigned GPS location")),ui.match(0,5,0,0));content.addView(c,ui.match(0,0,0,8));}
+
+        content.addView(ui.section("Today's events"),ui.match(0,20,0,10));JSONArray ev=d.optJSONArray("events");if(ev==null||ev.length()==0)content.addView(empty("No attendance events yet","Clock-in, breaks and clock-out will appear here."));
+        else for(int i=0;i<ev.length();i++){JSONObject x=ev.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(titleCase(x.optString("event_type")),shortTime(x.optString("event_at"))));String sub=x.optString("location_name","GPS captured");if(x.has("accuracy")&&!x.isNull("accuracy"))sub+=" · "+Math.round(x.optDouble("accuracy"))+" m accuracy";c.addView(ui.muted(sub),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void buildAdminScreen(LinearLayout c, String s) {
-        addPreviewNotice(c);
-        switch (s) {
-            case "people": adminPeople(c); break;
-            case "attendance": adminAttendance(c); break;
-            case "map": adminMap(c); break;
-            case "more": adminMore(c); break;
-            case "organisation": adminOrganisation(c); break;
-            case "locations": adminLocations(c); break;
-            case "shifts": adminShifts(c); break;
-            case "holidays": genericAdmin(c, "Holidays", "Holiday calendar", new String[]{"Upcoming holidays","Branch scope","Paid / unpaid"}); break;
-            case "admin_leave": adminLeave(c); break;
-            case "timesheets": adminTimesheets(c); break;
-            case "field": adminField(c); break;
-            case "expenses": adminExpenses(c); break;
-            case "payroll": adminPayroll(c); break;
-            case "reports": genericAdmin(c, "Reports", "Operational reports", new String[]{"Attendance report","Leave report","Payroll report","Location report"}); break;
-            case "notifications": adminNotifications(c); break;
-            case "security": adminSecurity(c); break;
-            case "settings": adminSettings(c); break;
-            default: adminDashboard(c);
-        }
+    private void attendanceAction(String action){
+        getFreshLocation(loc->{
+            showBusy("Recording "+titleCase(action)+"…");
+            JSONObject b=new JSONObject();
+            try{b.put("attendance_action",action);b.put("lat",loc.getLatitude());b.put("lng",loc.getLongitude());b.put("accuracy",loc.hasAccuracy()?loc.getAccuracy():0);b.put("client_event_id",UUID.randomUUID().toString().replace("-",""));}catch(Exception ignored){}
+            callPost("attendance_action",b,r->{hideBusy();JSONObject st=r.optJSONObject("state");if(st!=null)syncTracking(st);toast(r.optString("message","Attendance saved."));render("attendance");});
+        });
     }
 
-    private void addPreviewNotice(LinearLayout c) {
-        c.addView(infoBanner("NATIVE UI", "Design preview only · values marked with — are intentionally not connected to live server data."), matchWrap());
+    private void employeeLeave(JSONObject d){
+        JSONArray balances=d.optJSONArray("balances");content.addView(ui.section("Leave balance"),ui.match(0,14,0,10));
+        if(balances!=null)for(int i=0;i<balances.length();i++){JSONObject b=balances.optJSONObject(i);LinearLayout c=ui.card();String v=b.optDouble("annual_days")>0?fmt(b.optDouble("available"))+" days":"No annual cap";c.addView(rowTitle(b.optString("name"),v));c.addView(ui.muted(b.optInt("is_paid")==1?"Paid leave":"Unpaid leave"),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
+        Button req=ui.primary("Request Leave");req.setOnClickListener(v->leaveDialog(d.optJSONArray("types")));content.addView(req,ui.match(0,12,0,0));
+        content.addView(ui.section("Request history"),ui.match(0,22,0,10));JSONArray rows=d.optJSONArray("requests");if(rows==null||rows.length()==0)content.addView(empty("No leave requests","Your submitted requests will appear here."));
+        else for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("type_name"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+fmt(x.optDouble("days"))+" days"),ui.match(0,4,0,0));if(!x.optString("reason").isEmpty())c.addView(ui.muted(x.optString("reason")),ui.match(0,3,0,0));content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void employeeHome(LinearLayout c) {
-        LinearLayout hero = darkCard();
-        hero.addView(tv("Good afternoon", 14, Color.rgb(206,218,235), false));
-        hero.addView(tv("Preview Employee", 25, Color.WHITE, true), matchWrapMargin(0,4,0,0));
-        hero.addView(pill("ACTIVE EMPLOYEE", Color.rgb(38,82,130), Color.WHITE), wrapWrapMargin(0,12,0,0));
-        c.addView(hero, matchWrapMargin(0,12,0,0));
-
-        c.addView(section("Today"), matchWrapMargin(0,20,0,10));
-        LinearLayout shift = card();
-        shift.addView(rowTitle("Today's Shift", "—"));
-        shift.addView(keyValue("Work location", "—"));
-        shift.addView(keyValue("Attendance", "Not connected"));
-        Button attendance = primaryButton("Open Attendance");
-        attendance.setOnClickListener(v -> render("employee","attendance"));
-        shift.addView(attendance, matchWrapMargin(0,14,0,0));
-        c.addView(shift, matchWrap());
-
-        c.addView(section("Quick snapshot"), matchWrapMargin(0,20,0,10));
-        addMetricPair(c, "Worked today", "—", "Month present", "—");
-        addMetricPair(c, "Leave balance", "—", "Pending items", "—");
-
-        c.addView(section("Quick actions"), matchWrapMargin(0,20,0,10));
-        c.addView(actionGrid(new String[][]{
-            {"Attendance","attendance"},{"Request Leave","leave"},{"Timesheet","timesheets"},{"Expense","expenses"}
-        }), matchWrap());
+    private void leaveDialog(JSONArray types){
+        if(types==null||types.length()==0){toast("No active leave types are available.");return;}
+        LinearLayout form=dialogForm();List<String> names=new ArrayList<>();List<Integer> ids=new ArrayList<>();for(int i=0;i<types.length();i++){JSONObject t=types.optJSONObject(i);names.add(t.optString("name")+(t.optInt("is_paid")==1?" · Paid":" · Unpaid"));ids.add(t.optInt("id"));}
+        Spinner sp=new Spinner(this);sp.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));form.addView(sp,ui.match());
+        EditText from=dateInput("From date"),to=dateInput("To date"),reason=ui.input("Reason",InputType.TYPE_CLASS_TEXT);
+        form.addView(from,ui.match(0,10,0,0));form.addView(to,ui.match(0,10,0,0));form.addView(reason,ui.match(0,10,0,0));
+        AlertDialog dlg=new AlertDialog.Builder(this).setTitle("Request Leave").setView(form).setPositiveButton("Submit",null).setNegativeButton("Cancel",null).create();
+        dlg.setOnShowListener(x->dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(from.getText().length()==0||to.getText().length()==0){toast("Select both dates.");return;}JSONObject b=new JSONObject();try{b.put("leave_type_id",ids.get(sp.getSelectedItemPosition()));b.put("start_date",from.getText().toString());b.put("end_date",to.getText().toString());b.put("reason",reason.getText().toString());}catch(Exception ignored){}showBusy("Submitting leave…");callPost("leave_request",b,r->{hideBusy();dlg.dismiss();toast(r.optString("message"));render("leave");});}));dlg.show();
     }
 
-    private void employeeAttendance(LinearLayout c) {
-        LinearLayout status = darkCard();
-        TextView time = tv("--:--", 42, Color.WHITE, true); time.setGravity(Gravity.CENTER);
-        TextView state = tv("ATTENDANCE STATUS", 12, Color.rgb(191,209,232), true); state.setGravity(Gravity.CENTER);
-        TextView value = tv("Not connected", 20, Color.WHITE, true); value.setGravity(Gravity.CENTER);
-        status.addView(time, matchWrap());
-        status.addView(state, matchWrapMargin(0,6,0,0));
-        status.addView(value, matchWrapMargin(0,3,0,0));
-        c.addView(status, matchWrapMargin(0,12,0,0));
-
-        LinearLayout gps = card();
-        gps.addView(rowTitle("Location", "Android native"));
-        gps.addView(keyValue("GPS accuracy", "—"));
-        gps.addView(keyValue("Geofence", "—"));
-        gps.addView(keyValue("Tracker", "Not active in UI preview"));
-        c.addView(gps, matchWrapMargin(0,12,0,0));
-
-        Button clock = primaryButton("Clock In");
-        clock.setOnClickListener(v -> previewToast("Clock action is intentionally disabled in the design preview."));
-        c.addView(clock, matchWrapMargin(0,14,0,0));
-        Button breakBtn = secondaryButton("Start Break");
-        breakBtn.setOnClickListener(v -> previewToast("Break action will be wired after design approval."));
-        c.addView(breakBtn, matchWrapMargin(0,8,0,0));
-
-        c.addView(section("Today's summary"), matchWrapMargin(0,22,0,10));
-        addMetricPair(c, "Clock in", "—", "Worked", "—");
-        addMetricPair(c, "Break", "—", "Clock out", "—");
-
-        LinearLayout help = softCard();
-        help.addView(label("How attendance will work"));
-        help.addView(muted("The final native app will request Android location permission, validate the server-authorised shift/location, and show a visible tracking notification only while the permitted work session is active."));
-        c.addView(help, matchWrapMargin(0,14,0,0));
+    private void employeeTimesheets(JSONObject d){
+        JSONArray sessions=d.optJSONArray("sessions"),ots=d.optJSONArray("overtime_requests");int work=0,br=0,ot=0;if(sessions!=null)for(int i=0;i<sessions.length();i++){JSONObject x=sessions.optJSONObject(i);work+=x.optInt("effective_work_minutes");br+=x.optInt("break_minutes");ot+=x.optInt("overtime_minutes");}
+        addMetricPair("Worked",minutes(work),"Break",minutes(br));addMetricPair("Auto OT",minutes(ot),"Days",String.valueOf(sessions==null?0:sessions.length()));
+        content.addView(ui.section("Daily timesheet"),ui.match(0,20,0,10));if(sessions==null||sessions.length()==0)content.addView(empty("No attendance in this period","Recorded attendance sessions will appear here."));
+        else for(int i=0;i<sessions.length();i++){JSONObject x=sessions.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("work_date"),minutes(x.optInt("effective_work_minutes"))));c.addView(ui.muted(shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out")))+" · break "+minutes(x.optInt("break_minutes"))),ui.match(0,4,0,0));if(!x.isNull("effective_clock_out")){Button r=ui.secondary("Request OT");final int sid=x.optInt("id"),suggest=Math.max(1,x.optInt("overtime_minutes"));r.setOnClickListener(v->overtimeDialog(sid,suggest));c.addView(r,ui.match(0,10,0,0));}content.addView(c,ui.match(0,0,0,8));}
+        content.addView(ui.section("Overtime requests"),ui.match(0,20,0,10));if(ots==null||ots.length()==0)content.addView(empty("No overtime requests","Requests submitted from closed attendance days will appear here."));else for(int i=0;i<ots.length();i++){JSONObject x=ots.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("work_date"),titleCase(x.optString("status"))));c.addView(ui.muted(minutes(x.optInt("minutes"))+" · "+x.optString("reason","No reason")),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void employeeLeave(LinearLayout c) {
-        c.addView(section("Leave balance"), matchWrapMargin(0,14,0,10));
-        addMetricPair(c, "Available", "—", "Used", "—");
-        Button request = primaryButton("Request Leave");
-        request.setOnClickListener(v -> previewToast("Leave form UI is preview-only."));
-        c.addView(request, matchWrapMargin(0,12,0,0));
-
-        c.addView(section("My requests"), matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live leave data", "Approved, pending and rejected requests will appear here from the server."));
+    private void overtimeDialog(int sid,int suggested){
+        LinearLayout f=dialogForm();EditText mins=ui.input("Minutes",InputType.TYPE_CLASS_NUMBER);mins.setText(String.valueOf(suggested));EditText reason=ui.input("Reason",InputType.TYPE_CLASS_TEXT);f.addView(mins,ui.match());f.addView(reason,ui.match(0,10,0,0));
+        AlertDialog d=new AlertDialog.Builder(this).setTitle("Request Overtime Approval").setView(f).setPositiveButton("Submit",null).setNegativeButton("Cancel",null).create();d.setOnShowListener(x->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{JSONObject b=new JSONObject();try{b.put("attendance_session_id",sid);b.put("minutes",Integer.parseInt(mins.getText().toString()));b.put("reason",reason.getText().toString());}catch(Exception e){toast("Enter valid minutes.");return;}showBusy("Submitting overtime…");callPost("overtime_request",b,r->{hideBusy();d.dismiss();toast(r.optString("message"));render("timesheets");});}));d.show();
     }
 
-    private void employeeProfile(LinearLayout c) {
-        LinearLayout profile = darkCard();
-        TextView avatar = tv("PE", 26, NAVY, true); avatar.setGravity(Gravity.CENTER); avatar.setBackground(circle(Color.WHITE));
-        profile.addView(avatar, new LinearLayout.LayoutParams(dp(62),dp(62)));
-        profile.addView(tv("Preview Employee", 23, Color.WHITE, true), matchWrapMargin(0,12,0,0));
-        profile.addView(tv("Employee code · —", 13, Color.rgb(203,216,234), false));
-        c.addView(profile, matchWrapMargin(0,12,0,0));
-
-        LinearLayout details = card();
-        details.addView(keyValue("Department", "—"));
-        details.addView(keyValue("Designation", "—"));
-        details.addView(keyValue("Branch", "—"));
-        details.addView(keyValue("Manager", "—"));
-        details.addView(keyValue("Joining date", "—"));
-        c.addView(details, matchWrapMargin(0,12,0,0));
-
-        Button security = secondaryButton("Security & Sessions");
-        security.setOnClickListener(v -> render("employee","security"));
-        c.addView(security, matchWrapMargin(0,12,0,0));
-        Button switchRole = secondaryButton("Switch to Admin UI Preview");
-        switchRole.setOnClickListener(v -> render("admin","dashboard"));
-        c.addView(switchRole, matchWrapMargin(0,8,0,0));
-        Button exit = textButton("Back to role selector");
-        exit.setOnClickListener(v -> showRoleSelector());
-        c.addView(exit, matchWrapMargin(0,8,0,0));
+    private void employeeField(JSONObject d){
+        JSONArray rows=d.optJSONArray("visits");content.addView(ui.section("Field assignments"),ui.match(0,14,0,10));if(rows==null||rows.length()==0){content.addView(empty("No field assignments","Assigned client/site visits will appear here."));return;}
+        for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("title"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("client_name")+" · "+x.optString("address","")),ui.match(0,4,0,0));if(x.optString("status").equals("assigned")||x.optString("status").equals("in_progress")){Button b=ui.primary(x.optString("status").equals("assigned")?"Check In":"Check Out");final int id=x.optInt("id");final String a=x.optString("status").equals("assigned")?"check_in":"check_out";b.setOnClickListener(v->fieldAction(id,a));c.addView(b,ui.match(0,10,0,0));}content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void employeeMore(LinearLayout c) {
-        c.addView(section("Work"), matchWrapMargin(0,14,0,10));
-        addMenu(c,"Timesheets","Daily work time and overtime","timesheets");
-        addMenu(c,"Field Visits","Client and field assignments","field");
-        addMenu(c,"Expenses","Submit and review claims","expenses");
-        addMenu(c,"Payroll","Monthly pay summary","payroll");
-        c.addView(section("Account"), matchWrapMargin(0,22,0,10));
-        addMenu(c,"Notifications","Updates that need your attention","notifications");
-        addMenu(c,"Security","Sessions and authorised devices","security");
+    private void fieldAction(int id,String a){
+        getFreshLocation(loc->{JSONObject b=new JSONObject();try{b.put("visit_id",id);b.put("visit_action",a);b.put("lat",loc.getLatitude());b.put("lng",loc.getLongitude());b.put("accuracy",loc.hasAccuracy()?loc.getAccuracy():0);}catch(Exception ignored){}showBusy("Validating site location…");callPost("field_action",b,r->{hideBusy();toast(r.optString("message"));render("field");});});
     }
 
-    private void employeeTimesheets(LinearLayout c) {
-        addMetricPair(c,"Worked","—","Overtime","—");
-        c.addView(section("Daily timesheet"), matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live timesheet loaded","Daily work, break and approved overtime will appear here."));
+    private void employeeExpenses(JSONObject d){
+        JSONArray rows=d.optJSONArray("expenses");double pending=0,approved=0;if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);if("pending".equals(x.optString("status")))pending+=x.optDouble("amount");if("approved".equals(x.optString("status")))approved+=x.optDouble("amount");}
+        addMetricPair("Pending","₹"+money(pending),"Approved","₹"+money(approved));Button add=ui.primary("Submit Expense");add.setOnClickListener(v->expenseDialog(d.optJSONArray("visits")));content.addView(add,ui.match(0,12,0,0));
+        content.addView(ui.section("Claims"),ui.match(0,20,0,10));if(rows==null||rows.length()==0)content.addView(empty("No expense claims","Submitted claims will appear here."));else for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("category"),"₹"+money(x.optDouble("amount"))));c.addView(ui.muted(x.optString("expense_date")+" · "+titleCase(x.optString("status"))+(x.optString("visit_title").isEmpty()?"":" · "+x.optString("visit_title"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void employeeField(LinearLayout c) {
-        addMetricPair(c,"Assigned","—","Completed","—");
-        c.addView(section("Field assignments"), matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live field assignments","Assigned visits and GPS check-in/out actions will appear here."));
+    private void expenseDialog(JSONArray visits){
+        LinearLayout f=dialogForm();EditText date=dateInput("Expense date");date.setText(new SimpleDateFormat("yyyy-MM-dd",Locale.US).format(new Date()));EditText cat=ui.input("Category",InputType.TYPE_CLASS_TEXT);EditText amount=ui.input("Amount",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);EditText notes=ui.input("Notes",InputType.TYPE_CLASS_TEXT);f.addView(date,ui.match());f.addView(cat,ui.match(0,10,0,0));f.addView(amount,ui.match(0,10,0,0));
+        Spinner sp=new Spinner(this);List<String> names=new ArrayList<>();List<Integer> ids=new ArrayList<>();names.add("General expense");ids.add(0);if(visits!=null)for(int i=0;i<visits.length();i++){JSONObject x=visits.optJSONObject(i);names.add(x.optString("title"));ids.add(x.optInt("id"));}sp.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));f.addView(sp,ui.match(0,10,0,0));f.addView(notes,ui.match(0,10,0,0));
+        AlertDialog d=new AlertDialog.Builder(this).setTitle("Submit Expense").setView(f).setPositiveButton("Submit",null).setNegativeButton("Cancel",null).create();d.setOnShowListener(x->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{JSONObject b=new JSONObject();try{b.put("expense_date",date.getText().toString());b.put("category",cat.getText().toString());b.put("amount",Double.parseDouble(amount.getText().toString()));b.put("field_visit_id",ids.get(sp.getSelectedItemPosition()));b.put("notes",notes.getText().toString());}catch(Exception e){toast("Enter a valid amount.");return;}showBusy("Submitting expense…");callPost("expense_submit",b,r->{hideBusy();d.dismiss();toast(r.optString("message"));render("expenses");});}));d.show();
     }
 
-    private void employeeExpenses(LinearLayout c) {
-        addMetricPair(c,"Pending","—","Approved","—");
-        Button add = primaryButton("Submit Expense");
-        add.setOnClickListener(v -> previewToast("Expense submission is disabled in design preview."));
-        c.addView(add, matchWrapMargin(0,14,0,0));
-        c.addView(section("Claims"), matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live expense claims","Submitted claims and review status will appear here."));
+    private void employeePayroll(JSONObject d){
+        JSONArray rows=d.optJSONArray("records");if(rows==null||rows.length()==0){content.addView(empty("No payroll record yet","Generated payroll will appear here after the payroll period is processed."));return;}
+        JSONObject latest=rows.optJSONObject(0);LinearLayout hero=ui.darkCard();hero.addView(ui.text("Latest net pay",13,Color.rgb(204,219,237),false));hero.addView(ui.text("₹"+money(latest.optDouble("net_salary")),34,Color.WHITE,true),ui.match(0,5,0,0));hero.addView(ui.text(latest.optString("period_name"),12,Color.rgb(204,219,237),false),ui.match(0,5,0,0));content.addView(hero,ui.match(0,12,0,0));
+        content.addView(ui.section("Payroll history"),ui.match(0,20,0,10));for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("period_name"),"₹"+money(x.optDouble("net_salary"))));c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status"))),ui.match(0,4,0,0));c.addView(ui.kv("Base","₹"+money(x.optDouble("base_salary"))),ui.match());c.addView(ui.kv("Overtime","₹"+money(x.optDouble("overtime_amount"))),ui.match());c.addView(ui.kv("Deduction","₹"+money(x.optDouble("unpaid_leave_deduction"))),ui.match());content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void employeePayroll(LinearLayout c) {
-        LinearLayout net = darkCard();
-        net.addView(tv("Latest net pay", 13, Color.rgb(204,219,237), false));
-        net.addView(tv("₹ —", 34, Color.WHITE, true), matchWrapMargin(0,5,0,0));
-        net.addView(tv("Generated payroll only · no local recalculation", 11, Color.rgb(204,219,237), false), matchWrapMargin(0,7,0,0));
-        c.addView(net, matchWrapMargin(0,12,0,0));
-        c.addView(section("Calculation"), matchWrapMargin(0,20,0,10));
-        LinearLayout calc=card();
-        calc.addView(keyValue("Base pay","—"));
-        calc.addView(keyValue("Overtime","—"));
-        calc.addView(keyValue("Deductions","—"));
-        calc.addView(keyValue("Net pay","—"));
-        c.addView(calc, matchWrap());
+    private void employeeProfile(JSONObject d){
+        JSONObject e=d.optJSONObject("employee");LinearLayout hero=ui.darkCard();String name=user.optString("name");hero.addView(ui.text(name,25,Color.WHITE,true));hero.addView(ui.text(user.optString("employee_code")+" · "+user.optString("role_name"),13,Color.rgb(203,216,234),false),ui.match(0,5,0,0));content.addView(hero,ui.match(0,12,0,0));if(e!=null){LinearLayout c=ui.card();c.addView(ui.kv("Email",e.optString("email")),ui.match());c.addView(ui.kv("Phone",blank(e.optString("phone"))),ui.match());c.addView(ui.kv("Branch",blank(e.optString("branch_name"))),ui.match());c.addView(ui.kv("Department",blank(e.optString("department_name"))),ui.match());c.addView(ui.kv("Designation",blank(e.optString("designation_name"))),ui.match());c.addView(ui.kv("Manager",blank((e.optString("manager_first")+" "+e.optString("manager_last")).trim())),ui.match());c.addView(ui.kv("Joining date",blank(e.optString("joining_date"))),ui.match());content.addView(c,ui.match(0,12,0,0));}Button logout=ui.danger("Sign Out");logout.setOnClickListener(v->logout());content.addView(logout,ui.match(0,14,0,0));
     }
 
-    private void employeeNotifications(LinearLayout c) {
-        addMetricPair(c,"Unread","—","All","—");
-        c.addView(section("Updates"), matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live notifications","Attendance, leave, expense and system updates will be grouped here."));
+    private void employeeMore(){
+        content.addView(ui.section("Work"),ui.match(0,14,0,10));menu("Timesheets & OT","Recorded work and overtime","timesheets");menu("Field Visits","Client/site assignments","field");menu("Expenses","Submit and review claims","expenses");menu("Payroll","Generated pay records","payroll");content.addView(ui.section("Account"),ui.match(0,22,0,10));menu("Notifications","Updates that need attention","notifications");menu("Security","Native sessions and tracking devices","security");
     }
 
-    private void employeeSecurity(LinearLayout c) {
-        LinearLayout current=card();
-        current.addView(rowTitle("This device","Current session"));
-        current.addView(keyValue("App","Native Android"));
-        current.addView(keyValue("Last active","—"));
-        c.addView(current, matchWrapMargin(0,12,0,0));
-        c.addView(section("Other sessions"), matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live session data","Other authorised sessions and tracking-device status will appear here without exposing secret tokens."));
+    private void adminDashboard(JSONObject d){
+        JSONObject c=d.optJSONObject("counts");if(c==null)c=new JSONObject();LinearLayout hero=ui.darkCard();hero.addView(ui.text("Operations overview",13,Color.rgb(203,216,234),false));hero.addView(ui.text("Today",28,Color.WHITE,true),ui.match(0,3,0,0));content.addView(hero,ui.match(0,12,0,0));content.addView(ui.section("Workforce"),ui.match(0,20,0,10));addMetricPair("Present",String.valueOf(c.optInt("present")),"Absent",String.valueOf(c.optInt("absent")));addMetricPair("Late",String.valueOf(c.optInt("late")),"On Leave",String.valueOf(c.optInt("on_leave")));addMetricPair("Working",String.valueOf(c.optInt("working")),"GPS Stale",String.valueOf(c.optInt("stale")));content.addView(ui.section("Needs attention"),ui.match(0,20,0,10));attention("Attendance corrections",c.optInt("pending_corrections"),"Review correction requests");attention("Pending leave",c.optInt("pending_leave"),"Review employee requests");attention("Pending expenses",c.optInt("pending_expenses"),"Review submitted claims");
     }
 
-    private void adminDashboard(LinearLayout c) {
-        LinearLayout hero=darkCard();
-        hero.addView(tv("Operations overview",13,Color.rgb(203,216,234),false));
-        hero.addView(tv("Today",28,Color.WHITE,true),matchWrapMargin(0,3,0,0));
-        hero.addView(tv("Native admin dashboard preview",12,Color.rgb(203,216,234),false),matchWrapMargin(0,6,0,0));
-        c.addView(hero,matchWrapMargin(0,12,0,0));
-
-        c.addView(section("Workforce"),matchWrapMargin(0,20,0,10));
-        addMetricPair(c,"Present","—","Absent","—");
-        addMetricPair(c,"Late","—","On leave","—");
-        addMetricPair(c,"Working now","—","GPS stale","—");
-
-        c.addView(section("Needs attention"),matchWrapMargin(0,20,0,10));
-        c.addView(attentionRow("Attendance corrections","—","Review original and corrected evidence",AMBER));
-        c.addView(attentionRow("Pending leave","—","Review employee requests",BLUE));
-        c.addView(attentionRow("Pending expenses","—","Review submitted claims",BLUE));
-        c.addView(attentionRow("Stale locations","—","Check GPS/network freshness",RED));
-
-        c.addView(section("Quick access"),matchWrapMargin(0,20,0,10));
-        c.addView(actionGrid(new String[][]{
-            {"Employees","people"},{"Attendance","attendance"},{"Live Map","map"},{"Payroll","payroll"}
-        }),matchWrap());
+    private void adminPeople(JSONObject d){
+        JSONArray rows=d.optJSONArray("employees");content.addView(ui.section("Employees"),ui.match(0,14,0,10));if(rows==null||rows.length()==0){content.addView(empty("No employees","Employee directory is empty."));return;}for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("first_name")+" "+x.optString("last_name"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("employee_code")+" · "+blank(x.optString("designation_name"))),ui.match(0,4,0,0));c.addView(ui.muted(blank(x.optString("branch_name"))+" · "+blank(x.optString("department_name"))),ui.match(0,3,0,0));content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void adminPeople(LinearLayout c) {
-        LinearLayout search=card();
-        EditText q=input("Search employee",InputType.TYPE_CLASS_TEXT);
-        search.addView(q,matchWrap());
-        Button add=primaryButton("Add Employee");
-        add.setOnClickListener(v->previewToast("Employee create flow will use the approved native form design."));
-        search.addView(add,matchWrapMargin(0,10,0,0));
-        c.addView(search,matchWrapMargin(0,12,0,0));
-
-        c.addView(section("Employees"),matchWrapMargin(0,20,0,10));
-        c.addView(employeePreviewRow("Employee name","Employee code · —","Active"));
-        c.addView(employeePreviewRow("Employee name","Department · —","Clocked out"));
-        c.addView(employeePreviewRow("Employee name","Branch · —","On leave"));
+    private void adminAttendance(JSONObject d){
+        JSONArray rows=d.optJSONArray("sessions");content.addView(ui.section("Attendance records"),ui.match(0,14,0,10));if(rows==null||rows.length()==0){content.addView(empty("No attendance in selected period","Recorded employee sessions will appear here."));return;}for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("first_name")+" "+x.optString("last_name"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("work_date")+" · "+shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out")))),ui.match(0,4,0,0));c.addView(ui.kv("Worked",minutes(x.optInt("effective_work_minutes"))),ui.match());c.addView(ui.kv("Geofence",titleCase(x.optString("geo_status"))),ui.match());content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void adminAttendance(LinearLayout c) {
-        c.addView(section("Selected period"),matchWrapMargin(0,14,0,10));
-        addMetricPair(c,"Open sessions","—","Needs review","—");
-        addMetricPair(c,"Inside geofence","—","Corrected","—");
-
-        LinearLayout filters=card();
-        filters.addView(input("Search employee",InputType.TYPE_CLASS_TEXT),matchWrap());
-        filters.addView(secondaryButton("Date & filters"),matchWrapMargin(0,10,0,0));
-        c.addView(filters,matchWrapMargin(0,12,0,0));
-
-        c.addView(section("Attendance records"),matchWrapMargin(0,20,0,10));
-        c.addView(recordRow("Employee name","Clock In —  ·  Clock Out —","GPS evidence · —","View"));
-        c.addView(recordRow("Employee name","Worked —  ·  Break —","Correction state · —","Review"));
+    private void adminMap(JSONObject d){
+        JSONArray people=d.optJSONArray("people");int live=0,stale=0,waiting=0;if(people!=null)for(int i=0;i<people.length();i++){String s=people.optJSONObject(i).optString("tracking_state");if("live".equals(s))live++;else if("stale".equals(s))stale++;else waiting++;}
+        addMetricPair("Live",String.valueOf(live),"Stale",String.valueOf(stale));addMetricPair("Waiting",String.valueOf(waiting),"Clocked In",String.valueOf(people==null?0:people.length()));
+        mapView=new MapView(this);mapView.onCreate(null);mapView.onStart();mapView.onResume();content.addView(mapView,new LinearLayout.LayoutParams(-1,ui.dp(330)));setupMap(people);
+        content.addView(ui.section("People on map"),ui.match(0,20,0,10));if(people==null||people.length()==0){content.addView(empty("No one is clocked in","Employees appear here after clock-in and accepted GPS evidence."));return;}for(int i=0;i<people.length();i++){JSONObject x=people.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("first_name")+" "+x.optString("last_name"),titleCase(x.optString("tracking_state"))));c.addView(ui.muted(x.optString("employee_code")+" · last seen "+blank(x.optString("last_seen_at"))+(x.isNull("accuracy")?"":" · "+Math.round(x.optDouble("accuracy"))+" m")),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void adminMap(LinearLayout c) {
-        addMetricPair(c,"Working","—","Live","—");
-        addMetricPair(c,"Stale","—","Waiting","—");
-
-        EditText search=input("Search employee on map",InputType.TYPE_CLASS_TEXT);
-        c.addView(search,matchWrapMargin(0,14,0,10));
-
-        MapPreviewView map=new MapPreviewView(this);
-        LinearLayout.LayoutParams mlp=new LinearLayout.LayoutParams(-1,dp(285));
-        map.setBackground(round(Color.rgb(235,241,247),18));
-        c.addView(map,mlp);
-
-        c.addView(section("People on map"),matchWrapMargin(0,20,0,10));
-        c.addView(statusPerson("Employee name","Live · last seen —",GREEN));
-        c.addView(statusPerson("Employee name","Stale · last seen —",AMBER));
-        c.addView(statusPerson("Employee name","Waiting for first GPS update",MUTED));
+    private void setupMap(JSONArray people){
+        if(mapView==null)return;mapView.getMapAsync(map->{
+            String style="{\"version\":8,\"sources\":{\"osm\":{\"type\":\"raster\",\"tiles\":[\"https://tile.openstreetmap.org/{z}/{x}/{y}.png\"],\"tileSize\":256,\"attribution\":\"© OpenStreetMap contributors\"}},\"layers\":[{\"id\":\"osm\",\"type\":\"raster\",\"source\":\"osm\"}]}";
+            map.setStyle(new Style.Builder().fromJson(style),loaded->{
+                if(people==null||people.length()==0)return;boolean centered=false;
+                for(int i=0;i<people.length();i++){JSONObject p=people.optJSONObject(i);if(p==null||p.isNull("latitude")||p.isNull("longitude"))continue;double lat=p.optDouble("latitude"),lng=p.optDouble("longitude");map.addMarker(new MarkerOptions().position(new LatLng(lat,lng)).title(p.optString("first_name")+" "+p.optString("last_name")).snippet(titleCase(p.optString("tracking_state"))+" · "+blank(p.optString("last_seen_at"))));JSONArray path=p.optJSONArray("path_points");if(path!=null&&path.length()>1){List<LatLng> pts=new ArrayList<>();for(int k=0;k<path.length();k++){JSONObject x=path.optJSONObject(k);if(x!=null&&!x.isNull("latitude")&&!x.isNull("longitude"))pts.add(new LatLng(x.optDouble("latitude"),x.optDouble("longitude")));}if(pts.size()>1)map.addPolyline(new PolylineOptions().addAll(pts).color(Ui.BLUE).width(4f));}if(!centered){map.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(lat,lng),15));centered=true;}}
+            });
+        });
     }
 
-    private void adminMore(LinearLayout c) {
-        c.addView(section("Organisation"),matchWrapMargin(0,14,0,10));
-        addMenu(c,"Organisation","Company, branch, department and designation","organisation");
-        addMenu(c,"Work Locations","Geofence locations and radius","locations");
-        addMenu(c,"Shifts","Work schedules and assignments","shifts");
-        addMenu(c,"Holidays","Holiday calendar","holidays");
+    private void adminOrganisation(JSONObject d){listSimple("Branches",d.optJSONArray("branches"),"name","code");listSimple("Departments",d.optJSONArray("departments"),"name",null);listSimple("Designations",d.optJSONArray("designations"),"name",null);}
+    private void adminLocations(JSONObject d){JSONArray a=d.optJSONArray("locations");content.addView(ui.section("Work locations"),ui.match(0,14,0,10));if(a==null||a.length()==0)content.addView(empty("No work locations","Create locations from the web admin until native setup-write controls are enabled."));else for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("name"),x.optInt("radius_meters")+" m"));c.addView(ui.muted(blank(x.optString("branch_name"))+" · "+blank(x.optString("address"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}}
+    private void adminShifts(JSONObject d){listSimple("Shifts",d.optJSONArray("shifts"),"name","start_time");listSimple("Recent assignments",d.optJSONArray("assignments"),"first_name","shift_name");}
+    private void adminHolidays(JSONObject d){listSimple("Holiday calendar",d.optJSONArray("holidays"),"name","holiday_date");}
 
-        c.addView(section("Operations"),matchWrapMargin(0,22,0,10));
-        addMenu(c,"Leave","Requests and approvals","admin_leave");
-        addMenu(c,"Timesheets & OT","Work time and overtime review","timesheets");
-        addMenu(c,"Field Visits","Field assignments and visit status","field");
-        addMenu(c,"Expenses","Claims and approvals","expenses");
-        addMenu(c,"Payroll","Generated payroll and locks","payroll");
-        addMenu(c,"Reports","Operational reporting","reports");
-
-        c.addView(section("Control"),matchWrapMargin(0,22,0,10));
-        addMenu(c,"Notifications","Operational updates","notifications");
-        addMenu(c,"Security","Sessions and devices","security");
-        addMenu(c,"Settings","Attendance and tracking policy","settings");
-
-        Button switchRole=secondaryButton("Switch to Employee UI Preview");
-        switchRole.setOnClickListener(v->render("employee","home"));
-        c.addView(switchRole,matchWrapMargin(0,18,0,0));
-        Button exit=textButton("Back to role selector");
-        exit.setOnClickListener(v->showRoleSelector());
-        c.addView(exit,matchWrapMargin(0,8,0,0));
+    private void adminLeave(JSONObject d){
+        JSONArray rows=d.optJSONArray("requests");content.addView(ui.section("Leave requests"),ui.match(0,14,0,10));if(rows==null||rows.length()==0){content.addView(empty("No leave requests","Requests will appear here."));return;}for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("first_name")+" "+x.optString("last_name"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("type_name")+" · "+x.optString("start_date")+" → "+x.optString("end_date")+" · "+fmt(x.optDouble("days"))+" days"),ui.match(0,4,0,0));if("pending".equals(x.optString("status")))reviewButtons(c,"admin_leave_review",x.optInt("id"),"admin_leave");content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void adminOrganisation(LinearLayout c) {
-        c.addView(section("Organisation structure"),matchWrapMargin(0,14,0,10));
-        c.addView(structureCard("Company","Primary organisation"));
-        c.addView(structureCard("Branches","Office / operational branches"));
-        c.addView(structureCard("Departments","Branch-aware departments"));
-        c.addView(structureCard("Designations","Employee roles and titles"));
-        Button add=primaryButton("Add Organisation Item");
-        add.setOnClickListener(v->previewToast("Native organisation form is design-only."));
-        c.addView(add,matchWrapMargin(0,14,0,0));
+    private void adminTimesheets(JSONObject d){
+        JSONArray em=d.optJSONArray("employees");int work=0,ot=0;if(em!=null)for(int i=0;i<em.length();i++){work+=em.optJSONObject(i).optInt("work_minutes");ot+=em.optJSONObject(i).optInt("overtime_minutes");}addMetricPair("Recorded work",minutes(work),"Auto OT",minutes(ot));
+        content.addView(ui.section("Overtime approvals"),ui.match(0,20,0,10));JSONArray rows=d.optJSONArray("overtime_requests");if(rows==null||rows.length()==0)content.addView(empty("No overtime requests","Employee requests will appear here."));else for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("first_name")+" "+x.optString("last_name"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("work_date")+" · "+minutes(x.optInt("minutes"))+" · "+x.optString("reason","")),ui.match(0,4,0,0));if("pending".equals(x.optString("status")))reviewButtons(c,"admin_overtime_review",x.optInt("id"),"timesheets");content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void adminLocations(LinearLayout c) {
-        addMetricPair(c,"Locations","—","Active","—");
-        LinearLayout form=card();
-        form.addView(label("Work location form"));
-        form.addView(input("Location name",InputType.TYPE_CLASS_TEXT),matchWrapMargin(0,12,0,0));
-        form.addView(input("Address",InputType.TYPE_CLASS_TEXT),matchWrapMargin(0,10,0,0));
-        form.addView(input("Allowed radius (metres)",InputType.TYPE_CLASS_NUMBER),matchWrapMargin(0,10,0,0));
-        Button current=secondaryButton("Use Current GPS");
-        current.setOnClickListener(v->previewToast("GPS capture is intentionally disabled in the UI preview."));
-        form.addView(current,matchWrapMargin(0,10,0,0));
-        c.addView(form,matchWrapMargin(0,12,0,0));
+    private void adminField(JSONObject d){JSONArray rows=d.optJSONArray("visits");content.addView(ui.section("Field visits"),ui.match(0,14,0,10));if(rows==null||rows.length()==0)content.addView(empty("No field visits","Assigned field work will appear here."));else for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("title"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("first_name")+" "+x.optString("last_name")+" · "+x.optString("client_name")),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}}
+    private void adminExpenses(JSONObject d){JSONArray rows=d.optJSONArray("expenses");content.addView(ui.section("Expense claims"),ui.match(0,14,0,10));if(rows==null||rows.length()==0)content.addView(empty("No expense claims","Employee claims will appear here."));else for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("first_name")+" "+x.optString("last_name"),"₹"+money(x.optDouble("amount"))));c.addView(ui.muted(x.optString("expense_date")+" · "+x.optString("category")+" · "+titleCase(x.optString("status"))),ui.match(0,4,0,0));if("pending".equals(x.optString("status")))reviewButtons(c,"admin_expense_review",x.optInt("id"),"expenses");content.addView(c,ui.match(0,0,0,8));}}
+    private void adminPayroll(JSONObject d){JSONArray periods=d.optJSONArray("periods"),rows=d.optJSONArray("records");content.addView(ui.section("Payroll periods"),ui.match(0,14,0,10));if(periods==null||periods.length()==0)content.addView(empty("No payroll periods","Create/generate payroll from the current admin workflow."));else for(int i=0;i<periods.length();i++){JSONObject x=periods.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("name"),titleCase(x.optString("status"))));c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}content.addView(ui.section("Selected period records"),ui.match(0,20,0,10));if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("first_name")+" "+x.optString("last_name"),"₹"+money(x.optDouble("net_salary"))));c.addView(ui.muted("Base ₹"+money(x.optDouble("base_salary"))+" · OT ₹"+money(x.optDouble("overtime_amount"))+" · deduction ₹"+money(x.optDouble("unpaid_leave_deduction"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}}
+    private void adminReports(JSONObject d){JSONObject a=d.optJSONObject("attendance");content.addView(ui.section("Last 30 days"),ui.match(0,14,0,10));addMetricPair("Attendance sessions",a!=null?String.valueOf(a.optInt("c")):"0","Worked",a!=null?minutes(a.optInt("work_minutes")):"0h 0m");addMetricPair("Overtime",a!=null?minutes(a.optInt("overtime_minutes")):"0h 0m","Period",d.optString("from")+" → "+d.optString("to"));listStatusSummary("Leave",d.optJSONArray("leave"));listStatusSummary("Expenses",d.optJSONArray("expenses"));}
+    private void adminSettings(JSONObject d){JSONObject s=d.optJSONObject("settings");if(s==null)s=new JSONObject();content.addView(ui.section("Attendance"),ui.match(0,14,0,10));setting("Require geofence",yesNo(s.optString("attendance.require_geofence")));setting("Maximum GPS accuracy",s.optString("attendance.max_accuracy_m")+" m");setting("Outside geofence",s.optString("attendance.allow_outside_geofence").equals("1")?"Allow for review":"Block");setting("Offline punch",yesNo(s.optString("attendance.offline_punch")));content.addView(ui.section("Live tracking"),ui.match(0,22,0,10));setting("Tracking enabled",yesNo(s.optString("tracking.enabled")));setting("Shift only",yesNo(s.optString("tracking.shift_only")));setting("Ping interval",s.optString("attendance.live_ping_seconds")+" sec");content.addView(ui.section("Payroll"),ui.match(0,22,0,10));setting("Monthly divisor",s.optString("payroll.monthly_divisor"));}
+
+    private void notifications(JSONObject d){
+        JSONArray rows=d.optJSONArray("notifications");content.addView(ui.section("Notifications"),ui.match(0,14,0,10));if(rows==null||rows.length()==0){content.addView(empty("No notifications","Updates will appear here."));return;}for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(x.optString("title"),x.isNull("read_at")?"Unread":"Read"));c.addView(ui.muted(x.optString("message")),ui.match(0,4,0,0));c.addView(ui.muted(x.optString("created_at")),ui.match(0,3,0,0));if(x.isNull("read_at")){Button b=ui.secondary("Mark Read");final int id=x.optInt("id");b.setOnClickListener(v->{JSONObject p=new JSONObject();try{p.put("id",id);}catch(Exception ignored){}callPost("notification_read",p,r->render("notifications"));});c.addView(b,ui.match(0,10,0,0));}content.addView(c,ui.match(0,0,0,8));}
     }
 
-    private void adminShifts(LinearLayout c) {
-        addMetricPair(c,"Shifts","—","Assignments","—");
-        LinearLayout form=card();
-        form.addView(label("Shift setup"));
-        form.addView(input("Shift name",InputType.TYPE_CLASS_TEXT),matchWrapMargin(0,12,0,0));
-        form.addView(input("Start time",InputType.TYPE_CLASS_DATETIME),matchWrapMargin(0,10,0,0));
-        form.addView(input("End time",InputType.TYPE_CLASS_DATETIME),matchWrapMargin(0,10,0,0));
-        form.addView(input("Grace period (minutes)",InputType.TYPE_CLASS_NUMBER),matchWrapMargin(0,10,0,0));
-        c.addView(form,matchWrapMargin(0,12,0,0));
+    private void security(JSONObject d){
+        content.addView(ui.section("Native app sessions"),ui.match(0,14,0,10));JSONArray a=d.optJSONArray("native_sessions");if(a==null||a.length()==0)content.addView(empty("No native sessions","This device session will appear after successful sign-in."));else for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(blank(x.optString("device_label")),x.isNull("revoked_at")?"Active":"Revoked"));c.addView(ui.muted("Last used "+blank(x.optString("last_used_at"))+" · expires "+blank(x.optString("expires_at"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
+        content.addView(ui.section("Tracking authorisations"),ui.match(0,20,0,10));JSONArray t=d.optJSONArray("tracking_tokens");if(t!=null)for(int i=0;i<t.length();i++){JSONObject x=t.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(blank(x.optString("device_label")),x.isNull("revoked_at")?"Authorised":"Revoked"));c.addView(ui.muted("Last used "+blank(x.optString("last_used_at"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
+        Button logout=ui.danger("Sign Out This App");logout.setOnClickListener(v->logout());content.addView(logout,ui.match(0,16,0,0));
     }
 
-    private void adminLeave(LinearLayout c) {
-        addMetricPair(c,"Pending","—","Approved","—");
-        c.addView(section("Requests"),matchWrapMargin(0,20,0,10));
-        c.addView(recordRow("Employee name","Leave type · —","Requested days · —","Review"));
-        c.addView(recordRow("Employee name","Status · —","Dates · —","View"));
+    private void adminMore(){
+        content.addView(ui.section("Organisation"),ui.match(0,14,0,10));menu("Organisation","Branches, departments, designations","organisation");menu("Work Locations","Geofence sites","locations");menu("Shifts","Schedules and assignments","shifts");menu("Holidays","Holiday calendar","holidays");
+        content.addView(ui.section("Operations"),ui.match(0,22,0,10));menu("Leave","Requests and approvals","admin_leave");menu("Timesheets & OT","Time and overtime review","timesheets");menu("Field Visits","Field assignments","field");menu("Expenses","Claims and approvals","expenses");menu("Payroll","Generated payroll","payroll");menu("Reports","Operational summaries","reports");
+        content.addView(ui.section("Control"),ui.match(0,22,0,10));menu("Notifications","Operational updates","notifications");menu("Security","Sessions and devices","security");menu("Settings","Attendance/tracking policy","settings");
     }
 
-    private void adminTimesheets(LinearLayout c) {
-        addMetricPair(c,"Work hours","—","Pending OT","—");
-        c.addView(section("Timesheets"),matchWrapMargin(0,20,0,10));
-        c.addView(recordRow("Employee name","Worked —","Auto OT —","Review"));
-        c.addView(recordRow("Employee name","Break —","Approved OT —","View"));
+    private void reviewButtons(LinearLayout c,String action,int id,String returnScreen){
+        LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);Button ok=ui.primary("Approve"),no=ui.danger("Reject");r.addView(ok,new LinearLayout.LayoutParams(0,ui.dp(48),1f));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ui.dp(48),1f);lp.leftMargin=ui.dp(8);r.addView(no,lp);c.addView(r,ui.match(0,10,0,0));ok.setOnClickListener(v->review(action,id,"approved",returnScreen));no.setOnClickListener(v->review(action,id,"rejected",returnScreen));
+    }
+    private void review(String action,int id,String status,String returnScreen){JSONObject b=new JSONObject();try{b.put("id",id);b.put("status",status);}catch(Exception ignored){}showBusy(titleCase(status)+"…");callPost(action,b,r->{hideBusy();toast(r.optString("message"));render(returnScreen);});}
+
+    private void listSimple(String title,JSONArray rows,String mainKey,String subKey){content.addView(ui.section(title),ui.match(0,14,0,10));if(rows==null||rows.length()==0){content.addView(empty("No records","Nothing is configured yet."));return;}for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(blank(x.optString(mainKey)),subKey==null?"":blank(x.optString(subKey))));content.addView(c,ui.match(0,0,0,8));}}
+    private void listStatusSummary(String title,JSONArray rows){content.addView(ui.section(title),ui.match(0,20,0,10));if(rows==null||rows.length()==0){content.addView(empty("No "+title.toLowerCase()+" activity","No matching records in this reporting period."));return;}for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);LinearLayout c=ui.card();c.addView(rowTitle(titleCase(x.optString("status")),String.valueOf(x.optInt("c"))));if(x.has("amount"))c.addView(ui.muted("₹"+money(x.optDouble("amount"))),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}}
+    private void setting(String k,String v){LinearLayout c=ui.card();c.addView(rowTitle(k,v));content.addView(c,ui.match(0,0,0,8));}
+    private void attention(String title,int count,String sub){LinearLayout c=ui.card();c.addView(rowTitle(title,String.valueOf(count)));c.addView(ui.muted(sub),ui.match(0,4,0,0));content.addView(c,ui.match(0,0,0,8));}
+    private void menu(String title,String sub,String target){LinearLayout c=ui.card();c.setOrientation(LinearLayout.HORIZONTAL);c.setGravity(Gravity.CENTER_VERTICAL);LinearLayout tx=ui.column();tx.addView(ui.label(title));tx.addView(ui.muted(sub),ui.match(0,3,0,0));c.addView(tx,new LinearLayout.LayoutParams(0,-2,1f));c.addView(ui.text("›",30,Ui.MUTED,false),ui.wrap());c.setOnClickListener(v->render(target));content.addView(c,ui.match(0,0,0,9));}
+
+    private View rowTitle(String left,String right){LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);r.setGravity(Gravity.CENTER_VERTICAL);r.addView(ui.label(left),new LinearLayout.LayoutParams(0,-2,1f));r.addView(ui.text(right,12,Ui.MUTED,true),ui.wrap());return r;}
+    private View empty(String title,String body){LinearLayout c=ui.softCard();TextView t=ui.label(title);t.setGravity(Gravity.CENTER);TextView b=ui.muted(body);b.setGravity(Gravity.CENTER);c.addView(t,ui.match());c.addView(b,ui.match(8,6,8,0));return c;}
+    private void addMetricPair(String l1,String v1,String l2,String v2){LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);r.addView(metric(l1,v1),new LinearLayout.LayoutParams(0,-2,1f));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1f);p.leftMargin=ui.dp(9);r.addView(metric(l2,v2),p);content.addView(r,ui.match(0,0,0,9));}
+    private View metric(String label,String value){LinearLayout c=ui.card();c.addView(ui.text(value,24,Ui.NAVY,true));c.addView(ui.text(label,12,Ui.MUTED,false),ui.match(0,5,0,0));return c;}
+
+    private LinearLayout dialogForm(){LinearLayout f=ui.column();f.setPadding(ui.dp(8),ui.dp(4),ui.dp(8),0);return f;}
+    private EditText dateInput(String hint){EditText e=ui.input(hint,InputType.TYPE_CLASS_DATETIME);e.setFocusable(false);e.setOnClickListener(v->{Calendar c=Calendar.getInstance();new DatePickerDialog(this,(d,y,m,day)->e.setText(String.format(Locale.US,"%04d-%02d-%02d",y,m+1,day)),c.get(Calendar.YEAR),c.get(Calendar.MONTH),c.get(Calendar.DAY_OF_MONTH)).show();});return e;}
+
+    private void getFreshLocation(Consumer<Location> callback){
+        if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED){pendingLocationAction=callback;requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},REQ_LOCATION);return;}
+        LocationManager lm=(LocationManager)getSystemService(LOCATION_SERVICE);Location best=null;
+        try{for(String p:lm.getProviders(true)){Location l=lm.getLastKnownLocation(p);if(l!=null&&(best==null||l.getTime()>best.getTime()))best=l;}}catch(Exception ignored){}
+        if(best!=null&&System.currentTimeMillis()-best.getTime()<30000){callback.accept(best);return;}
+        showBusy("Getting a precise GPS fix…");
+        final boolean[] done={false};LocationListener listener=new LocationListener(){@Override public void onLocationChanged(Location l){if(done[0])return;done[0]=true;try{lm.removeUpdates(this);}catch(Exception ignored){}hideBusy();callback.accept(l);}};
+        try{lm.requestSingleUpdate(LocationManager.GPS_PROVIDER,listener,Looper.getMainLooper());}
+        catch(Exception e){try{lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER,listener,Looper.getMainLooper());}catch(Exception x){hideBusy();toast("Location is unavailable. Turn on GPS and try again.");return;}}
+        main.postDelayed(()->{if(done[0])return;done[0]=true;try{lm.removeUpdates(listener);}catch(Exception ignored){}hideBusy();toast("Could not get a fresh GPS fix. Move to an open area and try again.");},15000);
     }
 
-    private void adminField(LinearLayout c) {
-        addMetricPair(c,"Assigned","—","In progress","—");
-        addMetricPair(c,"Completed","—","Needs review","—");
-        c.addView(section("Visits"),matchWrapMargin(0,20,0,10));
-        c.addView(recordRow("Employee name","Client / site · —","GPS check-in · —","Open"));
+    private void syncTracking(JSONObject st){
+        if(!isEmployeeRole()){stopService(new Intent(this,TrackingService.class));return;}
+        JSONObject s=st.optJSONObject("session");if(s!=null&&!s.isNull("clock_in_at"))store.put("clock_in_at",s.optString("clock_in_at"));else store.remove("clock_in_at");
+        if(!st.optBoolean("should_track")){stopService(new Intent(this,TrackingService.class));return;}
+        if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED)return;
+        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!permissionGuideShown){permissionGuideShown=true;requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},REQ_NOTIFICATION);}
+        Intent i=new Intent(this,TrackingService.class);if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);
+        if(Build.VERSION.SDK_INT>=29&&checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)!=PackageManager.PERMISSION_GRANTED&&!permissionGuideShown){permissionGuideShown=true;new AlertDialog.Builder(this).setTitle("Keep tracking active with the screen off").setMessage("For reliable screen-off tracking during an active work session, allow background location for Employee Management Native in Android app settings.").setPositiveButton("Open Settings",(d,w)->startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:"+getPackageName())))).setNegativeButton("Later",null).show();}
     }
 
-    private void adminExpenses(LinearLayout c) {
-        addMetricPair(c,"Pending amount","₹ —","Approved amount","₹ —");
-        c.addView(section("Claims"),matchWrapMargin(0,20,0,10));
-        c.addView(recordRow("Employee name","Expense type · —","Amount · ₹ —","Review"));
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){
+        super.onRequestPermissionsResult(requestCode,permissions,results);
+        if(requestCode==REQ_LOCATION&&results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED&&pendingLocationAction!=null){Consumer<Location> c=pendingLocationAction;pendingLocationAction=null;getFreshLocation(c);}
+        if(requestCode==REQ_NOTIFICATION)syncBootstrap();
     }
 
-    private void adminPayroll(LinearLayout c) {
-        LinearLayout state=darkCard();
-        state.addView(tv("Payroll period",13,Color.rgb(203,216,234),false));
-        state.addView(tv("Not connected",25,Color.WHITE,true),matchWrapMargin(0,4,0,0));
-        state.addView(tv("Server-generated payroll remains the calculation authority.",11,Color.rgb(203,216,234),false),matchWrapMargin(0,7,0,0));
-        c.addView(state,matchWrapMargin(0,12,0,0));
-        addMetricPair(c,"Gross","₹ —","Net","₹ —");
-        addMetricPair(c,"Overtime","₹ —","Deductions","₹ —");
-        Button generate=primaryButton("Generate Payroll");
-        generate.setOnClickListener(v->previewToast("Payroll generation is disabled in design preview."));
-        c.addView(generate,matchWrapMargin(0,14,0,0));
-    }
+    private void callGet(String action,Map<String,String> q,Consumer<JSONObject> ok){net.submit(()->{try{JSONObject r=q==null?api.get(action):api.get(action,q);runOnUiThread(()->ok.accept(r));}catch(Exception e){runOnUiThread(()->handleError(e));}});}
+    private void callPost(String action,JSONObject b,Consumer<JSONObject> ok){net.submit(()->{try{JSONObject r=api.post(action,b);runOnUiThread(()->ok.accept(r));}catch(Exception e){runOnUiThread(()->{hideBusy();handleError(e);});}});}
+    private void handleError(Exception e){if(e instanceof ApiClient.ApiException&&((ApiClient.ApiException)e).status==401){store.clear();stopService(new Intent(this,TrackingService.class));toast("Session expired. Sign in again.");showLogin();return;}toast(message(e));}
+    private String message(Exception e){String m=e.getMessage();return m==null||m.isEmpty()?"Request failed.":m;}
 
-    private void adminNotifications(LinearLayout c) {
-        addMetricPair(c,"Unread","—","Needs attention","—");
-        c.addView(section("Today"),matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live notifications","Operational events will appear here grouped by date and source."));
-    }
+    private void logout(){showBusy("Signing out…");callPost("logout",new JSONObject(),r->{hideBusy();store.clear();stopService(new Intent(this,TrackingService.class));user=null;showLogin();});}
 
-    private void adminSecurity(LinearLayout c) {
-        LinearLayout current=card();
-        current.addView(rowTitle("Current session","Native UI preview"));
-        current.addView(keyValue("Device","Android"));
-        current.addView(keyValue("Session","—"));
-        c.addView(current,matchWrapMargin(0,12,0,0));
-        c.addView(section("Authorised devices"),matchWrapMargin(0,20,0,10));
-        c.addView(emptyCard("No live device data","Final UI will show readable device/session state without exposing hashes or secret tokens."));
-    }
+    private void showBusy(String text){hideBusy();LinearLayout box=ui.softCard();box.setGravity(Gravity.CENTER);ProgressBar p=new ProgressBar(this);box.addView(p,new LinearLayout.LayoutParams(ui.dp(40),ui.dp(40)));TextView t=ui.muted(text);t.setGravity(Gravity.CENTER);box.addView(t,ui.match(0,8,0,0));FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2);lp.gravity=Gravity.CENTER;lp.setMargins(ui.dp(28),0,ui.dp(28),0);box.setTag("busy");root.addView(box,lp);}
+    private void hideBusy(){for(int i=root.getChildCount()-1;i>=0;i--){View v=root.getChildAt(i);if("busy".equals(v.getTag()))root.removeView(v);}}
 
-    private void adminSettings(LinearLayout c) {
-        c.addView(section("Attendance"),matchWrapMargin(0,14,0,10));
-        c.addView(settingRow("Require geofence","Employees must be within an authorised work location","—"));
-        c.addView(settingRow("Maximum GPS accuracy","Reject or warn on weak location evidence","—"));
-        c.addView(settingRow("Offline punch","Policy for temporary connectivity loss","—"));
+    private void cleanupMap(){if(mapView!=null){try{mapView.onPause();mapView.onStop();mapView.onDestroy();}catch(Exception ignored){}mapView=null;}}
+    @Override protected void onResume(){super.onResume();if(mapView!=null)try{mapView.onResume();}catch(Exception ignored){}if(store.get("access_token")!=null&&user!=null)syncBootstrap();}
+    @Override protected void onPause(){if(mapView!=null)try{mapView.onPause();}catch(Exception ignored){}super.onPause();}
+    @Override protected void onStart(){super.onStart();if(mapView!=null)try{mapView.onStart();}catch(Exception ignored){}}
+    @Override protected void onStop(){if(mapView!=null)try{mapView.onStop();}catch(Exception ignored){}super.onStop();}
+    @Override public void onLowMemory(){super.onLowMemory();if(mapView!=null)mapView.onLowMemory();}
+    @Override protected void onDestroy(){cleanupMap();net.shutdownNow();super.onDestroy();}
 
-        c.addView(section("Live tracking"),matchWrapMargin(0,22,0,10));
-        c.addView(settingRow("Tracking enabled","Server-controlled employee tracking","—"));
-        c.addView(settingRow("Shift only","Limit tracking to permitted shift/session","—"));
-        c.addView(settingRow("Stale after","Live Map freshness threshold","—"));
+    @Override public void onBackPressed(){if(user==null){super.onBackPressed();return;}String home=isAdmin()?"dashboard":"home";if(screen.equals(home)){new AlertDialog.Builder(this).setTitle("Exit Employee Management?").setPositiveButton("Exit",(d,w)->finish()).setNegativeButton("Cancel",null).show();return;}if(isMoreScreen(screen)){render("more");return;}render(home);}
 
-        Button save=primaryButton("Save Settings");
-        save.setOnClickListener(v->previewToast("Settings writes are intentionally disabled in design preview."));
-        c.addView(save,matchWrapMargin(0,16,0,0));
-    }
-
-    private void genericAdmin(LinearLayout c,String title,String subtitle,String[] items){
-        LinearLayout head=darkCard();
-        head.addView(tv(title,25,Color.WHITE,true));
-        head.addView(tv(subtitle,13,Color.rgb(203,216,234),false),matchWrapMargin(0,5,0,0));
-        c.addView(head,matchWrapMargin(0,12,0,0));
-        c.addView(section("Available views"),matchWrapMargin(0,20,0,10));
-        for(String item:items)c.addView(structureCard(item,"Native list/detail presentation"));
-    }
-
-    private void addMenu(LinearLayout c,String title,String subtitle,String target){
-        LinearLayout row=card();
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout txt=column();
-        txt.addView(label(title));
-        txt.addView(muted(subtitle),matchWrapMargin(0,3,0,0));
-        row.addView(txt,new LinearLayout.LayoutParams(0,-2,1f));
-        TextView arrow=tv("›",30,MUTED,false);
-        row.addView(arrow,wrapWrap());
-        row.setOnClickListener(v->render(role,target));
-        c.addView(row,matchWrapMargin(0,0,0,9));
-    }
-
-    private View actionGrid(String[][] actions){
-        LinearLayout outer=column();
-        for(int i=0;i<actions.length;i+=2){
-            LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);
-            for(int j=i;j<Math.min(i+2,actions.length);j++){
-                final String target=actions[j][1];
-                Button b=secondaryButton(actions[j][0]);
-                b.setOnClickListener(v->render(role,target));
-                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(54),1f);
-                if(j>i)lp.leftMargin=dp(8);
-                r.addView(b,lp);
-            }
-            outer.addView(r,matchWrapMargin(0,i==0?0:8,0,0));
-        }
-        return outer;
-    }
-
-    private View employeePreviewRow(String name,String sub,String status){
-        LinearLayout row=card();row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);
-        TextView avatar=tv("E",18,Color.WHITE,true);avatar.setGravity(Gravity.CENTER);avatar.setBackground(circle(NAVY));
-        row.addView(avatar,new LinearLayout.LayoutParams(dp(44),dp(44)));
-        LinearLayout tx=column();tx.addView(label(name));tx.addView(muted(sub),matchWrapMargin(0,3,0,0));
-        row.addView(tx,new LinearLayout.LayoutParams(0,-2,1f));((LinearLayout.LayoutParams)tx.getLayoutParams()).leftMargin=dp(12);
-        row.addView(pill(status,Color.rgb(231,238,248),NAVY),wrapWrap());
-        return row;
-    }
-
-    private View statusPerson(String name,String sub,int color){
-        LinearLayout row=card();row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);
-        TextView dot=tv("●",16,color,false);row.addView(dot,wrapWrapMargin(0,0,10,0));
-        LinearLayout tx=column();tx.addView(label(name));tx.addView(muted(sub),matchWrapMargin(0,3,0,0));
-        row.addView(tx,new LinearLayout.LayoutParams(0,-2,1f));
-        row.addView(tv("›",28,MUTED,false),wrapWrap());
-        return row;
-    }
-
-    private View recordRow(String title,String a,String b,String action){
-        LinearLayout row=card();
-        row.addView(rowTitle(title,action));
-        row.addView(muted(a),matchWrapMargin(0,8,0,0));
-        row.addView(muted(b),matchWrapMargin(0,3,0,0));
-        row.setOnClickListener(v->previewToast("Detail screen wiring will be added after the native design is approved."));
-        return row;
-    }
-
-    private View structureCard(String title,String sub){
-        LinearLayout row=card();
-        row.addView(rowTitle(title,"›"));
-        row.addView(muted(sub),matchWrapMargin(0,5,0,0));
-        return row;
-    }
-
-    private View settingRow(String title,String sub,String value){
-        LinearLayout row=card();
-        row.addView(rowTitle(title,value));
-        row.addView(muted(sub),matchWrapMargin(0,5,0,0));
-        return row;
-    }
-
-    private View attentionRow(String title,String value,String subtitle,int color){
-        LinearLayout row=card();row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);
-        View marker=new View(this);marker.setBackground(round(color,8));
-        row.addView(marker,new LinearLayout.LayoutParams(dp(5),dp(48)));
-        LinearLayout text=column();text.addView(label(title));text.addView(muted(subtitle),matchWrapMargin(0,3,0,0));
-        LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,-2,1f);tlp.leftMargin=dp(12);row.addView(text,tlp);
-        row.addView(tv(value,22,NAVY,true),wrapWrap());
-        return row;
-    }
-
-    private void addMetricPair(LinearLayout c,String l1,String v1,String l2,String v2){
-        LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);
-        r.addView(metricCard(l1,v1),new LinearLayout.LayoutParams(0,-2,1f));
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1f);lp.leftMargin=dp(9);
-        r.addView(metricCard(l2,v2),lp);
-        c.addView(r,matchWrapMargin(0,0,0,9));
-    }
-
-    private View metricCard(String label,String value){
-        LinearLayout m=card();
-        m.addView(tv(value,25,NAVY,true));
-        m.addView(tv(label,12,MUTED,false),matchWrapMargin(0,5,0,0));
-        return m;
-    }
-
-    private View emptyCard(String title,String body){
-        LinearLayout e=softCard();e.setGravity(Gravity.CENTER);
-        TextView t=label(title);t.setGravity(Gravity.CENTER);
-        TextView b=muted(body);b.setGravity(Gravity.CENTER);
-        e.addView(t,matchWrap());
-        e.addView(b,matchWrapMargin(8,6,8,0));
-        return e;
-    }
-
-    private View infoBanner(String title,String body){
-        LinearLayout b=softCard();
-        b.setBackground(round(Color.rgb(232,241,254),16));
-        b.addView(tv(title,11,BLUE,true));
-        b.addView(tv(body,12,Color.rgb(58,83,118),false),matchWrapMargin(0,5,0,0));
-        return b;
-    }
-
-    private View rowTitle(String left,String right){
-        LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);r.setGravity(Gravity.CENTER_VERTICAL);
-        r.addView(label(left),new LinearLayout.LayoutParams(0,-2,1f));
-        r.addView(tv(right,12,MUTED,true),wrapWrap());
-        return r;
-    }
-
-    private View keyValue(String key,String value){
-        LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);r.setGravity(Gravity.CENTER_VERTICAL);r.setPadding(0,dp(9),0,0);
-        r.addView(tv(key,12,MUTED,false),new LinearLayout.LayoutParams(0,-2,1f));
-        r.addView(tv(value,13,TEXT,true),wrapWrap());
-        return r;
-    }
-
-    private LinearLayout card(){
-        LinearLayout v=column();v.setPadding(dp(16),dp(15),dp(16),dp(15));v.setBackground(round(Color.WHITE,18));v.setElevation(dp(1));return v;
-    }
-    private LinearLayout softCard(){
-        LinearLayout v=column();v.setPadding(dp(16),dp(15),dp(16),dp(15));v.setBackground(round(Color.rgb(249,251,254),18));return v;
-    }
-    private LinearLayout darkCard(){
-        LinearLayout v=column();v.setPadding(dp(18),dp(18),dp(18),dp(18));v.setBackground(round(NAVY,20));v.setElevation(dp(2));return v;
-    }
-    private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
-
-    private TextView label(String s){return tv(s,15,TEXT,true);}
-    private TextView muted(String s){return tv(s,12,MUTED,false);}
-    private TextView section(String s){return tv(s,17,NAVY,true);}
-
-    private TextView tv(String s,float size,int color,boolean bold){
-        TextView v=new TextView(this);v.setText(s);v.setTextSize(size);v.setTextColor(color);v.setLineSpacing(0,1.08f);if(bold)v.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);return v;
-    }
-
-    private TextView pill(String s,int bg,int fg){
-        TextView v=tv(s,10,fg,true);v.setGravity(Gravity.CENTER);v.setPadding(dp(9),dp(5),dp(9),dp(5));v.setBackground(round(bg,99));return v;
-    }
-
-    private EditText input(String hint,int type){
-        EditText e=new EditText(this);e.setHint(hint);e.setTextSize(15);e.setTextColor(TEXT);e.setHintTextColor(Color.rgb(137,150,168));e.setInputType(type);e.setSingleLine(true);e.setPadding(dp(14),0,dp(14),0);e.setBackground(stroke(Color.WHITE,BORDER,12,1));e.setMinHeight(dp(52));return e;
-    }
-
-    private Button primaryButton(String s){return button(s,NAVY,Color.WHITE);}
-    private Button secondaryButton(String s){return button(s,Color.WHITE,NAVY);}
-    private Button textButton(String s){Button b=button(s,Color.TRANSPARENT,BLUE);b.setElevation(0);return b;}
-
-    private Button button(String s,int bg,int fg){
-        Button b=new Button(this);b.setText(s);b.setTextSize(14);b.setTextColor(fg);b.setAllCaps(false);b.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);b.setGravity(Gravity.CENTER);b.setMinHeight(dp(52));
-        if(bg==Color.WHITE)b.setBackground(stroke(bg,BORDER,14,1));else if(bg==Color.TRANSPARENT)b.setBackgroundColor(Color.TRANSPARENT);else b.setBackground(round(bg,14));
-        return b;
-    }
-
-    private GradientDrawable round(int color,float radius){
-        GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(dp((int)radius));return g;
-    }
-    private GradientDrawable stroke(int color,int border,float radius,int width){
-        GradientDrawable g=round(color,radius);g.setStroke(dp(width),border);return g;
-    }
-    private GradientDrawable circle(int color){
-        GradientDrawable g=new GradientDrawable();g.setShape(GradientDrawable.OVAL);g.setColor(color);return g;
-    }
-
-    private LinearLayout.LayoutParams weight(){return new LinearLayout.LayoutParams(0,-1,1f);}
-    private LinearLayout.LayoutParams matchMatch(){return new LinearLayout.LayoutParams(-1,-1);}
-    private LinearLayout.LayoutParams matchWrap(){return new LinearLayout.LayoutParams(-1,-2);}
-    private LinearLayout.LayoutParams wrapWrap(){return new LinearLayout.LayoutParams(-2,-2);}
-    private LinearLayout.LayoutParams matchWrapMargin(int l,int t,int r,int b){LinearLayout.LayoutParams p=matchWrap();p.setMargins(dp(l),dp(t),dp(r),dp(b));return p;}
-    private LinearLayout.LayoutParams wrapWrapMargin(int l,int t,int r,int b){LinearLayout.LayoutParams p=wrapWrap();p.setMargins(dp(l),dp(t),dp(r),dp(b));return p;}
-
-    private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
-
-    private String pageTitle(String s){
-        switch(s){
-            case "dashboard": return "Dashboard";
-            case "people": return "Employees";
-            case "attendance": return "Attendance";
-            case "map": return "Live Map";
-            case "leave": return "Leave";
-            case "profile": return "Profile";
-            case "more": return "More";
-            case "timesheets": return "Timesheets & OT";
-            case "field": return "Field Visits";
-            case "expenses": return "Expenses";
-            case "payroll": return "Payroll";
-            case "notifications": return "Notifications";
-            case "security": return "Security";
-            case "settings": return "Settings";
-            case "organisation": return "Organisation";
-            case "locations": return "Work Locations";
-            case "shifts": return "Shifts";
-            case "holidays": return "Holidays";
-            case "admin_leave": return "Leave Management";
-            case "reports": return "Reports";
-            default: return "Home";
-        }
-    }
-
-    private void previewToast(String s){
-        Toast.makeText(this,s,Toast.LENGTH_SHORT).show();
-        View focus=getCurrentFocus();
-        if(focus!=null){InputMethodManager imm=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);imm.hideSoftInputFromWindow(focus.getWindowToken(),0);}
-    }
-
-    @Override public void onBackPressed(){
-        if(role.isEmpty()){super.onBackPressed();return;}
-        if(("employee".equals(role)&&"home".equals(screen))||("admin".equals(role)&&"dashboard".equals(screen))){showRoleSelector();return;}
-        if(isMoreScreen(screen)){render(role,"more");return;}
-        render(role,"employee".equals(role)?"home":"dashboard");
-    }
-
-    public static class MapPreviewView extends View {
-        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path route=new Path();
-        public MapPreviewView(Context c){super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
-        @Override protected void onDraw(Canvas canvas){
-            super.onDraw(canvas);
-            int w=getWidth(),h=getHeight();
-            p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3);p.setColor(Color.rgb(211,220,230));
-            for(int i=1;i<5;i++)canvas.drawLine(w*i/5f,0,w*i/5f,h,p);
-            for(int i=1;i<4;i++)canvas.drawLine(0,h*i/4f,w,h*i/4f,p);
-
-            p.setStrokeWidth(10);p.setColor(Color.WHITE);
-            canvas.drawLine(0,h*.72f,w,h*.25f,p);
-            canvas.drawLine(w*.18f,0,w*.68f,h,p);
-
-            route.reset();route.moveTo(w*.18f,h*.72f);route.cubicTo(w*.30f,h*.60f,w*.44f,h*.54f,w*.55f,h*.45f);route.cubicTo(w*.65f,h*.37f,w*.72f,h*.31f,w*.82f,h*.28f);
-            p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(6);p.setStrokeCap(Paint.Cap.ROUND);p.setColor(BLUE);canvas.drawPath(route,p);
-
-            p.setStyle(Paint.Style.FILL);p.setColor(NAVY);canvas.drawCircle(w*.82f,h*.28f,16,p);
-            p.setColor(Color.WHITE);canvas.drawCircle(w*.82f,h*.28f,7,p);
-
-            p.setColor(Color.rgb(24,139,86));canvas.drawCircle(w*.18f,h*.72f,11,p);
-            p.setColor(Color.rgb(199,132,20));canvas.drawCircle(w*.55f,h*.45f,8,p);
-
-            p.setColor(Color.rgb(93,113,137));p.setTextSize(28);p.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD));
-            canvas.drawText("Native map layout preview",24,42,p);
-            p.setTextSize(22);p.setTypeface(Typeface.DEFAULT);
-            canvas.drawText("Route / markers shown for visual design only",24,72,p);
-        }
-    }
+    private String pageTitle(String s){switch(s){case"dashboard":return"Dashboard";case"home":return"Home";case"people":return"Employees";case"attendance":return"Attendance";case"map":return"Live Map";case"leave":return"Leave";case"profile":return"Profile";case"more":return"More";case"timesheets":return"Timesheets & OT";case"field":return"Field Visits";case"expenses":return"Expenses";case"payroll":return"Payroll";case"notifications":return"Notifications";case"security":return"Security";case"settings":return"Settings";case"organisation":return"Organisation";case"locations":return"Work Locations";case"shifts":return"Shifts";case"holidays":return"Holidays";case"admin_leave":return"Leave Management";case"reports":return"Reports";default:return"Employee Management";}}
+    private String greeting(){int h=Calendar.getInstance().get(Calendar.HOUR_OF_DAY);return h<12?"Good morning":h<17?"Good afternoon":"Good evening";}
+    private String minutes(int m){m=Math.max(0,m);return(m/60)+"h "+(m%60)+"m";}
+    private String shortTime(String s){if(s==null||s.isEmpty())return"—";try{if(s.length()>=16&&s.charAt(10)==' ')return s.substring(11,16);if(s.length()>=5)return s.substring(0,5);}catch(Exception ignored){}return s;}
+    private String titleCase(String s){if(s==null)return"—";s=s.replace('_',' ').replace('-',' ');StringBuilder b=new StringBuilder();for(String x:s.split(" ")){if(x.isEmpty())continue;if(b.length()>0)b.append(' ');b.append(Character.toUpperCase(x.charAt(0))).append(x.substring(1));}return b.length()==0?"—":b.toString();}
+    private String blank(String s){return s==null||s.trim().isEmpty()?"—":s;}
+    private String money(double d){return String.format(Locale.US,"%,.2f",d);}
+    private String fmt(double d){return d==(long)d?String.valueOf((long)d):String.format(Locale.US,"%.1f",d);}
+    private String yesNo(String v){return"1".equals(v)?"Yes":"No";}
+    private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
+    private void hideKeyboard(){View v=getCurrentFocus();if(v!=null)((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(v.getWindowToken(),0);}
 }

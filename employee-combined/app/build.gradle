@@ -5,11 +5,11 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.alkeynes.employee.management'
+        applicationId 'com.alkeynes.employee.management.nativeui'
         minSdk 26
         targetSdk 35
-        versionCode 2400
-        versionName '2.4.0-test'
+        versionCode 3000
+        versionName '3.0.0-ui-preview'
     }
 
     buildTypes {

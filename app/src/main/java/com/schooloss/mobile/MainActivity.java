@@ -228,7 +228,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    private View brandRow()    private View brandRow() {
+    private View brandRow() {
         LinearLayout row = horizontal();
         row.setGravity(Gravity.CENTER_VERTICAL);
 
@@ -529,7 +529,7 @@ public class MainActivity extends Activity {
         return wrap;
     }
 
-    private String[] homeModules    private String[] homeModules(Role role) {
+    private String[] homeModules(Role role) {
         switch (role) {
             case ADMIN:
                 return new String[]{"Attendance","Students","Staff","Fees & Payments","Academics","Exams & Results","Study From Home","Transport","Reports","Settings"};
@@ -798,7 +798,7 @@ public class MainActivity extends Activity {
 
     private String pretty(String s){if(s==null)return"";String[] parts=s.replace('_',' ').split(" ");StringBuilder b=new StringBuilder();for(String p:parts){if(p.isEmpty())continue;if(b.length()>0)b.append(' ');b.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));}return b.toString();}
 
-    private String tabSubtitle    private String tabSubtitle(String title) {
+    private String tabSubtitle(String title) {
         if ("Profile".equals(title)) return "Account identity and role context.";
         if (title.toLowerCase().contains("payment") || title.toLowerCase().contains("fee")) return "Clear payment status and school finance presentation.";
         if (title.toLowerCase().contains("attendance")) return "Fast, compact attendance presentation for daily use.";
@@ -839,7 +839,7 @@ public class MainActivity extends Activity {
         return bar;
     }
 
-    private View heroMetric    private View heroMetric(String cap, String value) {
+    private View heroMetric(String cap, String value) {
         LinearLayout box = vertical();
         box.setGravity(Gravity.CENTER);
         box.setPadding(dp(6), dp(5), dp(6), dp(5));

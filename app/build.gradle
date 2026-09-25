@@ -19,8 +19,8 @@ android {
         applicationId 'com.schooloss.nativeapp'
         minSdk 24
         targetSdk 35
-        versionCode 2000000
-        versionName '2.0.0-live-r2'
+        versionCode 3000000
+        versionName '3.0.0-live-r3'
     }
 
     buildTypes {

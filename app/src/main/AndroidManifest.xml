@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-
     <application
+        android:name=".SchoolOSApp"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:icon="@drawable/ic_schoolos"
@@ -15,19 +15,94 @@
             android:authorities="${applicationId}.files"
             android:exported="false"
             android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"/>
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
         </provider>
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="portrait"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
+        <activity android:name=".feature.auth.LoginActivity" android:exported="true" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+        <activity android:name=".feature.home.HomeActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.common.FeatureActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.common.EntityDetailActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.attendance.AttendanceRegisterActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.messages.ConversationActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.gallery.GalleryAlbumActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.results.ResultDetailActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.sfh.SfhDetailActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.admissions.AdmissionsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.students.StudentsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.guardians.GuardiansActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.staff.StaffActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.classes.ClassesActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.subjects.SubjectsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.rooms.RoomsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.timetable.TimetableActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.assignments.AssignmentsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.lessonplans.LessonPlansActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.materials.LearningMaterialsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.exams.ExamsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.marks.MarksActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.results.ResultsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.fees.FeesActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.fees.FeeInvoicesActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.fees.FeeInstallmentsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.fees.FeeRemindersActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.requests.RequestsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.portal.PortalAccountsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.calendar.CalendarActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.messages.MessagesActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.notifications.NotificationsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.transport.TransportActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.gallery.GalleryActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.sfh.StudyFromHomeActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.reports.ReportsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.audit.AuditActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.settings.SettingsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.billing.BillingActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.profile.ProfileActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.operations.OperationsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.operations.ActionsActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".feature.attendance.AttendanceActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize">
         </activity>
     </application>
 </manifest>

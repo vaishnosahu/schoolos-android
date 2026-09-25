@@ -8,8 +8,8 @@ android {
         applicationId 'com.alkeynes.employee.management.nativeui'
         minSdk 26
         targetSdk 35
-        versionCode 3000
-        versionName '3.0.0-ui-preview'
+        versionCode 3100
+        versionName '3.1.0-native-live-test'
     }
 
     buildTypes {
@@ -27,4 +27,8 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    implementation 'org.maplibre.gl:android-sdk-opengl:13.6.1'
 }

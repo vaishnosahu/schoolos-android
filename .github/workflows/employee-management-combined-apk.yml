@@ -19,6 +19,18 @@ jobs:
           base64 -d employee-combined/native-r2r3.patch.gz.b64 | gunzip > /tmp/native-r2r3.patch
           git apply --check /tmp/native-r2r3.patch
           git apply /tmp/native-r2r3.patch
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("employee-combined/app/src/main/java/com/alkeynes/employee/management/AdminOperations.java")
+          s=p.read_text()
+          s=s.replace('c.addView(ui.muted(x.optString("work_date")+" · "+shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out"))),ui.match(0,4,0,0));','c.addView(ui.muted(x.optString("work_date")+" · "+shortTime(x.optString("effective_clock_in"))+" → "+(x.isNull("effective_clock_out")?"Open":shortTime(x.optString("effective_clock_out")))),ui.match(0,4,0,0));')
+          s=s.replace('card.addView(ui.muted("Ended "+(x.isNull("ended_at")?"Open":x.optString("ended_at")),ui.match(0,3,0,0));','card.addView(ui.muted("Ended "+(x.isNull("ended_at")?"Open":x.optString("ended_at"))),ui.match(0,3,0,0));')
+          p.write_text(s)
+          p=Path("employee-combined/app/src/main/java/com/alkeynes/employee/management/MainActivity.java")
+          s=p.read_text()
+          s=s.replace('c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status")),ui.match(0,4,0,0));','c.addView(ui.muted(x.optString("start_date")+" → "+x.optString("end_date")+" · "+titleCase(x.optString("period_status"))),ui.match(0,4,0,0));')
+          p.write_text(s)
+          PY
           grep -q "versionCode 3300" employee-combined/app/build.gradle
           grep -q "versionName '3.3.0-native-parity-r2r3-test'" employee-combined/app/build.gradle
           grep -q "OfflineSyncJobService" employee-combined/app/src/main/AndroidManifest.xml

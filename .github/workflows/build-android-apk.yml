@@ -44,6 +44,24 @@ jobs:
           cp "$APK" SchoolOS-Full-Native-R5.apk
           sha256sum SchoolOS-Full-Native-R5.apk > apk-sha256.txt
 
+          if grep -R --include='*.java' --include='*.kt' -n -E 'android\\.webkit\\.WebView|WebViewClient|androidx\\.webkit' app/src/main/java; then
+            echo "::error::Application source contains a WebView implementation"
+            exit 1
+          fi
+
+          find app/src/main/java -type f \( -name '*.java' -o -name '*.kt' \) | sort > native-source-files.txt
+          test "$(wc -l < native-source-files.txt)" -ge 10
+
+          zip -qr SchoolOS-Full-Native-R5-Source.zip \
+            app/src \
+            app/build.gradle \
+            app/proguard-rules.pro \
+            build.gradle \
+            settings.gradle \
+            gradle.properties \
+            README.md
+          sha256sum SchoolOS-Full-Native-R5-Source.zip > source-sha256.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: SchoolOS-Full-Native-R5
@@ -53,4 +71,7 @@ jobs:
             apk-permissions.txt
             apk-signature.txt
             apk-sha256.txt
+            SchoolOS-Full-Native-R5-Source.zip
+            native-source-files.txt
+            source-sha256.txt
           if-no-files-found: error

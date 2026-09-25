@@ -52,8 +52,12 @@ jobs:
           s=s.replace("        release {\n            minifyEnabled false","        release {\n            if (releaseSigningReady) {\n                signingConfig signingConfigs.release\n            }\n            minifyEnabled false",1)
           p.write_text(s)
           PY
-          grep -q "versionCode 3410" employee-combined/app/build.gradle
-          grep -q "versionName '3.4.1-production'" employee-combined/app/build.gradle
+          base64 -d employee-combined/production-tracking-v342.patch.gz.b64 | gunzip > /tmp/production-tracking-v342.patch
+          git apply --check /tmp/production-tracking-v342.patch
+          git apply /tmp/production-tracking-v342.patch
+          grep -q "versionCode 3420" employee-combined/app/build.gradle
+          grep -q "versionName '3.4.2-production'" employee-combined/app/build.gradle
+          grep -q "tracking_recheck_seconds" employee-combined/app/src/main/java/com/alkeynes/employee/management/TrackingService.java
       - name: Require protected signing secrets
         shell: bash
         run: |
@@ -90,13 +94,13 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           "$AAPT" dump badging "$APK" | tee production-badging.txt
           grep -q "package: name='com.alkeynes.employee.management.nativeui'" production-badging.txt
-          grep -q "versionCode='3410'" production-badging.txt
-          grep -q "versionName='3.4.1-production'" production-badging.txt
+          grep -q "versionCode='3420'" production-badging.txt
+          grep -q "versionName='3.4.2-production'" production-badging.txt
           grep -q "targetSdkVersion:'35'" production-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee production-signature.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" production-signature.txt
-          cp "$APK" Employee-Management-Production-v3.4.1.apk
-          sha256sum Employee-Management-Production-v3.4.1.apk > Employee-Management-Production-v3.4.1.sha256
+          cp "$APK" Employee-Management-Production-v3.4.2.apk
+          sha256sum Employee-Management-Production-v3.4.2.apk > Employee-Management-Production-v3.4.2.sha256
           zip -qr Employee-Management-Production-Source-v3.4.1.zip employee-combined -x 'employee-combined/.gradle/*' 'employee-combined/app/build/*'
       - name: Remove temporary keystore
         if: always()
@@ -104,10 +108,10 @@ jobs:
         run: rm -f "$RUNNER_TEMP/employee-management-release.jks"
       - uses: actions/upload-artifact@v4
         with:
-          name: Employee-Management-Production-v3.4.1
+          name: Employee-Management-Production-v3.4.2
           path: |
-            Employee-Management-Production-v3.4.1.apk
-            Employee-Management-Production-v3.4.1.sha256
+            Employee-Management-Production-v3.4.2.apk
+            Employee-Management-Production-v3.4.2.sha256
             Employee-Management-Production-Source-v3.4.1.zip
             production-badging.txt
             production-signature.txt

@@ -1,4 +1,4 @@
-name: Build SchoolOS Native UI Preview
+name: Build SchoolOS Native Live R2
 on:
   pull_request:
     branches: [ main ]
@@ -11,51 +11,44 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Build signed native preview APK
+      - name: Build signed native live APK
         run: gradle --no-daemon clean assembleRelease
 
-      - name: Verify installable APK contract
+      - name: Verify APK contract
         shell: bash
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
           test -f "$APK"
-
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          test -x "$AAPT"
-          test -x "$APKSIGNER"
-
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
           "$AAPT" dump permissions "$APK" | tee apk-permissions.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee apk-signature.txt
-
-          grep -q "package: name='com.schooloss.nativepreview'" apk-badging.txt
+          grep -q "package: name='com.schooloss.nativeapp'" apk-badging.txt
           grep -q "sdkVersion:'24'" apk-badging.txt
           grep -q "targetSdkVersion:'35'" apk-badging.txt
-          if grep -q "uses-permission" apk-permissions.txt; then
-            echo "::error::UI preview must not request Android permissions"
-            cat apk-permissions.txt
+          grep -q "android.permission.INTERNET" apk-permissions.txt
+          grep -q "android.permission.ACCESS_NETWORK_STATE" apk-permissions.txt
+          if grep -E "CAMERA|RECORD_AUDIO|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|READ_CONTACTS|WRITE_EXTERNAL_STORAGE|READ_EXTERNAL_STORAGE" apk-permissions.txt; then
+            echo "::error::Unexpected sensitive permission in R2"
             exit 1
           fi
-
-          cp "$APK" SchoolOS-Native-UI-R1-Fixed.apk
-          sha256sum SchoolOS-Native-UI-R1-Fixed.apk > apk-sha256.txt
+          cp "$APK" SchoolOS-Native-Live-R2.apk
+          sha256sum SchoolOS-Native-Live-R2.apk > apk-sha256.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SchoolOS-Native-UI-R1-Fixed
+          name: SchoolOS-Native-Live-R2
           path: |
-            SchoolOS-Native-UI-R1-Fixed.apk
+            SchoolOS-Native-Live-R2.apk
             apk-badging.txt
             apk-permissions.txt
             apk-signature.txt

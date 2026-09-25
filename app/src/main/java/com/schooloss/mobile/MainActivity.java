@@ -2,24 +2,32 @@ package com.schooloss.nativeapp;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Environment;
 import android.text.InputType;
+import android.net.Uri;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.*;
 
+import androidx.core.content.FileProvider;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -71,6 +79,12 @@ public class MainActivity extends Activity {
     private final List<Integer> attendanceStudentIds = new ArrayList<>();
     private final List<Spinner> attendanceStatusInputs = new ArrayList<>();
     private final List<EditText> attendanceRemarkInputs = new ArrayList<>();
+    private static final int REQUEST_ASSIGNMENT_FILE = 4401;
+    private int pendingAssignmentId = 0;
+    private String pendingAssignmentToken = "";
+    private EditText pendingAssignmentAnswer;
+    private TextView pendingFileLabel;
+    private Uri pendingAssignmentFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,6 +102,25 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         io.shutdownNow();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_ASSIGNMENT_FILE && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) {
+                pendingAssignmentFile = uri;
+                try {
+                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (Exception ignored) {}
+                if (pendingFileLabel != null) {
+                    String name = uri.getLastPathSegment();
+                    pendingFileLabel.setText("Selected: " + (name == null ? "file" : name));
+                    pendingFileLabel.setTextColor(selectedRole.color);
+                }
+            }
+        }
     }
 
     @Override
@@ -697,6 +730,19 @@ public class MainActivity extends Activity {
             }else if("conversation".equals(type)&&id>0){
                 final int conversationId=id;
                 item.setOnClickListener(v -> loadMessageThread(conversationId));
+            }else if("sfh_lesson".equals(type)&&id>0){
+                final int lessonId=id; item.setOnClickListener(v -> loadSfhLesson(lessonId));
+            }else if("sfh_material".equals(type)&&id>0){
+                final int materialId=id; item.setOnClickListener(v -> loadSfhMaterial(materialId));
+            }else if("sfh_assignment".equals(type)&&id>0){
+                final int assignmentId=id; item.setOnClickListener(v -> loadSfhAssignment(assignmentId));
+            }else if("sfh_submission".equals(type)&&id>0){
+                final int submissionId=id; item.setOnClickListener(v -> loadSfhSubmission(submissionId));
+            }else if("gallery_album".equals(type)&&id>0){
+                final int albumId=id; item.setOnClickListener(v -> loadGalleryAlbum(albumId));
+            }else if(("result_term".equals(type)||"result_exam".equals(type))&&id>0){
+                final String resultKind="result_exam".equals(type)?"exam":"term";
+                final int resultId=id; item.setOnClickListener(v -> loadResultDetail(resultKind,resultId));
             }else if(!target.isEmpty()){
                 item.setOnClickListener(v -> openTab(target));
             }
@@ -960,6 +1006,210 @@ public class MainActivity extends Activity {
 
     private void markAllNotifications(){
         io.execute(() -> {try{JSONObject r=api.post("notification_read_all",new JSONObject());ui.post(() -> {Toast.makeText(this,r.optString("message","Notifications updated."),Toast.LENGTH_SHORT).show();loadModule("updates");});}catch(Exception e){ui.post(() -> Toast.makeText(this,message(e),Toast.LENGTH_SHORT).show());}});
+    }
+
+
+    private LinearLayout r4Page(String backLabel, View.OnClickListener backAction, String kicker, String heading, String subtitle) {
+        LinearLayout page=vertical(); page.setPadding(dp(16),dp(14),dp(16),dp(24));
+        TextView back=text("‹  "+backLabel,12,selectedRole.color,true);back.setPadding(0,dp(4),0,dp(12));back.setOnClickListener(backAction);page.addView(back);
+        page.addView(label(kicker,9,selectedRole.color,true));page.addView(title(heading,24));if(subtitle!=null&&!subtitle.isEmpty())page.addView(body(subtitle,11));
+        return page;
+    }
+
+    private void setDetailContent(LinearLayout page) {
+        LinearLayout root=vertical();root.setBackgroundColor(BG);root.addView(topBar());
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(page);
+        root.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f));root.addView(bottomNav());setContentView(root);
+    }
+
+    private void loadSfhLesson(int id) {
+        renderLoading("Opening lesson","Loading Study From Home lesson…");
+        io.execute(() -> {
+            try { JSONObject r=api.get("sfh_lesson","id="+id); JSONObject d=r.optJSONObject("data"); if(d==null)throw new Exception("Lesson is unavailable."); ui.post(() -> renderSfhLesson(d)); }
+            catch(Exception e){ ui.post(() -> renderConnectionError("Could not open lesson",message(e))); }
+        });
+    }
+
+    private void renderSfhLesson(JSONObject d) {
+        LinearLayout page=r4Page("Study From Home",v -> openTab("study_from_home"),"LESSON",d.optString("title","Lesson"),d.optString("subject","")+" · "+d.optString("class_name",""));
+        if(!d.optString("topic","").isEmpty()){page.addView(gap(10));page.addView(text(d.optString("topic",""),15,TEXT,true));}
+        if(!d.optString("description","").isEmpty()){page.addView(gap(10));page.addView(sectionHeading("Lesson",d.optString("status","")));page.addView(body(d.optString("description",""),12));}
+        if(!d.optString("teacher_instructions","").isEmpty()){page.addView(gap(12));LinearLayout card=card();card.setPadding(dp(13),dp(12),dp(13),dp(12));card.addView(label("TEACHER INSTRUCTIONS",9,selectedRole.color,true));card.addView(body(d.optString("teacher_instructions",""),12));page.addView(card);}
+        if(d.optBoolean("completed",false)){page.addView(gap(12));TextView done=text("✓ Lesson completed "+d.optString("completed_at",""),11,Color.rgb(20,135,90),true);done.setPadding(dp(12),dp(10),dp(12),dp(10));done.setBackground(round(Color.rgb(238,250,244),12,Color.rgb(190,232,211)));page.addView(done);}
+        else if(d.optBoolean("can_complete",false)){page.addView(gap(12));Button done=button("Mark Lesson Complete",selectedRole.color,Color.WHITE);done.setOnClickListener(v -> completeSfhLesson(d.optInt("id"),d.optString("complete_token","")));page.addView(done);}
+        JSONArray materials=d.optJSONArray("materials");page.addView(gap(14));page.addView(sectionHeading("Study Material",materials==null||materials.length()==0?"No material published for this lesson.":materials.length()+" resources"));
+        if(materials!=null)for(int i=0;i<materials.length();i++){JSONObject m=materials.optJSONObject(i);if(m==null)continue;LinearLayout item=miniRow(m.optString("title","Material"),m.optString("label","Resource")+" · "+formatBytes(m.optLong("file_size",0)));final int mid=m.optInt("id");item.setOnClickListener(v -> loadSfhMaterial(mid));page.addView(withTopMargin(item,i>0?7:0));}
+        JSONArray assignments=d.optJSONArray("assignments");page.addView(gap(14));page.addView(sectionHeading("Assignments",assignments==null||assignments.length()==0?"No linked assignments.":assignments.length()+" linked work items"));
+        if(assignments!=null)for(int i=0;i<assignments.length();i++){JSONObject a=assignments.optJSONObject(i);if(a==null)continue;LinearLayout item=miniRow(a.optString("title","Assignment"),a.optString("status","")+" · Due "+a.optString("due_at",""));final int aid=a.optInt("id");item.setOnClickListener(v -> loadSfhAssignment(aid));page.addView(withTopMargin(item,i>0?7:0));}
+        setDetailContent(page);
+    }
+
+    private void completeSfhLesson(int id,String token){
+        renderLoading("Saving progress","Marking lesson complete…");
+        io.execute(() -> {try{JSONObject b=new JSONObject();b.put("lesson_id",id);b.put("action_token",token);JSONObject r=api.post("sfh_lesson_complete",b);JSONObject lesson=r.optJSONObject("lesson");ui.post(() -> {Toast.makeText(this,r.optString("message","Lesson completed."),Toast.LENGTH_SHORT).show();if(lesson!=null)renderSfhLesson(lesson);else loadSfhLesson(id);});}catch(Exception e){ui.post(() -> renderConnectionError("Lesson progress was not saved",message(e)));}});
+    }
+
+    private void loadSfhMaterial(int id){
+        renderLoading("Opening material","Checking protected Study From Home resource…");
+        io.execute(() -> {try{JSONObject r=api.get("sfh_material","id="+id);JSONObject d=r.optJSONObject("data");if(d==null)throw new Exception("Material is unavailable.");ui.post(() -> renderSfhMaterial(d));}catch(Exception e){ui.post(() -> renderConnectionError("Could not open material",message(e)));}});
+    }
+
+    private void renderSfhMaterial(JSONObject d){
+        LinearLayout page=r4Page("Study From Home",v -> openTab("study_from_home"),d.optString("type_label","MATERIAL").toUpperCase(),d.optString("title","Study Material"),d.optString("subject","")+" · "+d.optString("lesson_title",""));
+        String type=d.optString("type","");
+        if("note".equals(type)){page.addView(gap(12));LinearLayout note=card();note.setPadding(dp(14),dp(13),dp(14),dp(13));note.addView(body(d.optString("note_body",""),12));page.addView(note);}
+        else if("file".equals(type)){page.addView(gap(12));LinearLayout file=card();file.setPadding(dp(14),dp(13),dp(14),dp(13));file.addView(text(d.optString("original_filename","Study material"),13,TEXT,true));file.addView(text(formatBytes(d.optLong("file_size",0))+" · "+d.optString("mime_type",""),10,MUTED,false));Button open=button("Download & Open",selectedRole.color,Color.WHITE);final int id=d.optInt("id");open.setOnClickListener(v -> downloadAndOpen("file","kind=sfh_material&id="+id,"Opening material"));file.addView(gap(9));file.addView(open);page.addView(file);}
+        else {String url=d.optString("external_url","");page.addView(gap(12));LinearLayout external=card();external.setPadding(dp(14),dp(13),dp(14),dp(13));external.addView(body(url.isEmpty()?"This external resource is unavailable.":url,11));if(!url.isEmpty()){Button open=button("Open External Resource",selectedRole.color,Color.WHITE);open.setOnClickListener(v -> openExternalUrl(url));external.addView(gap(9));external.addView(open);}page.addView(external);}
+        setDetailContent(page);
+    }
+
+    private void loadSfhAssignment(int id){
+        renderLoading("Opening assignment","Loading assignment and submission state…");
+        io.execute(() -> {try{JSONObject r=api.get("sfh_assignment","id="+id);JSONObject d=r.optJSONObject("data");if(d==null)throw new Exception("Assignment is unavailable.");ui.post(() -> renderSfhAssignment(d));}catch(Exception e){ui.post(() -> renderConnectionError("Could not open assignment",message(e)));}});
+    }
+
+    private void renderSfhAssignment(JSONObject d){
+        LinearLayout page=r4Page("Study From Home",v -> openTab("study_from_home"),"ASSIGNMENT",d.optString("title","Assignment"),d.optString("subject","")+" · Due "+d.optString("due_at",""));
+        if(!d.optString("instructions","").isEmpty()){page.addView(gap(12));LinearLayout instructions=card();instructions.setPadding(dp(14),dp(13),dp(14),dp(13));instructions.addView(sectionHeading("Instructions",d.optString("status","")));instructions.addView(body(d.optString("instructions",""),12));page.addView(instructions);}
+        String role=d.optString("role","");
+        JSONObject submission=d.optJSONObject("submission");
+        if("student".equals(role)){
+            page.addView(gap(12));page.addView(sectionHeading("Your work",d.optString("display_status","Assigned")));
+            if(submission!=null){LinearLayout status=miniRow("Submission #"+submission.optInt("id"),pretty(submission.optString("status","started"))+(submission.has("score_awarded")&& !submission.isNull("score_awarded")?" · Score "+submission.optString("score_awarded")+"/"+submission.optString("score_out_of"):""));final int sid=submission.optInt("id");status.setOnClickListener(v -> loadSfhSubmission(sid));page.addView(status);}
+            if(d.optBoolean("can_start",false)){Button start=button("Start Assignment",selectedRole.color,Color.WHITE);start.setOnClickListener(v -> startSfhAssignment(d.optInt("id"),d.optString("start_token","")));page.addView(gap(10));page.addView(start);}
+            if(d.optBoolean("can_submit",false)){
+                page.addView(gap(12));LinearLayout form=card();form.setPadding(dp(14),dp(13),dp(14),dp(13));form.addView(fieldLabel("Typed answer"));
+                EditText answer=new EditText(this);answer.setHint(d.optBoolean("allow_text",true)?"Write your answer…":"Typed answers are disabled for this assignment.");answer.setTextSize(13);answer.setTextColor(TEXT);answer.setHintTextColor(MUTED);answer.setMinLines(4);answer.setGravity(Gravity.TOP);answer.setEnabled(d.optBoolean("allow_text",true));answer.setPadding(dp(12),dp(10),dp(12),dp(10));answer.setBackground(round(Color.WHITE,14,LINE));form.addView(answer);
+                TextView fileLabel=text("No file selected",10,MUTED,false);form.addView(gap(8));form.addView(fileLabel);
+                if(d.optBoolean("allow_file",false)){Button choose=button("Choose Answer File",Color.WHITE,selectedRole.color);choose.setBackground(round(Color.WHITE,12,tint(selectedRole.color,.22f)));choose.setOnClickListener(v -> chooseAssignmentFile(d.optInt("id"),d.optString("submit_token",""),answer,fileLabel));form.addView(gap(7));form.addView(choose);}
+                Button submit=button("Submit Assignment",selectedRole.color,Color.WHITE);submit.setOnClickListener(v -> submitSfhAssignment(d.optInt("id"),d.optString("submit_token",""),answer,fileLabel));form.addView(gap(9));form.addView(submit);
+                form.addView(gap(7));form.addView(text("Allowed: "+joinJson(d.optJSONArray("allowed_extensions"))+" · Max "+formatBytes(d.optLong("max_upload_bytes",0)),9,MUTED,false));page.addView(form);
+            }
+        } else if("parent".equals(role)){
+            page.addView(gap(12));page.addView(sectionHeading("Child submission",d.optString("display_status","Assigned")));if(submission!=null){LinearLayout row=miniRow("Submission #"+submission.optInt("id"),pretty(submission.optString("status","")));final int sid=submission.optInt("id");row.setOnClickListener(v -> loadSfhSubmission(sid));page.addView(row);}
+        } else {
+            JSONObject counts=d.optJSONObject("submission_counts");if(counts!=null){page.addView(gap(12));page.addView(sectionHeading("Submission status","Started "+counts.optInt("started")+" · Submitted "+counts.optInt("submitted")+" · Late "+counts.optInt("late")+" · Reviewed "+counts.optInt("reviewed")));}
+            JSONArray students=d.optJSONArray("students");if(students!=null){for(int i=0;i<students.length();i++){JSONObject s=students.optJSONObject(i);if(s==null)continue;String status=pretty(s.optString("status","assigned"));LinearLayout row=miniRow(s.optString("name","Student"),status+(s.optInt("submission_id",0)>0?" · Tap to review":""));int sid=s.optInt("submission_id",0);if(sid>0)row.setOnClickListener(v -> loadSfhSubmission(sid));page.addView(withTopMargin(row,i>0?7:0));}}
+        }
+        setDetailContent(page);
+    }
+
+    private void startSfhAssignment(int id,String token){
+        renderLoading("Starting assignment","Preparing your submission workspace…");
+        io.execute(() -> {try{JSONObject b=new JSONObject();b.put("assignment_id",id);b.put("action_token",token);JSONObject r=api.post("sfh_assignment_start",b);JSONObject a=r.optJSONObject("assignment");ui.post(() -> {Toast.makeText(this,r.optString("message","Assignment started."),Toast.LENGTH_SHORT).show();if(a!=null)renderSfhAssignment(a);else loadSfhAssignment(id);});}catch(Exception e){ui.post(() -> renderConnectionError("Assignment was not started",message(e)));}});
+    }
+
+    private void chooseAssignmentFile(int assignmentId,String token,EditText answer,TextView fileLabel){
+        pendingAssignmentId=assignmentId;pendingAssignmentToken=token;pendingAssignmentAnswer=answer;pendingFileLabel=fileLabel;pendingAssignmentFile=null;
+        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("*/*");intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);startActivityForResult(intent,REQUEST_ASSIGNMENT_FILE);
+    }
+
+    private void submitSfhAssignment(int assignmentId,String token,EditText answer,TextView fileLabel){
+        pendingAssignmentId=assignmentId;pendingAssignmentToken=token;pendingAssignmentAnswer=answer;pendingFileLabel=fileLabel;
+        String textValue=answer==null?"":answer.getText().toString();
+        Uri file=pendingAssignmentFile;
+        renderLoading("Submitting assignment","Uploading through protected SchoolOS storage…");
+        io.execute(() -> {
+            try{
+                Map<String,String> fields=new HashMap<>();fields.put("assignment_id",String.valueOf(assignmentId));fields.put("action_token",token);fields.put("answer_text",textValue);
+                JSONObject r=api.postMultipart("sfh_assignment_submit",fields,file,"answer_file");JSONObject a=r.optJSONObject("assignment");
+                ui.post(() -> {pendingAssignmentFile=null;Toast.makeText(this,r.optString("message","Assignment submitted."),Toast.LENGTH_SHORT).show();if(a!=null)renderSfhAssignment(a);else loadSfhAssignment(assignmentId);});
+            }catch(Exception e){ui.post(() -> renderConnectionError("Assignment was not submitted",message(e)));}
+        });
+    }
+
+    private void loadSfhSubmission(int id){
+        renderLoading("Opening submission","Loading versions and feedback…");
+        io.execute(() -> {try{JSONObject r=api.get("sfh_submission","id="+id);JSONObject d=r.optJSONObject("data");if(d==null)throw new Exception("Submission is unavailable.");ui.post(() -> renderSfhSubmission(d));}catch(Exception e){ui.post(() -> renderConnectionError("Could not open submission",message(e)));}});
+    }
+
+    private void renderSfhSubmission(JSONObject d){
+        LinearLayout page=r4Page("Assignment",v -> loadSfhAssignment(d.optInt("assignment_id")),"SUBMISSION",d.optString("student_name","Your work"),d.optString("assignment_title","")+" · "+pretty(d.optString("status","")));
+        if(d.has("score_awarded")&&!d.isNull("score_awarded")){page.addView(gap(10));page.addView(sectionHeading("Score",d.optString("score_awarded")+" / "+d.optString("score_out_of")));}
+        if(!d.optString("feedback_summary","").isEmpty()){page.addView(gap(10));LinearLayout feedback=card();feedback.setPadding(dp(13),dp(12),dp(13),dp(12));feedback.addView(label("TEACHER FEEDBACK",9,selectedRole.color,true));feedback.addView(body(d.optString("feedback_summary",""),12));if(!d.optString("strengths","").isEmpty())feedback.addView(body("Strengths: "+d.optString("strengths"),11));if(!d.optString("improvement_areas","").isEmpty())feedback.addView(body("Improve: "+d.optString("improvement_areas"),11));if(!d.optString("correction_instructions","").isEmpty())feedback.addView(body("Corrections: "+d.optString("correction_instructions"),11));page.addView(feedback);}
+        JSONArray versions=d.optJSONArray("versions");page.addView(gap(12));page.addView(sectionHeading("Submission versions",versions==null?"":versions.length()+" versions"));
+        if(versions!=null)for(int i=0;i<versions.length();i++){JSONObject v=versions.optJSONObject(i);if(v==null)continue;LinearLayout box=card();box.setPadding(dp(13),dp(12),dp(13),dp(12));box.addView(text("Version "+v.optInt("version_no"),12,TEXT,true));box.addView(text(v.optString("submitted_at","")+(v.optBoolean("is_late",false)?" · Late":""),9,MUTED,false));if(!v.optString("answer_text","").isEmpty()){TextView a=body(v.optString("answer_text",""),11);a.setPadding(0,dp(7),0,0);box.addView(a);}if(v.optBoolean("has_file",false)){Button open=button("Open "+v.optString("original_filename","Answer File"),Color.WHITE,selectedRole.color);open.setBackground(round(Color.WHITE,12,tint(selectedRole.color,.22f)));final int versionId=v.optInt("id");open.setOnClickListener(x -> downloadAndOpen("file","kind=sfh_submission&id="+versionId,"Opening submission file"));box.addView(gap(7));box.addView(open);}page.addView(withTopMargin(box,i>0?8:0));}
+        if(d.optBoolean("can_review",false)){page.addView(gap(14));LinearLayout form=card();form.setPadding(dp(14),dp(13),dp(14),dp(13));form.addView(sectionHeading("Review submission","Feedback is visible to the student/parent."));
+            EditText feedback=input("Feedback summary",false);form.addView(feedback);EditText strengths=input("Strengths",false);form.addView(gap(7));form.addView(strengths);EditText improve=input("Improvement areas",false);form.addView(gap(7));form.addView(improve);EditText corrections=input("Correction instructions",false);form.addView(gap(7));form.addView(corrections);
+            LinearLayout scores=horizontal();EditText score=input("Score",false);score.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);EditText outOf=input("Out of",false);outOf.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);scores.addView(score,new LinearLayout.LayoutParams(0,dp(48),1f));LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(0,dp(48),1f);slp.leftMargin=dp(7);scores.addView(outOf,slp);form.addView(gap(7));form.addView(scores);
+            Button reviewed=button("Save Review",selectedRole.color,Color.WHITE);reviewed.setOnClickListener(v -> reviewSfhSubmission(d,"reviewed",feedback,strengths,improve,corrections,score,outOf));Button returned=button("Return for Correction",Color.WHITE,Color.rgb(180,55,65));returned.setBackground(round(Color.WHITE,14,Color.rgb(245,205,212)));returned.setOnClickListener(v -> reviewSfhSubmission(d,"returned",feedback,strengths,improve,corrections,score,outOf));form.addView(gap(9));form.addView(reviewed);form.addView(gap(7));form.addView(returned);page.addView(form);}
+        setDetailContent(page);
+    }
+
+    private void reviewSfhSubmission(JSONObject d,String decision,EditText feedback,EditText strengths,EditText improve,EditText corrections,EditText score,EditText outOf){
+        renderLoading("Saving review","Applying Study From Home review authority…");
+        io.execute(() -> {try{JSONObject b=new JSONObject();b.put("submission_id",d.optInt("id"));b.put("action_token",d.optString("review_token",""));b.put("decision",decision);b.put("feedback_summary",feedback.getText().toString());b.put("strengths",strengths.getText().toString());b.put("improvement_areas",improve.getText().toString());b.put("correction_instructions",corrections.getText().toString());b.put("score_awarded",score.getText().toString());b.put("score_out_of",outOf.getText().toString());JSONObject r=api.post("sfh_submission_review",b);JSONObject sub=r.optJSONObject("submission");ui.post(() -> {Toast.makeText(this,r.optString("message","Review saved."),Toast.LENGTH_SHORT).show();if(sub!=null)renderSfhSubmission(sub);else loadSfhSubmission(d.optInt("id"));});}catch(Exception e){ui.post(() -> renderConnectionError("Review was not saved",message(e)));}});
+    }
+
+    private void loadGalleryAlbum(int id){
+        renderLoading("Opening album","Loading private school gallery…");
+        io.execute(() -> {try{JSONObject r=api.get("gallery_album","id="+id);JSONObject d=r.optJSONObject("data");if(d==null)throw new Exception("Album is unavailable.");ui.post(() -> renderGalleryAlbum(d));}catch(Exception e){ui.post(() -> renderConnectionError("Could not open album",message(e)));}});
+    }
+
+    private void renderGalleryAlbum(JSONObject d){
+        LinearLayout page=r4Page("Gallery",v -> openTab("gallery"),"SCHOOL GALLERY",d.optString("title","Album"),d.optString("event_date",""));
+        if(!d.optString("description","").isEmpty())page.addView(body(d.optString("description",""),12));
+        JSONArray media=d.optJSONArray("media");page.addView(gap(12));page.addView(sectionHeading("Media",media==null?"":media.length()+" items"));
+        if(media!=null)for(int i=0;i<media.length();i++){JSONObject m=media.optJSONObject(i);if(m==null)continue;LinearLayout box=card();box.setPadding(dp(13),dp(12),dp(13),dp(12));String kind=pretty(m.optString("media_type","media"));box.addView(text(kind+" #"+m.optInt("id"),12,TEXT,true));box.addView(text(formatBytes(m.optLong("file_size",0))+(m.optInt("duration_seconds",0)>0?" · "+m.optInt("duration_seconds")+" sec":""),9,MUTED,false));final int mediaId=m.optInt("id");Button open=button("Open Media",selectedRole.color,Color.WHITE);open.setOnClickListener(v -> downloadAndOpen("file","kind=gallery&id="+mediaId+"&size=full","Opening gallery media"));box.addView(gap(8));box.addView(open);if(m.optBoolean("can_download",false)){Button save=button("Save Copy",Color.WHITE,selectedRole.color);save.setBackground(round(Color.WHITE,12,tint(selectedRole.color,.22f)));save.setOnClickListener(v -> downloadAndOpen("file","kind=gallery&id="+mediaId+"&size=full&download=1","Saving gallery media"));box.addView(gap(7));box.addView(save);}page.addView(withTopMargin(box,i>0?8:0));}
+        setDetailContent(page);
+    }
+
+    private void loadResultDetail(String kind,int id){
+        renderLoading("Opening result","Loading published SchoolOS result…");
+        io.execute(() -> {try{JSONObject r=api.get("result_detail","kind="+kind+"&id="+id);JSONObject d=r.optJSONObject("data");if(d==null)throw new Exception("Result is unavailable.");ui.post(() -> renderResultDetail(d));}catch(Exception e){ui.post(() -> renderConnectionError("Could not open result",message(e)));}});
+    }
+
+    private void renderResultDetail(JSONObject d){
+        String kind=d.optString("kind","term");LinearLayout page=r4Page("Results",v -> openTab("exams"),kind.equals("exam")?"PUBLISHED EXAM RESULT":"PUBLISHED TERM RESULT",d.optString("title","Result"),d.optString("subtitle",""));
+        LinearLayout metrics=horizontal();metrics.addView(metricCard("RESULT",String.format(java.util.Locale.US,"%.1f%%",d.optDouble("percentage",0))),new LinearLayout.LayoutParams(0,dp(70),1f));if(d.has("grade")){LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(0,dp(70),1f);gp.leftMargin=dp(7);metrics.addView(metricCard("GRADE",d.optString("grade","—")),gp);}page.addView(gap(12));page.addView(metrics);
+        JSONArray subjects=d.optJSONArray("subjects");page.addView(gap(14));page.addView(sectionHeading("Subject performance",subjects==null?"":subjects.length()+" subjects"));
+        if(subjects!=null)for(int i=0;i<subjects.length();i++){JSONObject s=subjects.optJSONObject(i);if(s==null)continue;String sub=s.optString("subject","Subject");String meta;if("exam".equals(kind)){meta=(s.isNull("total_marks")?"—":s.optString("total_marks"))+" / "+s.optString("max_marks")+" · "+s.optString("result","");}else{meta=String.format(java.util.Locale.US,"%.1f%%",s.optDouble("percentage",0))+" · Failed "+s.optInt("failed")+" · Absent "+s.optInt("absent");}LinearLayout row=miniRow(sub,meta);page.addView(withTopMargin(row,i>0?7:0));}
+        if(!d.optString("publication_notes","").isEmpty()){page.addView(gap(12));LinearLayout note=card();note.setPadding(dp(13),dp(12),dp(13),dp(12));note.addView(label("SCHOOL NOTE",9,selectedRole.color,true));note.addView(body(d.optString("publication_notes",""),11));page.addView(note);}
+        if(d.optBoolean("official_document",false)){page.addView(gap(14));Button report=button("Open Official Report Document",selectedRole.color,Color.WHITE);final int id=d.optInt("id");report.setOnClickListener(v -> downloadAndOpen("report_document","kind="+kind+"&id="+id,"Opening official report"));page.addView(report);page.addView(gap(7));page.addView(text("The document reuses the existing SchoolOS report-card template. Use the browser Print / Save PDF option when needed.",9,MUTED,false));}
+        setDetailContent(page);
+    }
+
+    private LinearLayout metricCard(String labelText,String value){
+        LinearLayout box=vertical();box.setGravity(Gravity.CENTER);box.setBackground(round(Color.WHITE,14,LINE));box.addView(centerText(value,18,TEXT,true));box.addView(centerText(labelText,9,MUTED,true));return box;
+    }
+
+    private LinearLayout miniRow(String heading,String sub){
+        LinearLayout item=card();item.setPadding(dp(13),dp(11),dp(13),dp(11));item.addView(text(heading,12,TEXT,true));if(sub!=null&&!sub.isEmpty())item.addView(text(sub,9,MUTED,false));return item;
+    }
+
+    private View withTopMargin(View view,int top){
+        LinearLayout holder=vertical();LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);lp.topMargin=dp(top);holder.addView(view,lp);return holder;
+    }
+
+    private String joinJson(JSONArray arr){
+        if(arr==null||arr.length()==0)return "School-approved files";StringBuilder b=new StringBuilder();for(int i=0;i<arr.length();i++){if(i>0)b.append(", ");b.append(arr.optString(i).toUpperCase());}return b.toString();
+    }
+
+    private String formatBytes(long bytes){
+        if(bytes<=0)return "—";String[] units={"B","KB","MB","GB"};double v=bytes;int i=0;while(v>=1024&&i<units.length-1){v/=1024;i++;}return (i==0?String.valueOf((long)v):String.format(java.util.Locale.US,"%.1f",v))+" "+units[i];
+    }
+
+    private void downloadAndOpen(String action,String query,String toastText){
+        Toast.makeText(this,toastText+"…",Toast.LENGTH_SHORT).show();
+        io.execute(() -> {
+            try{
+                File dir=getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);if(dir==null)dir=getCacheDir();
+                ApiClient.DownloadResult result=api.download(action,query,dir);
+                File finalDir=dir;ui.post(() -> openDownloadedFile(result));
+            }catch(Exception e){ui.post(() -> Toast.makeText(this,message(e),Toast.LENGTH_LONG).show());}
+        });
+    }
+
+    private void openDownloadedFile(ApiClient.DownloadResult result){
+        try{
+            Uri uri=FileProvider.getUriForFile(this,getPackageName()+".files",result.file);
+            Intent intent=new Intent(Intent.ACTION_VIEW);intent.setDataAndType(uri,result.mime);intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(intent,"Open "+result.filename));
+        }catch(Exception e){Toast.makeText(this,"File downloaded to the SchoolOS app folder, but no compatible viewer is installed.",Toast.LENGTH_LONG).show();}
+    }
+
+    private void openExternalUrl(String url){
+        try{Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse(url));startActivity(i);}catch(Exception e){Toast.makeText(this,"No app is available to open this link.",Toast.LENGTH_SHORT).show();}
     }
 
     private void addAccountControls(LinearLayout page){

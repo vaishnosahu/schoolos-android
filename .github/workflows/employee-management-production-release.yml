@@ -106,8 +106,10 @@ jobs:
           grep -q "versionCode='3500'" production-badging.txt
           grep -q "versionName='3.5.0-saas'" production-badging.txt
           grep -q "targetSdkVersion:'35'" production-badging.txt
+          "$AAPT" dump permissions "$APK" | tee production-permissions.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee production-signature.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" production-signature.txt
+          grep -qi "Signer #1 certificate SHA-256 digest: F4:14:B2:EC:F4:97:1C:88:1A:B9:79:F8:9E:FD:DE:C9:83:63:CD:ED:D4:E5:1A:E2:72:7F:EB:2C:6D:4A:BC:9A" production-signature.txt
           cp "$APK" Employee-Management-SaaS-Final-v3.5.0.apk
           sha256sum Employee-Management-SaaS-Final-v3.5.0.apk > Employee-Management-SaaS-Final-v3.5.0.sha256
           rm -rf "$RUNNER_TEMP/employee-management-saas-source"
@@ -130,5 +132,6 @@ jobs:
             Employee-Management-SaaS-Final-Android-Source-v3.5.0.zip
             Employee-Management-SaaS-Final-Android-Source-v3.5.0.sha256
             production-badging.txt
+            production-permissions.txt
             production-signature.txt
           if-no-files-found: error

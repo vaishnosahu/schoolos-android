@@ -65,8 +65,27 @@ public final class OfflineSnapshotStore {
         } catch (Exception ignored) { return false; }
     }
 
+    public static void setCurrentScope(Context context, String scope) {
+        if (context == null) return;
+        String clean = scope == null ? "" : scope.trim();
+        if (clean.length() > 128) clean = clean.substring(0, 128);
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(PREF_SCOPE, clean).apply();
+    }
+
+    public static String currentScope(Context context) {
+        if (context == null) return "";
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(PREF_SCOPE, "");
+    }
+
     public static void save(Context context, String url, String html) {
+        save(context, url, html, currentScope(context));
+    }
+
+    public static void save(Context context, String url, String html, String scope) {
         if (context == null || !isSafeUrl(url) || html == null) return;
+        if (isFinanceUrl(url) && (scope == null || scope.trim().isEmpty())) return;
         byte[] plain = html.getBytes(StandardCharsets.UTF_8);
         if (plain.length < 64 || plain.length > MAX_HTML_BYTES) return;
         try {
@@ -86,8 +105,18 @@ public final class OfflineSnapshotStore {
     }
 
     public static String read(Context context, String url) {
+        return read(context, url, currentScope(context));
+    }
+
+    public static String read(Context context, String url, String scope) {
         if (context == null || !isSafeUrl(url)) return null;
-        File file = new File(directory(context), hash(url) + ".bin");
+        if (isFinanceUrl(url) && (scope == null || scope.trim().isEmpty())) return null;
+        File file = new File(directory(context), fileKey(url, scope) + ".bin");
+        if (isFinanceUrl(url) && file.isFile() &&
+                System.currentTimeMillis() - file.lastModified() > FINANCE_MAX_AGE_MS) {
+            file.delete();
+            return null;
+        }
         if (!file.isFile() || file.length() < 32 || file.length() > MAX_HTML_BYTES + 256L) return null;
         try (FileInputStream fis = new FileInputStream(file)) {
             int ivLen = fis.read();
@@ -106,6 +135,8 @@ public final class OfflineSnapshotStore {
 
     public static void clearAll(Context context) {
         if (context == null) return;
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().remove(PREF_SCOPE).apply();
         File dir = directory(context);
         File[] files = dir.listFiles();
         if (files != null) for (File f : files) if (f.isFile()) f.delete();

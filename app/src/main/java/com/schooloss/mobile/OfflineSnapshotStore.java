@@ -24,7 +24,7 @@ import javax.crypto.spec.GCMParameterSpec;
 
 public final class OfflineSnapshotStore {
     private static final String KEY_ALIAS = "schoolos_offline_v1";
-    private static final int MAX_HTML_BYTES = 1572864;
+    private static final int MAX_HTML_BYTES = 1572864;\n    private static final long FINANCE_MAX_AGE_MS = 4L * 60L * 60L * 1000L;\n    private static final String PREFS = "schoolos_offline_scope";\n    private static final String PREF_SCOPE = "scope";
     private static final Set<String> SAFE_MOBILE = new HashSet<>(Arrays.asList(
             "", "index.php", "home.php", "profile.php", "updates.php", "announcement.php",
             "schedule.php", "attendance-history.php", "learn.php", "learning-materials.php",
@@ -49,7 +49,7 @@ public final class OfflineSnapshotStore {
             if (!host.equals("alkeynesprjects.com") && !host.equals("www.alkeynesprjects.com")
                     && !host.equals("schooloss.com") && !host.equals("www.schooloss.com")) return false;
             String path = u.getPath() == null ? "" : u.getPath();
-            if ("/schools/finance-center.php".equals(path)) return true;
+            if ("/schools/finance-center.php".equals(path) || "/schools/finance-reconciliation.php".equals(path)) return true;
             if (path.startsWith("/schools/mobile/")) {
                 String page = path.substring("/schools/mobile/".length());
                 return SAFE_MOBILE.contains(page);
@@ -72,7 +72,7 @@ public final class OfflineSnapshotStore {
             byte[] iv = cipher.getIV();
             byte[] encrypted = cipher.doFinal(plain);
             File dir = directory(context); if (!dir.exists()) dir.mkdirs();
-            File out = new File(dir, hash(url) + ".bin");
+            File out = new File(dir, fileKey(url, scope) + ".bin");
             try (FileOutputStream fos = new FileOutputStream(out, false)) {
                 fos.write(iv.length);
                 fos.write(iv);
@@ -106,6 +106,19 @@ public final class OfflineSnapshotStore {
         File dir = directory(context);
         File[] files = dir.listFiles();
         if (files != null) for (File f : files) if (f.isFile()) f.delete();
+    }
+
+    private static boolean isFinanceUrl(String raw) {
+        try {
+            URI u = URI.create(raw);
+            String path = u.getPath() == null ? "" : u.getPath();
+            return "/schools/finance-center.php".equals(path) || "/schools/finance-reconciliation.php".equals(path);
+        } catch (Exception ignored) { return false; }
+    }
+
+    private static String fileKey(String url, String scope) {
+        if (isFinanceUrl(url)) return hash("finance|" + (scope == null ? "" : scope.trim()) + "|" + url);
+        return hash(url);
     }
 
     private static File directory(Context c) { return new File(c.getFilesDir(), "offline-snapshots"); }

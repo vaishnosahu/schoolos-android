@@ -65,9 +65,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.2.0";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.2.0";
-    private static final String APP_UA = " SchoolOSNative/3.2.0 Android";
+    private static final String NATIVE_VERSION = "3.3.0";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.3.0";
+    private static final String APP_UA = " SchoolOSNative/3.3.0 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -722,6 +722,8 @@ public class MainActivity extends Activity {
 
     private void applyNativePresentation(String url) {
         boolean workspace = url != null && url.contains("native_workspace=1");
+        boolean mobileShell = url != null && url.contains("/schools/mobile/") && !url.contains("login.php");
+        String financeUrl = "https://alkeynesprjects.com/schools/finance-center.php?view=mobile&native_app=android&native_version=" + NATIVE_VERSION + "&native_workspace=1";
         String css = ".sidebar,.mobile-sidebar-backdrop,.m-native-skip,.m-skip-link,.skip-link{display:none!important}" +
                 ".app-shell{display:block!important}.main-area{margin-left:0!important;width:100%!important;max-width:none!important}" +
                 ".topbar{position:sticky!important;top:0!important;z-index:30!important;padding:10px 12px!important}" +
@@ -752,6 +754,18 @@ public class MainActivity extends Activity {
             web.setVisibility(View.VISIBLE);
             hideLaunchOverlay();
         });
+        if (mobileShell) {
+            String financeJs = "(function(){try{" +
+                    "if(document.getElementById('schoolos-native-finance-entry'))return;" +
+                    "var h=document.querySelector('.m-content,.m-native-content,.main-area,main');if(!h)return;" +
+                    "var f=document.createElement('a');f.id='schoolos-native-finance-entry';f.href='" + financeUrl + "';" +
+                    "f.innerHTML='<strong>Finance</strong><span>Fees, invoices &amp; payments</span>';" +
+                    "f.setAttribute('style','display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 12px 12px;padding:13px 14px;border:1px solid #dce5ef;border-radius:14px;background:#fff;color:#102a43;text-decoration:none;box-shadow:0 6px 18px rgba(16,42,67,.07);font:600 13px system-ui');" +
+                    "var sp=f.querySelector('span');if(sp)sp.setAttribute('style','font-size:12px;color:#62748a;font-weight:600');" +
+                    "h.insertBefore(f,h.firstChild);" +
+                    "}catch(e){}})();";
+            web.evaluateJavascript(financeJs, null);
+        }
     }
 
     private String quoteJs(String value) {
@@ -812,6 +826,9 @@ public class MainActivity extends Activity {
             if ("payment".equals(host)) return "https://alkeynesprjects.com/schools/mobile/payments.php?native_return=1";
             if ("oauth".equals(host)) return "https://alkeynesprjects.com/schools/study-from-home/google-integration.php?native_app=android&native_version=" + NATIVE_VERSION + "&native_workspace=1";
             return HOME;
+        }
+        if ("finance".equals(host)) {
+            return "https://alkeynesprjects.com/schools/finance-center.php?view=mobile&native_app=android&native_version=" + NATIVE_VERSION + "&native_workspace=1";
         }
         if ("sfh".equals(host)) {
             String sfhPath = path == null ? "" : path.replaceFirst("^/", "");

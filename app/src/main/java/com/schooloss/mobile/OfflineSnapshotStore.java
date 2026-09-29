@@ -24,7 +24,10 @@ import javax.crypto.spec.GCMParameterSpec;
 
 public final class OfflineSnapshotStore {
     private static final String KEY_ALIAS = "schoolos_offline_v1";
-    private static final int MAX_HTML_BYTES = 1572864;\n    private static final long FINANCE_MAX_AGE_MS = 4L * 60L * 60L * 1000L;\n    private static final String PREFS = "schoolos_offline_scope";\n    private static final String PREF_SCOPE = "scope";
+    private static final int MAX_HTML_BYTES = 1572864;
+    private static final long FINANCE_MAX_AGE_MS = 4L * 60L * 60L * 1000L;
+    private static final String PREFS = "schoolos_offline_scope";
+    private static final String PREF_SCOPE = "scope";
     private static final Set<String> SAFE_MOBILE = new HashSet<>(Arrays.asList(
             "", "index.php", "home.php", "profile.php", "updates.php", "announcement.php",
             "schedule.php", "attendance-history.php", "learn.php", "learning-materials.php",

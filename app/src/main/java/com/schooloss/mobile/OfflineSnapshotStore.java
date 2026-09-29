@@ -49,6 +49,7 @@ public final class OfflineSnapshotStore {
             if (!host.equals("alkeynesprjects.com") && !host.equals("www.alkeynesprjects.com")
                     && !host.equals("schooloss.com") && !host.equals("www.schooloss.com")) return false;
             String path = u.getPath() == null ? "" : u.getPath();
+            if ("/schools/finance-center.php".equals(path)) return true;
             if (path.startsWith("/schools/mobile/")) {
                 String page = path.substring("/schools/mobile/".length());
                 return SAFE_MOBILE.contains(page);

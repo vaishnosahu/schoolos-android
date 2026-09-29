@@ -65,9 +65,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 public class MainActivity extends Activity {
-    private static final String NATIVE_VERSION = "3.3.0";
-    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.3.0";
-    private static final String APP_UA = " SchoolOSNative/3.3.0 Android";
+    private static final String NATIVE_VERSION = "3.3.1";
+    private static final String HOME = "https://alkeynesprjects.com/schools/mobile/?native_app=android&native_version=3.3.1";
+    private static final String APP_UA = " SchoolOSNative/3.3.1 Android";
     private static final int FILE_REQ = 4101;
     private static final int WEB_PERM_REQ = 4102;
     private static final int GEO_PERM_REQ = 4103;
@@ -736,6 +736,8 @@ public class MainActivity extends Activity {
                 ".sfh-footer{width:100%!important}.sfh-table-wrap{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}";
         String js = "(function(){" +
                 "document.documentElement.classList.add('schoolos-native');" +
+                "var scope=(document.body&&document.body.getAttribute('data-schoolos-snapshot-scope'))||'';" +
+                "if(scope&&window.SchoolOSNative&&typeof window.SchoolOSNative.setOfflineScope==='function'){window.SchoolOSNative.setOfflineScope(scope);}" +
                 "var kill=function(){" +
                     "document.querySelectorAll('.m-native-skip,.m-skip-link,.skip-link,a[href=\\\"#mainContent\\\"]').forEach(function(x){x.remove();});" +
                     "document.querySelectorAll('[data-install],#installSheet,#installBackdrop').forEach(function(x){x.style.display='none'});" +
@@ -759,7 +761,7 @@ public class MainActivity extends Activity {
                     "if(document.getElementById('schoolos-native-finance-entry'))return;" +
                     "var h=document.querySelector('.m-content,.m-native-content,.main-area,main');if(!h)return;" +
                     "var f=document.createElement('a');f.id='schoolos-native-finance-entry';f.href='" + financeUrl + "';" +
-                    "f.innerHTML='<strong>Finance</strong><span>Fees, invoices &amp; payments</span>';" +
+                    "f.innerHTML='<strong>Finance</strong><span>Billing, collections &amp; controls</span>';" +
                     "f.setAttribute('style','display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 12px 12px;padding:13px 14px;border:1px solid #dce5ef;border-radius:14px;background:#fff;color:#102a43;text-decoration:none;box-shadow:0 6px 18px rgba(16,42,67,.07);font:600 13px system-ui');" +
                     "var sp=f.querySelector('span');if(sp)sp.setAttribute('style','font-size:12px;color:#62748a;font-weight:600');" +
                     "h.insertBefore(f,h.firstChild);" +
@@ -828,6 +830,9 @@ public class MainActivity extends Activity {
             return HOME;
         }
         if ("finance".equals(host)) {
+            if (path != null && path.toLowerCase(Locale.ROOT).contains("reconciliation")) {
+                return "https://alkeynesprjects.com/schools/finance-reconciliation.php?view=mobile&native_app=android&native_version=" + NATIVE_VERSION + "&native_workspace=1";
+            }
             return "https://alkeynesprjects.com/schools/finance-center.php?view=mobile&native_app=android&native_version=" + NATIVE_VERSION + "&native_workspace=1";
         }
         if ("sfh".equals(host)) {
@@ -893,7 +898,10 @@ public class MainActivity extends Activity {
     private void captureSafeSnapshot(String url) {
         if (!OfflineSnapshotStore.isSafeUrl(url)) return;
         String js = "(function(){try{" +
-                "if(!window.SchoolOSNative||typeof window.SchoolOSNative.cacheOfflineSnapshot!=='function')return;" +
+                "if(!window.SchoolOSNative)return;" +
+                "var scope=(document.body&&document.body.getAttribute('data-schoolos-snapshot-scope'))||'';" +
+                "if(scope&&typeof window.SchoolOSNative.setOfflineScope==='function'){window.SchoolOSNative.setOfflineScope(scope);}" +
+                "if(typeof window.SchoolOSNative.cacheOfflineSnapshotScoped!=='function'&&typeof window.SchoolOSNative.cacheOfflineSnapshot!=='function')return;" +
                 "var d=document.documentElement.cloneNode(true);" +
                 "d.querySelectorAll('script,noscript,iframe,object,embed,video,audio').forEach(function(x){x.remove();});" +
                 "d.querySelectorAll('form').forEach(function(f){var box=document.createElement('div');while(f.firstChild)box.appendChild(f.firstChild);f.replaceWith(box);});" +
@@ -903,7 +911,8 @@ public class MainActivity extends Activity {
                 "var b=document.createElement('div');b.textContent='Offline read-only copy · reconnect for live data and actions';" +
                 "b.setAttribute('style','position:sticky;top:0;z-index:2147483647;padding:10px 14px;background:#fff4cc;color:#5b4300;font:600 13px system-ui;text-align:center;border-bottom:1px solid #ead68a');" +
                 "var body=d.querySelector('body');if(body)body.insertBefore(b,body.firstChild);" +
-                "window.SchoolOSNative.cacheOfflineSnapshot(location.href,'<!doctype html>'+d.outerHTML);" +
+                "var html='<!doctype html>'+d.outerHTML;" +
+                "if(typeof window.SchoolOSNative.cacheOfflineSnapshotScoped==='function'){window.SchoolOSNative.cacheOfflineSnapshotScoped(location.href,html,scope);}else{window.SchoolOSNative.cacheOfflineSnapshot(location.href,html);}" +
                 "}catch(e){}})();";
         web.evaluateJavascript(js, null);
     }
@@ -1036,6 +1045,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String getVersion() { return NATIVE_VERSION; }
         @JavascriptInterface public String getPlatform() { return "android"; }
         @JavascriptInterface public String getInstallationId() { return SchoolOSApplication.installationId(MainActivity.this); }
+        @JavascriptInterface public void setOfflineScope(String scope) {
+            OfflineSnapshotStore.setCurrentScope(MainActivity.this, scope);
+        }
         @JavascriptInterface public void configurePush(String configJson) {
             runOnUiThread(() -> configureNativePush(configJson));
         }
@@ -1045,6 +1057,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void cacheOfflineSnapshot(String url, String html) {
             if (!isOnline() || url == null || html == null) return;
             OfflineSnapshotStore.save(MainActivity.this, url, html);
+        }
+        @JavascriptInterface public void cacheOfflineSnapshotScoped(String url, String html, String scope) {
+            if (!isOnline() || url == null || html == null) return;
+            OfflineSnapshotStore.setCurrentScope(MainActivity.this, scope);
+            OfflineSnapshotStore.save(MainActivity.this, url, html, scope);
         }
         @JavascriptInterface public void openFile(String url, String name, String mime) {
             NativeFileManager.perform(MainActivity.this, "open", url, name, mime, nativeHeaders(), web.getSettings().getUserAgentString());

@@ -25,6 +25,9 @@ import javax.crypto.spec.GCMParameterSpec;
 public final class OfflineSnapshotStore {
     private static final String KEY_ALIAS = "schoolos_offline_v1";
     private static final int MAX_HTML_BYTES = 1572864;
+    private static final long FINANCE_MAX_AGE_MS = 4L * 60L * 60L * 1000L;
+    private static final String PREFS = "schoolos_offline_scope";
+    private static final String PREF_SCOPE = "scope";
     private static final Set<String> SAFE_MOBILE = new HashSet<>(Arrays.asList(
             "", "index.php", "home.php", "profile.php", "updates.php", "announcement.php",
             "schedule.php", "attendance-history.php", "learn.php", "learning-materials.php",
@@ -49,7 +52,7 @@ public final class OfflineSnapshotStore {
             if (!host.equals("alkeynesprjects.com") && !host.equals("www.alkeynesprjects.com")
                     && !host.equals("schooloss.com") && !host.equals("www.schooloss.com")) return false;
             String path = u.getPath() == null ? "" : u.getPath();
-            if ("/schools/finance-center.php".equals(path)) return true;
+            if ("/schools/finance-center.php".equals(path) || "/schools/finance-reconciliation.php".equals(path)) return true;
             if (path.startsWith("/schools/mobile/")) {
                 String page = path.substring("/schools/mobile/".length());
                 return SAFE_MOBILE.contains(page);
@@ -62,8 +65,27 @@ public final class OfflineSnapshotStore {
         } catch (Exception ignored) { return false; }
     }
 
+    public static void setCurrentScope(Context context, String scope) {
+        if (context == null) return;
+        String clean = scope == null ? "" : scope.trim();
+        if (clean.length() > 128) clean = clean.substring(0, 128);
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(PREF_SCOPE, clean).apply();
+    }
+
+    public static String currentScope(Context context) {
+        if (context == null) return "";
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(PREF_SCOPE, "");
+    }
+
     public static void save(Context context, String url, String html) {
+        save(context, url, html, currentScope(context));
+    }
+
+    public static void save(Context context, String url, String html, String scope) {
         if (context == null || !isSafeUrl(url) || html == null) return;
+        if (isFinanceUrl(url) && (scope == null || scope.trim().isEmpty())) return;
         byte[] plain = html.getBytes(StandardCharsets.UTF_8);
         if (plain.length < 64 || plain.length > MAX_HTML_BYTES) return;
         try {
@@ -72,7 +94,7 @@ public final class OfflineSnapshotStore {
             byte[] iv = cipher.getIV();
             byte[] encrypted = cipher.doFinal(plain);
             File dir = directory(context); if (!dir.exists()) dir.mkdirs();
-            File out = new File(dir, hash(url) + ".bin");
+            File out = new File(dir, fileKey(url, scope) + ".bin");
             try (FileOutputStream fos = new FileOutputStream(out, false)) {
                 fos.write(iv.length);
                 fos.write(iv);
@@ -83,8 +105,18 @@ public final class OfflineSnapshotStore {
     }
 
     public static String read(Context context, String url) {
+        return read(context, url, currentScope(context));
+    }
+
+    public static String read(Context context, String url, String scope) {
         if (context == null || !isSafeUrl(url)) return null;
-        File file = new File(directory(context), hash(url) + ".bin");
+        if (isFinanceUrl(url) && (scope == null || scope.trim().isEmpty())) return null;
+        File file = new File(directory(context), fileKey(url, scope) + ".bin");
+        if (isFinanceUrl(url) && file.isFile() &&
+                System.currentTimeMillis() - file.lastModified() > FINANCE_MAX_AGE_MS) {
+            file.delete();
+            return null;
+        }
         if (!file.isFile() || file.length() < 32 || file.length() > MAX_HTML_BYTES + 256L) return null;
         try (FileInputStream fis = new FileInputStream(file)) {
             int ivLen = fis.read();
@@ -103,9 +135,24 @@ public final class OfflineSnapshotStore {
 
     public static void clearAll(Context context) {
         if (context == null) return;
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().remove(PREF_SCOPE).apply();
         File dir = directory(context);
         File[] files = dir.listFiles();
         if (files != null) for (File f : files) if (f.isFile()) f.delete();
+    }
+
+    private static boolean isFinanceUrl(String raw) {
+        try {
+            URI u = URI.create(raw);
+            String path = u.getPath() == null ? "" : u.getPath();
+            return "/schools/finance-center.php".equals(path) || "/schools/finance-reconciliation.php".equals(path);
+        } catch (Exception ignored) { return false; }
+    }
+
+    private static String fileKey(String url, String scope) {
+        if (isFinanceUrl(url)) return hash("finance|" + (scope == null ? "" : scope.trim()) + "|" + url);
+        return hash(url);
     }
 
     private static File directory(Context c) { return new File(c.getFilesDir(), "offline-snapshots"); }

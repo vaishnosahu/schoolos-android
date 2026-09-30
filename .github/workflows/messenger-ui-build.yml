@@ -49,6 +49,10 @@ jobs:
           sed -i 's/lifecycle-viewmodel-compose:2.11.0/lifecycle-viewmodel-compose:2.9.0/' "$APP_GRADLE"
           sed -i 's/lifecycle-runtime-compose:2.11.0/lifecycle-runtime-compose:2.9.0/' "$APP_GRADLE"
           grep -E 'compose-bom|core-ktx|activity-compose|lifecycle-' "$APP_GRADLE"
+          APP_SRC="messenger-src/MessengerAndroidUI/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          sed -i 's/Icons\.Filled\.AddCall/Icons.Filled.Call/g' "$APP_SRC"
+          sed -i '1i@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)' "$APP_SRC"
+          head -3 "$APP_SRC"
 
       - name: Build installable debug APK
         working-directory: messenger-src/MessengerAndroidUI

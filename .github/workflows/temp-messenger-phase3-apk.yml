@@ -1,0 +1,94 @@
+name: Temporary Messenger Phase3 APK
+
+on:
+  push:
+    branches:
+      - temp-messenger-live-apk
+    paths:
+      - ".github/workflows/temp-messenger-phase3-apk.yml"
+      - "messenger-build/phase3/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout temporary branch
+        uses: actions/checkout@v4
+
+      - name: Reassemble and verify Phase 3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat messenger-build/phase3/part*.b64 > /tmp/messenger-phase3.b64
+          test "$(wc -c < /tmp/messenger-phase3.b64)" -eq 70908
+          base64 --decode /tmp/messenger-phase3.b64 > /tmp/Messenger-Android-Media-Push-Source.zip
+          echo "888036d4b7231482211335a001df2a956d50d9b4a63017e3a9a22b00cccdfa00  /tmp/Messenger-Android-Media-Push-Source.zip" | sha256sum -c -
+          rm -rf "$GITHUB_WORKSPACE/build-input"
+          mkdir -p "$GITHUB_WORKSPACE/build-input"
+          unzip -q /tmp/Messenger-Android-Media-Push-Source.zip -d "$GITHUB_WORKSPACE/build-input"
+          test -f "$GITHUB_WORKSPACE/build-input/app/build.gradle.kts"
+          grep -q 'https://alkeynesprjects.com/messenger-api/api/v1/' "$GITHUB_WORKSPACE/build-input/app/src/main/java/com/example/messengerui/ApiConfig.kt"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build and verify Messenger APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p "$GITHUB_WORKSPACE/build-input" :app:assembleDebug --stacktrace
+          APK="$GITHUB_WORKSPACE/build-input/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          OUT="$GITHUB_WORKSPACE/Messenger-Media-Voice-Push-Debug.apk"
+          cp "$APK" "$OUT"
+
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+
+          "$AAPT" dump badging "$OUT" | tee "$GITHUB_WORKSPACE/messenger-apk-badging.txt"
+          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-apk-badging.txt"
+          grep -q "versionCode='5'" "$GITHUB_WORKSPACE/messenger-apk-badging.txt"
+          grep -q "versionName='1.4'" "$GITHUB_WORKSPACE/messenger-apk-badging.txt"
+          grep -q "application-label:'Messenger'" "$GITHUB_WORKSPACE/messenger-apk-badging.txt"
+
+          "$APKSIGNER" verify --verbose "$OUT" | tee "$GITHUB_WORKSPACE/messenger-apk-signature.txt"
+          sha256sum "$OUT" | tee "$GITHUB_WORKSPACE/Messenger-Media-Voice-Push-Debug-SHA256.txt"
+
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'https://alkeynesprjects.com/messenger-api/api/v1/' >/dev/null
+
+      - name: Upload Messenger Phase 3 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-Media-Voice-Push-Debug-APK
+          path: |
+            Messenger-Media-Voice-Push-Debug.apk
+            Messenger-Media-Voice-Push-Debug-SHA256.txt
+            messenger-apk-badging.txt
+            messenger-apk-signature.txt
+          if-no-files-found: error
+          retention-days: 1

@@ -42,6 +42,13 @@ jobs:
           unzip -tq messenger-build/MessengerAndroidUI.zip
           unzip -q messenger-build/MessengerAndroidUI.zip -d messenger-src
           test -f messenger-src/MessengerAndroidUI/settings.gradle.kts
+          APP_GRADLE="messenger-src/MessengerAndroidUI/app/build.gradle.kts"
+          sed -i 's/compose-bom:2026.08.00/compose-bom:2025.05.01/' "$APP_GRADLE"
+          sed -i 's/core-ktx:1.19.0/core-ktx:1.16.0/' "$APP_GRADLE"
+          sed -i 's/activity-compose:1.13.0/activity-compose:1.10.1/' "$APP_GRADLE"
+          sed -i 's/lifecycle-viewmodel-compose:2.11.0/lifecycle-viewmodel-compose:2.9.0/' "$APP_GRADLE"
+          sed -i 's/lifecycle-runtime-compose:2.11.0/lifecycle-runtime-compose:2.9.0/' "$APP_GRADLE"
+          grep -E 'compose-bom|core-ktx|activity-compose|lifecycle-' "$APP_GRADLE"
 
       - name: Build installable debug APK
         working-directory: messenger-src/MessengerAndroidUI

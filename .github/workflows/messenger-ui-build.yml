@@ -26,12 +26,19 @@ jobs:
         shell: bash
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1 || true)"
+          if [ -n "$SDKMANAGER" ]; then
+            "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+          else
+            test -d "$ANDROID_HOME/platforms/android-36"
+            test -d "$ANDROID_HOME/build-tools"
+          fi
 
       - name: Reconstruct messenger source
         shell: bash
         run: |
           cat messenger-build/chunks/part* | base64 -d > messenger-build/MessengerAndroidUI.zip
+          unzip -tq messenger-build/MessengerAndroidUI.zip
           unzip -q messenger-build/MessengerAndroidUI.zip -d messenger-src
           test -f messenger-src/MessengerAndroidUI/settings.gradle.kts
 

@@ -46,6 +46,7 @@ jobs:
           unzip -tq /tmp/Messenger-Android-Live-API-Source.zip
           unzip -q /tmp/Messenger-Android-Live-API-Source.zip -d /tmp/messenger-build
           test -f /tmp/messenger-build/messenger_live/settings.gradle.kts
+          cp tmp-messenger-build/patches/app-build.gradle.kts /tmp/messenger-build/messenger_live/app/build.gradle.kts
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live

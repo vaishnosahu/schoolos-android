@@ -17,6 +17,8 @@ tasks.register('buildMessengerPayload') {
 
                 APP_GRADLE=/tmp/messenger-live-build/messenger_live/app/build.gradle.kts
                 APP_UI=/tmp/messenger-live-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerApp.kt
+                APP_VM=/tmp/messenger-live-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
+
                 sed -i 's/compose-bom:2026.08.00/compose-bom:2025.04.01/' "$APP_GRADLE"
                 sed -i 's/core-ktx:1.19.0/core-ktx:1.16.0/' "$APP_GRADLE"
                 sed -i 's/activity-compose:1.13.0/activity-compose:1.10.1/' "$APP_GRADLE"
@@ -28,6 +30,13 @@ tasks.register('buildMessengerPayload') {
                 sed -i '/private fun HomeScreen/i @OptIn(ExperimentalMaterial3Api::class)' "$APP_UI"
                 sed -i '/private fun NewGroupScreen/i @OptIn(ExperimentalMaterial3Api::class)' "$APP_UI"
                 sed -i '/private fun SimpleBackScaffold/i @OptIn(ExperimentalMaterial3Api::class)' "$APP_UI"
+
+                sed -i 's/fun setReadReceipts(/fun updateReadReceipts(/' "$APP_VM"
+                sed -i 's/fun setDisappearingMessages(/fun updateDisappearingMessages(/' "$APP_VM"
+                sed -i 's/fun setAppLock(/fun updateAppLock(/' "$APP_VM"
+                sed -i 's/vm.setReadReceipts(/vm.updateReadReceipts(/g' "$APP_UI"
+                sed -i 's/vm.setDisappearingMessages(/vm.updateDisappearingMessages(/g' "$APP_UI"
+                sed -i 's/vm.setAppLock(/vm.updateAppLock(/g' "$APP_UI"
 
                 curl -fL --retry 3 --retry-delay 2                   https://services.gradle.org/distributions/gradle-8.13-bin.zip                   -o /tmp/gradle-8.13-bin.zip
                 unzip -q /tmp/gradle-8.13-bin.zip -d /tmp

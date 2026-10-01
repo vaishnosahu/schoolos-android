@@ -268,6 +268,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "a02b9003c40d028762d333162aa6c494f24c116a5c5d4eb891389c75c0d63f57  messenger-build/phase6/chunks/chunk00.b64" | sha256sum -c -
+          echo "4a361bd852035a4a772bebcc44028eaab1dddc14d3f29886f8fe3270ddae5e5b  messenger-build/phase6/chunks/chunk01.b64" | sha256sum -c -
+          echo "119644fdb1285f526433a50474299d917198bcf050cfc88f25c05d04d4d4e076  messenger-build/phase6/chunks/chunk02.b64" | sha256sum -c -
+          echo "43dbc912b00215c9eeea96eee2f6843d49dd03dd6dd086692357522959291514  messenger-build/phase6/chunks/chunk03.b64" | sha256sum -c -
+          echo "281c3579babce22179278dc485e6f241cf75900059e0cd04e41b29c64d9d4a20  messenger-build/phase6/chunks/chunk04.b64" | sha256sum -c -
+          echo "a9995342fa734baf65957d8c1411ebf3bc15eca31ae91589c718c83e68d34670  messenger-build/phase6/chunks/chunk05.b64" | sha256sum -c -
+          echo "11fe47fb9df5d69b6a0c846a5b7e556ab6d00e9a857fbc2a5cac947eb7769372  messenger-build/phase6/chunks/chunk06.b64" | sha256sum -c -
           cat messenger-build/phase6/chunks/chunk*.b64 > /tmp/status.b64
           test "$(wc -c < /tmp/status.b64)" -eq 11436
           base64 --decode /tmp/status.b64 > /tmp/status.patch.gz

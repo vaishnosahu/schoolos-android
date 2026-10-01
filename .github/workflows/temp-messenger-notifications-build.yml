@@ -266,6 +266,38 @@ jobs:
           cp "$APK" Messenger-Voice-Calling-Foundation-Debug.apk
           sha256sum Messenger-Voice-Calling-Foundation-Debug.apk | tee Messenger-Voice-Calling-Foundation-Debug.sha256
 
+
+      - name: Build and sign stable Messenger APK
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          gradle --no-daemon assembleRelease
+          UNSIGNED="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -s "$UNSIGNED"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Voice-Calling-Foundation-aligned.apk"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Voice-Calling-Foundation-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Voice-Calling-Foundation-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Voice-Calling-Foundation-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-call29-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Voice-Calling-Foundation-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-call29-stable-badging.txt"
+          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-call29-stable-badging.txt"
+          grep -q "versionName='2.9'" "$GITHUB_WORKSPACE/messenger-call29-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Voice-Calling-Foundation-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Voice-Calling-Foundation-Stable.sha256"
+
+      - name: Upload stable Messenger APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-Voice-Calling-Foundation-Stable
+          path: |
+            Messenger-Voice-Calling-Foundation-Stable.apk
+            Messenger-Voice-Calling-Foundation-Stable.sha256
+            messenger-call29-stable-badging.txt
+            messenger-call29-stable-apksigner.txt
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:

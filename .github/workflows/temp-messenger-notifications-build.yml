@@ -1,8 +1,8 @@
-name: Temporary Messenger Firebase Live Push APK Build
+name: Temporary Messenger Realtime Final Acceptance APK Build
 
 on:
   push:
-    branches: [ temp-messenger-fcm25-build-20261001 ]
+    branches: [ temp-messenger-rt-final-build-20261001 ]
 
 permissions:
   contents: read
@@ -184,6 +184,18 @@ jobs:
           grep -q 'Firebase push status' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'eventType == "push.test"' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt
 
+
+      - name: Apply realtime final acceptance closure
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/rt26_ci_patch.py
+          grep -q 'versionName = "2.6"' /tmp/messenger-build/messenger_live/app/build.gradle.kts
+          grep -q 'DB_VERSION = 9' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
+          grep -q 'receipt_queue' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
+          grep -q 'fun onAppForegrounded' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'fun restartServerSync' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'LocalLifecycleOwner' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerApp.kt
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -197,21 +209,21 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           test -x "$AAPT"
           test -x "$APKSIGNER"
-          "$AAPT" dump badging "$APK" | tee messenger-fcm25-apk-badging.txt
-          grep -q "package: name='com.example.messengerui'" messenger-fcm25-apk-badging.txt
-          grep -q "versionName='2.5'" messenger-fcm25-apk-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-fcm25-apksigner.txt
-          cp "$APK" Messenger-Firebase-Live-Push-Debug.apk
-          sha256sum Messenger-Firebase-Live-Push-Debug.apk | tee Messenger-Firebase-Live-Push-Debug.sha256
+          "$AAPT" dump badging "$APK" | tee messenger-rt26-apk-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-rt26-apk-badging.txt
+          grep -q "versionName='2.6'" messenger-rt26-apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-rt26-apksigner.txt
+          cp "$APK" Messenger-Realtime-Final-Acceptance-Debug.apk
+          sha256sum Messenger-Realtime-Final-Acceptance-Debug.apk | tee Messenger-Realtime-Final-Acceptance-Debug.sha256
 
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Firebase-Live-Push-Debug
+          name: Messenger-Realtime-Final-Acceptance-Debug
           path: |
-            Messenger-Firebase-Live-Push-Debug.apk
-            Messenger-Firebase-Live-Push-Debug.sha256
-            messenger-fcm25-apk-badging.txt
-            messenger-fcm25-apksigner.txt
+            Messenger-Realtime-Final-Acceptance-Debug.apk
+            Messenger-Realtime-Final-Acceptance-Debug.sha256
+            messenger-rt26-apk-badging.txt
+            messenger-rt26-apksigner.txt
           if-no-files-found: error
           retention-days: 1

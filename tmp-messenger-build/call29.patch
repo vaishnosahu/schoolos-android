@@ -1,0 +1,962 @@
+diff -ruN messenger_calls_src/app/build.gradle.kts messenger_call29_src/app/build.gradle.kts
+--- messenger_calls_src/app/build.gradle.kts	2026-10-01 14:40:01.000000000 +0000
++++ messenger_call29_src/app/build.gradle.kts	2026-10-01 15:52:40.736319071 +0000
+@@ -12,8 +12,8 @@
+         applicationId = "com.example.messengerui"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 19
+-        versionName = "2.8"
++        versionCode = 20
++        versionName = "2.9"
+     }
+ 
+     buildFeatures {
+@@ -50,6 +50,7 @@
+     implementation("androidx.compose.material:material-icons-extended")
+     implementation("com.google.firebase:firebase-messaging:24.1.2")
+     implementation("androidx.work:work-runtime-ktx:2.12.0")
++    implementation("io.github.webrtc-sdk:android:150.7871.01")
+ 
+     debugImplementation("androidx.compose.ui:ui-tooling")
+     debugImplementation("androidx.compose.ui:ui-test-manifest")
+diff -ruN messenger_calls_src/app/src/main/AndroidManifest.xml messenger_call29_src/app/src/main/AndroidManifest.xml
+--- messenger_calls_src/app/src/main/AndroidManifest.xml	2026-10-01 09:05:46.000000000 +0000
++++ messenger_call29_src/app/src/main/AndroidManifest.xml	2026-10-01 15:52:40.736619099 +0000
+@@ -4,6 +4,11 @@
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+     <uses-permission android:name="android.permission.RECORD_AUDIO" />
++    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
++    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
++    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+ 
+     <application
+         android:name=".MessengerApplication"
+@@ -25,6 +30,12 @@
+                 android:resource="@xml/file_paths" />
+         </provider>
+ 
++
++        <service
++            android:name=".CallForegroundService"
++            android:exported="false"
++            android:foregroundServiceType="microphone" />
++
+         <service
+             android:name=".MessengerFirebaseService"
+             android:exported="false">
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/ApiClient.kt messenger_call29_src/app/src/main/java/com/example/messengerui/ApiClient.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/ApiClient.kt	2026-10-01 14:40:01.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/ApiClient.kt	2026-10-01 15:55:12.354967478 +0000
+@@ -236,6 +236,8 @@
+ 
+     fun parseStatusPayload(value: JSONObject): RemoteStatus = value.toRemoteStatus()
+ 
++    fun parseVoiceCallPayload(value: JSONObject): RemoteVoiceCall = value.toRemoteVoiceCall()
++
+     fun muteStatusOwner(token: String, ownerId: String, muted: Boolean) {
+         request("POST", "statuses/mute.php", JSONObject().put("owner_id", ownerId).put("muted", muted), token)
+     }
+@@ -338,6 +340,38 @@
+         )
+     }
+ 
++    fun voiceCallConfig(token: String): VoiceCallConfig {
++        val json=request("GET","calls/config.php",token=token)
++        val servers=json.optJSONArray("ice_servers")?.mapObjects { o ->
++            val urlsJson=o.optJSONArray("urls")
++            val urls=if(urlsJson!=null) buildList { for(i in 0 until urlsJson.length()) add(urlsJson.optString(i)) }.filter { it.isNotBlank() } else listOfNotNull(o.optString("urls").takeIf { it.isNotBlank() })
++            IceServerConfig(urls,o.optString("username"),o.optString("credential"))
++        } ?: emptyList()
++        return VoiceCallConfig(servers,json.optBoolean("turn_configured",false),json.optInt("ring_timeout_seconds",45))
++    }
++
++    fun startVoiceCall(token:String,userId:String,clientUuid:String):RemoteVoiceCall =
++        request("POST","calls/start.php",JSONObject().put("user_id",userId).put("client_uuid",clientUuid).put("type","AUDIO"),token).getJSONObject("call").toRemoteVoiceCall()
++
++    fun acceptVoiceCall(token:String,callId:String):RemoteVoiceCall = request("POST","calls/accept.php",JSONObject().put("call_id",callId),token).getJSONObject("call").toRemoteVoiceCall()
++    fun declineVoiceCall(token:String,callId:String):RemoteVoiceCall = request("POST","calls/decline.php",JSONObject().put("call_id",callId),token).getJSONObject("call").toRemoteVoiceCall()
++    fun endVoiceCall(token:String,callId:String,reason:String="ended"):RemoteVoiceCall = request("POST","calls/end.php",JSONObject().put("call_id",callId).put("reason",reason),token).getJSONObject("call").toRemoteVoiceCall()
++    fun markVoiceCallConnected(token:String,callId:String):RemoteVoiceCall = request("POST","calls/connected.php",JSONObject().put("call_id",callId),token).getJSONObject("call").toRemoteVoiceCall()
++
++    fun sendVoiceCallSignal(token:String,callId:String,clientSignalId:String,type:String,payload:JSONObject) {
++        request("POST","calls/signal.php",JSONObject().put("call_id",callId).put("client_signal_id",clientSignalId).put("signal_type",type).put("payload",payload),token)
++    }
++
++    fun voiceCallState(token:String,callId:String,afterSignalId:Long=0L):VoiceCallSync {
++        val path="calls/state.php?call_id="+URLEncoder.encode(callId,StandardCharsets.UTF_8.name())+"&after_signal_id=$afterSignalId"
++        val json=request("GET",path,token=token)
++        val signals=json.optJSONArray("signals")?.mapObjects { o -> RemoteCallSignal(o.optLong("id"),o.optString("type"),o.optJSONObject("payload")?:JSONObject()) } ?: emptyList()
++        return VoiceCallSync(json.getJSONObject("call").toRemoteVoiceCall(),signals,json.optLong("signal_cursor",afterSignalId))
++    }
++
++    fun recoverVoiceCall(token:String):RemoteVoiceCall? = request("GET","calls/recover.php",token=token).optJSONObject("call")?.toRemoteVoiceCall()
++    fun voiceCallHistory(token:String):List<RemoteVoiceCall> = request("GET","calls/history.php",token=token).optJSONArray("calls")?.mapObjects { it.toRemoteVoiceCall() } ?: emptyList()
++
+     fun ackMessage(token: String, messageId: String, status: MessageStatus) {
+         request("POST", "messages/ack.php", JSONObject().put("message_id", messageId).put("status", status.name), token)
+     }
+@@ -388,6 +422,21 @@
+         }
+     }
+ 
++
++    private fun JSONObject.toRemoteVoiceCall(): RemoteVoiceCall {
++        val peer=optJSONObject("peer") ?: JSONObject()
++        return RemoteVoiceCall(
++            id=optString("id"),
++            type=runCatching { CallType.valueOf(optString("type","AUDIO")) }.getOrDefault(CallType.AUDIO),
++            state=optString("state","RINGING"),
++            incoming=optBoolean("incoming",false),
++            peerId=peer.optString("id"),
++            peerName=peer.optString("name","Messenger User"),
++            peerPhone=peer.optString("phone"),
++            createdAtIso=optStringOrNull("created_at"), connectedAtIso=optStringOrNull("connected_at"), endedAtIso=optStringOrNull("ended_at"), endReason=optStringOrNull("end_reason")
++        )
++    }
++
+     private fun JSONObject.toRemoteUser() = RemoteUser(
+         id = optString("id"), phone = optString("phone"), name = optString("name", "Messenger User"),
+         about = optString("about", "Available"), online = optBoolean("online", false), lastSeenIso = optStringOrNull("last_seen_at")
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/AppViewModel.kt messenger_call29_src/app/src/main/java/com/example/messengerui/AppViewModel.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/AppViewModel.kt	2026-10-01 14:40:37.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/AppViewModel.kt	2026-10-01 15:56:23.688946477 +0000
+@@ -43,6 +43,11 @@
+     private var resumeAudioOnFocusGain = false
+     private var voiceRecordingJob: Job? = null
+     private var realtimeJob: Job? = null
++    private var callStateJob: Job? = null
++    private var voiceEngine: WebRtcVoiceEngine? = null
++    private var voiceCallConfig: VoiceCallConfig? = null
++    private var callSignalCursor: Long = 0L
++    private var callConnectedReported = false
+     private var backgroundedAtMs: Long? = null
+     private val typingStopJobs = mutableMapOf<String, Job>()
+     private val typingActiveChats = mutableSetOf<String>()
+@@ -56,6 +61,11 @@
+                     db.makeReceiptAcksRetryableNow()
+                     connectionState = SyncConnectionState.CONNECTING
+                     restartServerSync()
++                    if (activeVoiceCall != null) {
++                        activeVoiceCall = activeVoiceCall?.copy(phase = VoiceCallPhase.RECONNECTING)
++                        startCallStateLoop()
++                        if (activeVoiceCall?.incoming == false) viewModelScope.launch { delay(700); voiceEngine?.createOffer() }
++                    }
+                 }
+             }
+         }
+@@ -155,6 +165,8 @@
+     val messages = mutableStateListOf<Message>().apply { addAll(db.loadMessages()) }
+     val statuses = mutableStateListOf<StatusItem>().apply { addAll(db.loadStatuses()) }
+     val calls = mutableStateListOf<CallLog>().apply { addAll(db.loadCalls()) }
++    var activeVoiceCall by mutableStateOf<VoiceCallUi?>(null)
++        private set
+     val starredMessageIds = mutableStateListOf<Long>().apply { addAll(db.loadStarredIds()) }
+ 
+     val pendingSyncCount: Int get() = db.pendingSyncCount()
+@@ -171,6 +183,8 @@
+             db.makePendingMessagesRetryableNow()
+             db.makeReceiptAcksRetryableNow()
+             refreshFailedMessages()
++            refreshServerCallsAsync()
++            recoverVoiceCallAsync()
+             startServerSync()
+         }
+     }
+@@ -185,6 +199,7 @@
+         val awayMs = backgroundedAtMs?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: 0L
+         backgroundedAtMs = null
+         if (!serverMode) return
++        recoverVoiceCallAsync()
+         val activeChat = (screen as? AppScreen.ChatDetail)?.chatId
+         if (awayMs >= 3_000L) {
+             db.forceFullServerSync()
+@@ -1156,6 +1171,247 @@
+         }
+     }
+ 
++    fun startVoiceCall(chatId: String) {
++        val chat=chats.firstOrNull { it.id==chatId } ?: return
++        if(chat.isGroup){ lastToast="Voice calls are available for direct chats"; return }
++        if(!serverMode){ lastToast="Connect to the server before starting a call"; return }
++        if(activeVoiceCall!=null){ lastToast="Another call is already active"; return }
++        val peerId=chat.memberIds.firstOrNull()
++        if(peerId.isNullOrBlank()){ lastToast="Call recipient is unavailable"; return }
++        val token=db.serverToken()
++        viewModelScope.launch {
++            runCatching {
++                val config=withContext(Dispatchers.IO){ api.voiceCallConfig(token) }
++                val call=withContext(Dispatchers.IO){ api.startVoiceCall(token,peerId,UUID.randomUUID().toString()) }
++                config to call
++            }.onSuccess { (config,call) ->
++                voiceCallConfig=config
++                callSignalCursor=0L
++                callConnectedReported=false
++                activeVoiceCall=VoiceCallUi(call.id,call.peerId,call.peerName,false,VoiceCallPhase.OUTGOING_RINGING)
++                upsertServerCallLog(call)
++                navigate(AppScreen.VoiceCall(call.id))
++                startCallStateLoop()
++            }.onFailure { lastToast=it.userMessage("Unable to start voice call") }
++        }
++    }
++
++    fun openVoiceCallFromNotification(callId:String) {
++        if(!serverMode || callId.isBlank()) return
++        val token=db.serverToken()
++        viewModelScope.launch {
++            runCatching { withContext(Dispatchers.IO){ api.voiceCallState(token,callId,0L) } }
++                .onSuccess { sync ->
++                    voiceCallConfig=runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(token) } }.getOrNull()
++                    callSignalCursor=sync.signalCursor
++                    applyRemoteCall(sync.call)
++                    sync.signals.forEach { processVoiceSignal(it) }
++                    navigate(AppScreen.VoiceCall(callId))
++                    startCallStateLoop()
++                }
++                .onFailure { lastToast=it.userMessage("Call is no longer available") }
++        }
++    }
++
++    fun acceptVoiceCall() {
++        val current=activeVoiceCall ?: return
++        if(current.phase!=VoiceCallPhase.INCOMING_RINGING) return
++        val token=db.serverToken()
++        viewModelScope.launch {
++            runCatching {
++                val config=voiceCallConfig ?: withContext(Dispatchers.IO){ api.voiceCallConfig(token) }
++                val call=withContext(Dispatchers.IO){ api.acceptVoiceCall(token,current.callId) }
++                config to call
++            }.onSuccess { (config,call) ->
++                voiceCallConfig=config
++                activeVoiceCall=current.copy(phase=VoiceCallPhase.CONNECTING)
++                ensureVoiceEngine(config)
++                NotificationHelper.cancelIncomingCall(getApplication(),current.callId)
++                CallForegroundService.start(getApplication(),current.callId,current.peerName)
++                upsertServerCallLog(call)
++                startCallStateLoop()
++            }.onFailure { lastToast=it.userMessage("Unable to accept call") }
++        }
++    }
++
++    fun declineVoiceCall() {
++        val current=activeVoiceCall ?: return
++        val token=db.serverToken()
++        viewModelScope.launch {
++            runCatching { withContext(Dispatchers.IO){ api.declineVoiceCall(token,current.callId) } }
++                .onSuccess { finishVoiceCall(it,false) }
++                .onFailure { finishVoiceCall(null,false); lastToast=it.userMessage("Unable to decline call") }
++        }
++    }
++
++    fun endVoiceCall(reason:String="ended") {
++        val current=activeVoiceCall ?: return
++        val token=db.serverToken()
++        closeVoiceEngine()
++        activeVoiceCall=current.copy(phase=VoiceCallPhase.ENDED)
++        viewModelScope.launch {
++            val remote=runCatching { withContext(Dispatchers.IO){ api.endVoiceCall(token,current.callId,reason) } }.getOrNull()
++            finishVoiceCall(remote,true)
++        }
++    }
++
++    fun toggleVoiceCallMute() {
++        val current=activeVoiceCall ?: return
++        val muted=!current.muted
++        voiceEngine?.setMuted(muted)
++        activeVoiceCall=current.copy(muted=muted)
++    }
++
++    fun toggleVoiceCallSpeaker() {
++        val current=activeVoiceCall ?: return
++        val speaker=!current.speaker
++        voiceEngine?.setSpeaker(speaker)
++        activeVoiceCall=current.copy(speaker=speaker,routeLabel=if(speaker)"Speaker" else current.routeLabel)
++    }
++
++    private fun ensureVoiceEngine(config:VoiceCallConfig) {
++        if(voiceEngine!=null) return
++        voiceEngine=WebRtcVoiceEngine(getApplication(),config.iceServers,
++            onLocalSignal={ type,payload -> sendVoiceSignal(type,payload) },
++            onState={ phase -> viewModelScope.launch { onVoiceEngineState(phase) } },
++            onRoute={ route -> activeVoiceCall=activeVoiceCall?.copy(routeLabel=route,speaker=route=="Speaker") },
++            onError={ error -> viewModelScope.launch { onVoiceEngineError(error) } }
++        )
++        activeVoiceCall=activeVoiceCall?.copy(phase=VoiceCallPhase.CONNECTING)
++    }
++
++    private fun sendVoiceSignal(type:String,payload:org.json.JSONObject) {
++        val call=activeVoiceCall ?: return
++        val token=db.serverToken()
++        viewModelScope.launch(Dispatchers.IO) { runCatching { api.sendVoiceCallSignal(token,call.callId,UUID.randomUUID().toString(),type,payload) } }
++    }
++
++    private suspend fun processVoiceSignal(signal:RemoteCallSignal) {
++        val call=activeVoiceCall ?: return
++        val config=voiceCallConfig ?: runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(db.serverToken()) } }.getOrNull() ?: return
++        ensureVoiceEngine(config)
++        when(signal.type.uppercase()){
++            "OFFER" -> voiceEngine?.acceptOffer(signal.payload.optString("sdp"))
++            "ANSWER" -> voiceEngine?.acceptAnswer(signal.payload.optString("sdp"))
++            "ICE" -> voiceEngine?.addRemoteIce(signal.payload)
++        }
++        callSignalCursor=maxOf(callSignalCursor,signal.id)
++    }
++
++    private fun onVoiceEngineState(phase:VoiceCallPhase) {
++        val current=activeVoiceCall ?: return
++        when(phase){
++            VoiceCallPhase.CONNECTED -> {
++                val first=current.connectedAtMs==null
++                activeVoiceCall=current.copy(phase=VoiceCallPhase.CONNECTED,connectedAtMs=current.connectedAtMs ?: System.currentTimeMillis())
++                if(first && !callConnectedReported){
++                    callConnectedReported=true
++                    CallForegroundService.start(getApplication(),current.callId,current.peerName)
++                    viewModelScope.launch(Dispatchers.IO){ runCatching { api.markVoiceCallConnected(db.serverToken(),current.callId) } }
++                }
++            }
++            VoiceCallPhase.RECONNECTING -> activeVoiceCall=current.copy(phase=VoiceCallPhase.RECONNECTING)
++            VoiceCallPhase.ENDED -> Unit
++            else -> activeVoiceCall=current.copy(phase=phase)
++        }
++    }
++
++    private fun onVoiceEngineError(error:String) {
++        activeVoiceCall=activeVoiceCall?.copy(phase=VoiceCallPhase.FAILED,error=error)
++        viewModelScope.launch { delay(600); endVoiceCall("connection_failed") }
++    }
++
++    private fun startCallStateLoop() {
++        val callId=activeVoiceCall?.callId ?: return
++        callStateJob?.cancel()
++        callStateJob=viewModelScope.launch {
++            val token=db.serverToken()
++            while(isActive && activeVoiceCall?.callId==callId){
++                if(networkAvailable){
++                    runCatching { withContext(Dispatchers.IO){ api.voiceCallState(token,callId,callSignalCursor) } }
++                        .onSuccess { sync ->
++                            callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)
++                            applyRemoteCall(sync.call)
++                            sync.signals.forEach { processVoiceSignal(it) }
++                        }
++                }
++                delay(1_200)
++            }
++        }
++    }
++
++    private fun applyRemoteCall(remote:RemoteVoiceCall) {
++        upsertServerCallLog(remote)
++        val terminal=remote.state in setOf("ENDED","DECLINED","CANCELLED","MISSED","FAILED")
++        if(terminal){ finishVoiceCall(remote,false); return }
++        val current=activeVoiceCall
++        val phase=when(remote.state){
++            "RINGING" -> if(remote.incoming) VoiceCallPhase.INCOMING_RINGING else VoiceCallPhase.OUTGOING_RINGING
++            "ACCEPTED","CONNECTING" -> VoiceCallPhase.CONNECTING
++            "CONNECTED" -> VoiceCallPhase.CONNECTED
++            else -> current?.phase ?: VoiceCallPhase.CONNECTING
++        }
++        activeVoiceCall=VoiceCallUi(remote.id,remote.peerId,remote.peerName,remote.incoming,phase,current?.muted?:false,current?.speaker?:false,current?.routeLabel?:"Phone",current?.connectedAtMs, current?.error)
++        if(remote.state in setOf("ACCEPTED","CONNECTING","CONNECTED")){
++            val config=voiceCallConfig
++            if(config!=null){ ensureVoiceEngine(config); if(!remote.incoming && remote.state=="ACCEPTED") voiceEngine?.createOffer() }
++        }
++    }
++
++    private fun finishVoiceCall(remote:RemoteVoiceCall?,navigateBack:Boolean) {
++        val current=activeVoiceCall
++        if(remote!=null) upsertServerCallLog(remote)
++        current?.let { NotificationHelper.cancelIncomingCall(getApplication(),it.callId) }
++        closeVoiceEngine()
++        callStateJob?.cancel(); callStateJob=null; callSignalCursor=0L; callConnectedReported=false
++        activeVoiceCall=null
++        refreshServerCallsAsync()
++        if(navigateBack && screen is AppScreen.VoiceCall) back()
++        else if(screen is AppScreen.VoiceCall){ history.clear(); screen=AppScreen.Home; selectedTab=MainTab.CALLS }
++    }
++
++    private fun closeVoiceEngine(){ voiceEngine?.close(); voiceEngine=null; CallForegroundService.stop(getApplication()) }
++
++    private fun recoverVoiceCallAsync() {
++        if(!serverMode) return
++        val token=db.serverToken()
++        viewModelScope.launch {
++            runCatching { withContext(Dispatchers.IO){ api.recoverVoiceCall(token) } }.onSuccess { remote ->
++                if(remote==null){ if(activeVoiceCall!=null) finishVoiceCall(null,false); return@onSuccess }
++                voiceCallConfig=runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(token) } }.getOrNull()
++                applyRemoteCall(remote)
++                startCallStateLoop()
++            }
++        }
++    }
++
++    private fun refreshServerCallsAsync() {
++        if(!serverMode) return
++        val token=db.serverToken()
++        viewModelScope.launch {
++            runCatching { withContext(Dispatchers.IO){ api.voiceCallHistory(token) } }.onSuccess { remote ->
++                val logs=remote.map(::remoteCallLog)
++                withContext(Dispatchers.IO){ db.replaceServerCalls(logs) }
++                calls.clear(); calls.addAll(logs)
++            }
++        }
++    }
++
++    private fun upsertServerCallLog(remote:RemoteVoiceCall){
++        refreshServerCallsAsync()
++    }
++
++    private fun remoteCallLog(remote:RemoteVoiceCall):CallLog {
++        val direction=when { remote.incoming && remote.state=="MISSED" -> CallDirection.MISSED; remote.incoming -> CallDirection.INCOMING; else -> CallDirection.OUTGOING }
++        val time=remote.createdAtIso?.let { iso -> runCatching { java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a")) }.getOrNull() } ?: "Recent"
++        return CallLog(remote.id,remote.peerName,time,remote.type,direction)
++    }
++
++    fun redialVoiceCall(contactName: String) {
++        val chat=chats.firstOrNull { !it.isGroup && it.title == contactName }
++        if(chat!=null) startVoiceCall(chat.id) else lastToast="Open the direct chat to call this contact"
++    }
++
+     fun addCall(contactName: String, type: CallType) {
+         val item = CallLog("call${System.currentTimeMillis()}", contactName, "Just now", type, CallDirection.OUTGOING)
+         calls.add(0, item)
+@@ -1571,6 +1827,38 @@
+                     if(index>=0) statuses[index]=statuses[index].copy(viewerCount=count)
+                 }
+             }
++            "call.incoming" -> {
++                val obj=event.payload.optJSONObject("call") ?: return
++                val remote=api.parseVoiceCallPayload(obj)
++                voiceCallConfig=runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(db.serverToken()) } }.getOrNull()
++                applyRemoteCall(remote)
++                if(NotificationRuntime.appVisible){ navigate(AppScreen.VoiceCall(remote.id)) }
++                else NotificationHelper.showIncomingCall(getApplication(),remote.id,remote.peerName)
++                startCallStateLoop()
++            }
++            "call.accepted" -> {
++                val remote=event.payload.optJSONObject("call")?.let(api::parseVoiceCallPayload) ?: return
++                applyRemoteCall(remote)
++                if(!remote.incoming){
++                    val config=voiceCallConfig ?: runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(db.serverToken()) } }.getOrNull()
++                    if(config!=null){ voiceCallConfig=config; ensureVoiceEngine(config); voiceEngine?.createOffer() }
++                }
++            }
++            "call.signal" -> {
++                val callId=event.payload.optString("call_id")
++                if(activeVoiceCall?.callId!=callId) openVoiceCallFromNotification(callId)
++                val o=event.payload.optJSONObject("signal") ?: return
++                processVoiceSignal(RemoteCallSignal(o.optLong("id"),o.optString("type"),o.optJSONObject("payload")?:org.json.JSONObject()))
++            }
++            "call.connected" -> {
++                val remote=event.payload.optJSONObject("call")?.let(api::parseVoiceCallPayload) ?: return
++                applyRemoteCall(remote)
++                onVoiceEngineState(VoiceCallPhase.CONNECTED)
++            }
++            "call.ended" -> {
++                val remote=event.payload.optJSONObject("call")?.let(api::parseVoiceCallPayload)
++                if(remote!=null && activeVoiceCall?.callId==remote.id) finishVoiceCall(remote,false) else refreshServerCallsAsync()
++            }
+             "message.receipt" -> {
+                 val status = runCatching { MessageStatus.valueOf(event.payload.optString("status", "SENT")) }.getOrDefault(MessageStatus.SENT)
+                 withContext(Dispatchers.IO) { db.updateMessageServerStatus(event.payload.optString("message_id"), event.payload.optString("client_uuid"), status) }
+@@ -1628,6 +1916,8 @@
+     override fun onCleared() {
+         realtimeJob?.cancel()
+         typingStopJobs.values.forEach { it.cancel() }
++        closeVoiceEngine()
++        callStateJob?.cancel()
+         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+         voiceRecordingJob?.cancel()
+         voiceRecorder.cancel()
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/CallForegroundService.kt messenger_call29_src/app/src/main/java/com/example/messengerui/CallForegroundService.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/CallForegroundService.kt	1970-01-01 00:00:00.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/CallForegroundService.kt	2026-10-01 15:52:40.737235170 +0000
+@@ -0,0 +1,25 @@
++package com.example.messengerui
++
++import android.app.Service
++import android.content.Context
++import android.content.Intent
++import android.os.IBinder
++import androidx.core.content.ContextCompat
++
++class CallForegroundService : Service() {
++    override fun onBind(intent: Intent?): IBinder? = null
++    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
++        NotificationHelper.createChannels(this)
++        val callId=intent?.getStringExtra("call_id").orEmpty()
++        val peer=intent?.getStringExtra("peer_name").orEmpty().ifBlank { "Messenger call" }
++        startForeground(NotificationHelper.ongoingCallNotificationId(callId), NotificationHelper.buildOngoingCall(this,callId,peer))
++        return START_NOT_STICKY
++    }
++    companion object {
++        fun start(context:Context,callId:String,peerName:String){
++            val i=Intent(context,CallForegroundService::class.java).putExtra("call_id",callId).putExtra("peer_name",peerName)
++            ContextCompat.startForegroundService(context,i)
++        }
++        fun stop(context:Context){ context.stopService(Intent(context,CallForegroundService::class.java)) }
++    }
++}
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/CallModels.kt messenger_call29_src/app/src/main/java/com/example/messengerui/CallModels.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/CallModels.kt	1970-01-01 00:00:00.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/CallModels.kt	2026-10-01 15:52:40.737028845 +0000
+@@ -0,0 +1,38 @@
++package com.example.messengerui
++
++import org.json.JSONObject
++
++enum class VoiceCallPhase { OUTGOING_RINGING, INCOMING_RINGING, CONNECTING, CONNECTED, RECONNECTING, ENDED, FAILED }
++
++data class IceServerConfig(val urls: List<String>, val username: String = "", val credential: String = "")
++data class VoiceCallConfig(val iceServers: List<IceServerConfig>, val turnConfigured: Boolean, val ringTimeoutSeconds: Int)
++
++data class RemoteVoiceCall(
++    val id: String,
++    val type: CallType,
++    val state: String,
++    val incoming: Boolean,
++    val peerId: String,
++    val peerName: String,
++    val peerPhone: String,
++    val createdAtIso: String?,
++    val connectedAtIso: String?,
++    val endedAtIso: String?,
++    val endReason: String?
++)
++
++data class RemoteCallSignal(val id: Long, val type: String, val payload: JSONObject)
++data class VoiceCallSync(val call: RemoteVoiceCall, val signals: List<RemoteCallSignal>, val signalCursor: Long)
++
++data class VoiceCallUi(
++    val callId: String,
++    val peerId: String,
++    val peerName: String,
++    val incoming: Boolean,
++    val phase: VoiceCallPhase,
++    val muted: Boolean = false,
++    val speaker: Boolean = false,
++    val routeLabel: String = "Phone",
++    val connectedAtMs: Long? = null,
++    val error: String? = null
++)
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt messenger_call29_src/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt	2026-10-01 13:51:30.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt	2026-10-01 15:54:54.953041214 +0000
+@@ -327,6 +327,18 @@
+         buildList { while (c.moveToNext()) add(CallLog(c.getString(0), c.getString(1), c.getString(2), enumValueOrDefault(c.getString(3), CallType.AUDIO), enumValueOrDefault(c.getString(4), CallDirection.OUTGOING))) }
+     }
+ 
++
++    fun replaceServerCalls(items: List<CallLog>) {
++        val db=writableDatabase
++        db.beginTransaction()
++        try {
++            db.delete("call_logs",null,null)
++            val now=System.currentTimeMillis()
++            items.forEachIndexed { index,item -> insertCall(db,item,now-index) }
++            db.setTransactionSuccessful()
++        } finally { db.endTransaction() }
++    }
++
+     fun addCall(item: CallLog) {
+         insertCall(writableDatabase, item, System.currentTimeMillis())
+         enqueue("UPSERT", "call", item.id, JSONObject().put("contact_name", item.contactName).put("type", item.type.name).toString())
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/MainActivity.kt messenger_call29_src/app/src/main/java/com/example/messengerui/MainActivity.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/MainActivity.kt	2026-10-01 11:18:54.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/MainActivity.kt	2026-10-01 15:53:27.614327801 +0000
+@@ -13,6 +13,7 @@
+ class MainActivity : ComponentActivity() {
+     private var notificationChatId by mutableStateOf<String?>(null)
+     private var openUpdatesFromNotification by mutableStateOf(false)
++    private var notificationCallId by mutableStateOf<String?>(null)
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -25,9 +26,11 @@
+                 MessengerApp(
+                     initialChatId = notificationChatId,
+                     initialOpenUpdates = openUpdatesFromNotification,
++                    initialCallId = notificationCallId,
+                     onInitialDestinationConsumed = {
+                         notificationChatId = null
+                         openUpdatesFromNotification = false
++                        notificationCallId = null
+                     }
+                 )
+             }
+@@ -53,5 +56,6 @@
+     private fun consumeNotificationIntent(intent: Intent?) {
+         notificationChatId = intent?.getStringExtra("chat_id")
+         openUpdatesFromNotification = intent?.getBooleanExtra("open_updates", false) == true
++        notificationCallId = intent?.getStringExtra("call_id")
+     }
+ }
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/MessengerApp.kt messenger_call29_src/app/src/main/java/com/example/messengerui/MessengerApp.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/MessengerApp.kt	2026-10-01 15:40:11.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/MessengerApp.kt	2026-10-01 15:55:58.620210654 +0000
+@@ -56,6 +56,7 @@
+     vm: AppViewModel = viewModel(),
+     initialChatId: String? = null,
+     initialOpenUpdates: Boolean = false,
++    initialCallId: String? = null,
+     onInitialDestinationConsumed: () -> Unit = {}
+ ) {
+     val snackbarHostState = remember { SnackbarHostState() }
+@@ -88,6 +89,12 @@
+             onInitialDestinationConsumed()
+         }
+     }
++    LaunchedEffect(initialCallId, vm.serverMode) {
++        if (!initialCallId.isNullOrBlank() && vm.serverMode) {
++            vm.openVoiceCallFromNotification(initialCallId)
++            onInitialDestinationConsumed()
++        }
++    }
+     LaunchedEffect(vm.screen) {
+         NotificationRuntime.activeChatId = (vm.screen as? AppScreen.ChatDetail)?.chatId
+     }
+@@ -122,6 +129,7 @@
+             is AppScreen.ChatInfo -> ChatInfoScreen(vm, screen.chatId)
+             is AppScreen.GroupMembers -> GroupMembersScreen(vm, screen.chatId)
+             is AppScreen.GroupSettings -> GroupSettingsScreen(vm, screen.chatId)
++            is AppScreen.VoiceCall -> VoiceCallScreen(vm, screen.callId)
+             is AppScreen.DemoCall -> DemoCallScreen(vm, screen.contactName, screen.type)
+         }
+         SnackbarHost(
+@@ -629,7 +637,7 @@
+                     }
+                 },
+                 trailingContent = {
+-                    IconButton(onClick = { vm.addCall(call.contactName, call.type); vm.navigate(AppScreen.DemoCall(call.contactName, call.type)) }) {
++                    IconButton(onClick = { if (call.type == CallType.AUDIO) vm.redialVoiceCall(call.contactName) else vm.lastToast = "Video calling is unavailable" }) {
+                         Icon(if (call.type == CallType.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Call, "Call")
+                     }
+                 }
+@@ -1040,6 +1048,16 @@
+     val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+         if (granted) vm.startVoiceRecording() else vm.lastToast = "Microphone permission is required for voice notes"
+     }
++    val callPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
++        if (result[Manifest.permission.RECORD_AUDIO] == true) vm.startVoiceCall(chatId) else vm.lastToast = "Microphone permission is required for voice calls"
++    }
++    val requestVoiceCall: () -> Unit = {
++        val permissions = buildList {
++            add(Manifest.permission.RECORD_AUDIO)
++            if (Build.VERSION.SDK_INT >= 31) add(Manifest.permission.BLUETOOTH_CONNECT)
++        }.toTypedArray()
++        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) vm.startVoiceCall(chatId) else callPermission.launch(permissions)
++    }
+     val launchCamera: () -> Unit = {
+         runCatching { vm.createCameraTarget() }.onSuccess { (file, uri) ->
+             pendingCameraPath = file.absolutePath
+@@ -1071,8 +1089,8 @@
+                         }
+                     },
+                     actions = {
+-                        IconButton(onClick = { vm.addCall(chat.title, CallType.VIDEO); vm.navigate(AppScreen.DemoCall(chat.title, CallType.VIDEO)) }) { Icon(Icons.Outlined.Videocam, "Video call") }
+-                        IconButton(onClick = { vm.addCall(chat.title, CallType.AUDIO); vm.navigate(AppScreen.DemoCall(chat.title, CallType.AUDIO)) }) { Icon(Icons.Outlined.Call, "Audio call") }
++                        IconButton(enabled = false, onClick = {}) { Icon(Icons.Outlined.Videocam, "Video call unavailable") }
++                        IconButton(enabled = !chat.isGroup, onClick = requestVoiceCall) { Icon(Icons.Outlined.Call, "Voice call") }
+                         IconButton(onClick = { showChatSearch = !showChatSearch }) { Icon(Icons.Outlined.Search, "Search chat") }
+                     }
+                 )
+@@ -1455,8 +1473,8 @@
+                     Text(if (chat.isGroup) "${chat.memberIds.size} participants" else "online", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     Spacer(Modifier.height(16.dp))
+                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+-                        ActionCard(Icons.Outlined.Call, "Audio") { vm.addCall(chat.title, CallType.AUDIO); vm.navigate(AppScreen.DemoCall(chat.title, CallType.AUDIO)) }
+-                        ActionCard(Icons.Outlined.Videocam, "Video") { vm.addCall(chat.title, CallType.VIDEO); vm.navigate(AppScreen.DemoCall(chat.title, CallType.VIDEO)) }
++                        ActionCard(Icons.Outlined.Call, "Audio") { vm.startVoiceCall(chatId) }
++                        ActionCard(Icons.Outlined.Videocam, "Video") { vm.lastToast = "Video calling is unavailable" }
+                         ActionCard(Icons.Outlined.Search, "Search") { vm.back(); vm.chatSearchQuery = "" }
+                     }
+                 }
+@@ -1637,6 +1655,60 @@
+     }
+ }
+ 
++@Composable
++private fun VoiceCallScreen(vm: AppViewModel, callId: String) {
++    val context = LocalContext.current
++    val call = vm.activeVoiceCall
++    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
++        if (result[Manifest.permission.RECORD_AUDIO] == true) vm.acceptVoiceCall() else vm.lastToast = "Microphone permission is required for voice calls"
++    }
++    LaunchedEffect(callId) { if (call?.callId != callId) vm.openVoiceCallFromNotification(callId) }
++    var elapsed by remember(call?.callId, call?.connectedAtMs) { mutableStateOf(0L) }
++    LaunchedEffect(call?.connectedAtMs) {
++        while (call?.connectedAtMs != null) {
++            elapsed = ((System.currentTimeMillis() - call.connectedAtMs) / 1000L).coerceAtLeast(0L)
++            kotlinx.coroutines.delay(1000)
++        }
++    }
++    val phaseText = when (call?.phase) {
++        VoiceCallPhase.OUTGOING_RINGING -> "Ringing…"
++        VoiceCallPhase.INCOMING_RINGING -> "Incoming voice call"
++        VoiceCallPhase.CONNECTING -> "Connecting…"
++        VoiceCallPhase.CONNECTED -> "%d:%02d · %s".format(elapsed / 60L, elapsed % 60L, call.routeLabel)
++        VoiceCallPhase.RECONNECTING -> "Reconnecting…"
++        VoiceCallPhase.FAILED -> call.error ?: "Call failed"
++        VoiceCallPhase.ENDED -> "Call ended"
++        null -> "Loading call…"
++    }
++    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { IconButton(onClick = { if (call != null) vm.endVoiceCall("closed") else vm.back() }) { Icon(Icons.Filled.Close, "Close") } }
++        Spacer(Modifier.height(54.dp))
++        Avatar(call?.peerName ?: "Messenger", 118.dp)
++        Spacer(Modifier.height(22.dp))
++        Text(call?.peerName ?: "Messenger call", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
++        Spacer(Modifier.height(8.dp))
++        Text(phaseText, color = MaterialTheme.colorScheme.onSurfaceVariant)
++        Spacer(Modifier.weight(1f))
++        if (call?.phase == VoiceCallPhase.INCOMING_RINGING) {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
++                FilledIconButton(onClick = { vm.declineVoiceCall() }, modifier = Modifier.size(68.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError)) { Icon(Icons.Filled.CallEnd, "Decline", modifier = Modifier.size(30.dp)) }
++                FilledIconButton(onClick = {
++                    val permissions=buildList { add(Manifest.permission.RECORD_AUDIO); if(Build.VERSION.SDK_INT>=31) add(Manifest.permission.BLUETOOTH_CONNECT) }.toTypedArray()
++                    if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) vm.acceptVoiceCall() else permissionLauncher.launch(permissions)
++                }, modifier = Modifier.size(68.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)) { Icon(Icons.Filled.Call, "Accept", modifier = Modifier.size(30.dp)) }
++            }
++        } else if (call != null) {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
++                CallControl(if(call.muted) Icons.Filled.MicOff else Icons.Filled.Mic, if(call.muted) "Unmute" else "Mute", call.muted) { vm.toggleVoiceCallMute() }
++                CallControl(if(call.speaker) Icons.Filled.VolumeUp else Icons.Outlined.VolumeUp, call.routeLabel, call.speaker) { vm.toggleVoiceCallSpeaker() }
++            }
++            Spacer(Modifier.height(28.dp))
++            FilledIconButton(onClick = { vm.endVoiceCall() }, modifier = Modifier.size(72.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError)) { Icon(Icons.Filled.CallEnd, "End call", modifier = Modifier.size(34.dp)) }
++        }
++        Spacer(Modifier.height(36.dp))
++    }
++}
++
+ @Composable
+ private fun DemoCallScreen(vm: AppViewModel, contactName: String, type: CallType) {
+     var muted by remember { mutableStateOf(false) }
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt messenger_call29_src/app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt	2026-10-01 12:21:26.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt	2026-10-01 15:53:27.616341674 +0000
+@@ -36,6 +36,11 @@
+         if (eventKey.isNotBlank() && PushDeduper.alreadyHandled(this, eventKey)) return
+ 
+         val db = LocalMessengerDb(applicationContext)
++        if (eventType == "call.incoming") {
++            val callId=data["call_id"].orEmpty()
++            if(callId.isNotBlank()) NotificationHelper.showIncomingCall(this,callId,data["caller_name"].orEmpty().ifBlank { "Messenger User" })
++            return
++        }
+         if (eventType == "push.test") {
+             NotificationHelper.showServerPushTest(
+                 this,
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/Models.kt messenger_call29_src/app/src/main/java/com/example/messengerui/Models.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/Models.kt	2026-10-01 13:50:33.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/Models.kt	2026-10-01 15:53:27.614261507 +0000
+@@ -131,5 +131,6 @@
+     data class ChatInfo(val chatId: String) : AppScreen
+     data class GroupMembers(val chatId: String) : AppScreen
+     data class GroupSettings(val chatId: String) : AppScreen
++    data class VoiceCall(val callId: String) : AppScreen
+     data class DemoCall(val contactName: String, val type: CallType) : AppScreen
+ }
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/NotificationHelper.kt messenger_call29_src/app/src/main/java/com/example/messengerui/NotificationHelper.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/NotificationHelper.kt	2026-10-01 12:21:26.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/NotificationHelper.kt	2026-10-01 15:53:27.615784782 +0000
+@@ -16,7 +16,7 @@
+     private const val MESSAGES_CHANNEL = "messages"
+     private const val GROUPS_CHANNEL = "group_messages"
+     private const val STATUS_CHANNEL = "status_updates"
+-    private const val CALLS_CHANNEL = "calls"
++    const val CALLS_CHANNEL = "calls"
+ 
+     fun createChannels(context: Context) {
+         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+@@ -82,6 +82,27 @@
+         return true
+     }
+ 
++
++    fun showIncomingCall(context:Context,callId:String,callerName:String):Boolean {
++        if(!canNotify(context)) return false
++        val intent=Intent(context,MainActivity::class.java).apply { flags=Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP; putExtra("call_id",callId) }
++        val pi=PendingIntent.getActivity(context,("call:$callId").hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
++        val n=NotificationCompat.Builder(context,CALLS_CHANNEL)
++            .setSmallIcon(R.drawable.ic_notification).setContentTitle(callerName).setContentText("Incoming voice call")
++            .setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_CALL).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
++            .setContentIntent(pi).setFullScreenIntent(pi,true).setOngoing(true).setTimeoutAfter(45_000).build()
++        NotificationManagerCompat.from(context).notify(incomingCallNotificationId(callId),n); return true
++    }
++
++    fun cancelIncomingCall(context:Context,callId:String){ NotificationManagerCompat.from(context).cancel(incomingCallNotificationId(callId)) }
++    fun incomingCallNotificationId(callId:String):Int=("incoming-call:$callId").hashCode()
++    fun ongoingCallNotificationId(callId:String):Int=("ongoing-call:$callId").hashCode()
++    fun buildOngoingCall(context:Context,callId:String,peerName:String):android.app.Notification {
++        val intent=Intent(context,MainActivity::class.java).apply{flags=Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP;putExtra("call_id",callId)}
++        val pi=PendingIntent.getActivity(context,("ongoing:$callId").hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
++        return NotificationCompat.Builder(context,CALLS_CHANNEL).setSmallIcon(R.drawable.ic_notification).setContentTitle(peerName).setContentText("Voice call in progress").setCategory(NotificationCompat.CATEGORY_CALL).setPriority(NotificationCompat.PRIORITY_HIGH).setOngoing(true).setContentIntent(pi).build()
++    }
++
+     fun cancelConversation(context: Context, conversationId: String) {
+         NotificationManagerCompat.from(context).cancel(messageNotificationId(conversationId))
+     }
+diff -ruN messenger_calls_src/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt messenger_call29_src/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+--- messenger_calls_src/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt	1970-01-01 00:00:00.000000000 +0000
++++ messenger_call29_src/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt	2026-10-01 15:52:40.737088500 +0000
+@@ -0,0 +1,157 @@
++package com.example.messengerui
++
++import android.Manifest
++import android.content.Context
++import android.content.pm.PackageManager
++import android.media.AudioDeviceInfo
++import android.media.AudioFocusRequest
++import android.media.AudioManager
++import android.media.AudioAttributes
++import android.os.Build
++import androidx.core.content.ContextCompat
++import org.json.JSONObject
++import org.webrtc.AudioSource
++import org.webrtc.AudioTrack
++import org.webrtc.DataChannel
++import org.webrtc.IceCandidate
++import org.webrtc.MediaConstraints
++import org.webrtc.MediaStream
++import org.webrtc.PeerConnection
++import org.webrtc.PeerConnectionFactory
++import org.webrtc.RtpReceiver
++import org.webrtc.SdpObserver
++import org.webrtc.SessionDescription
++
++class WebRtcVoiceEngine(
++    context: Context,
++    iceServers: List<IceServerConfig>,
++    private val onLocalSignal: (String, JSONObject) -> Unit,
++    private val onState: (VoiceCallPhase) -> Unit,
++    private val onRoute: (String) -> Unit,
++    private val onError: (String) -> Unit
++) {
++    private val appContext = context.applicationContext
++    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
++    private var audioFocusRequest: AudioFocusRequest? = null
++    private var factory: PeerConnectionFactory? = null
++    private var audioSource: AudioSource? = null
++    private var audioTrack: AudioTrack? = null
++    private var peer: PeerConnection? = null
++    private var closed = false
++
++    init {
++        runCatching {
++            PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(appContext).createInitializationOptions())
++            factory = PeerConnectionFactory.builder().createPeerConnectionFactory()
++            audioSource = factory!!.createAudioSource(MediaConstraints())
++            audioTrack = factory!!.createAudioTrack("messenger-audio", audioSource).apply { setEnabled(true) }
++            val rtcIce = iceServers.flatMap { server -> server.urls.map { url ->
++                PeerConnection.IceServer.builder(url).setUsername(server.username).setPassword(server.credential).createIceServer()
++            } }
++            val config = PeerConnection.RTCConfiguration(rtcIce).apply {
++                sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
++                continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
++            }
++            peer = factory!!.createPeerConnection(config, observer()) ?: error("Unable to create peer connection")
++            peer!!.addTrack(audioTrack, listOf("messenger-stream"))
++            enterCommunicationMode()
++        }.onFailure { onError(it.message ?: "Unable to initialize call audio") }
++    }
++
++    fun createOffer() {
++        val pc=peer ?: return onError("Call engine unavailable")
++        pc.createOffer(object:SdpAdapter(){
++            override fun onCreateSuccess(desc: SessionDescription?) { if(desc==null)return; pc.setLocalDescription(SdpAdapter(),desc); onLocalSignal("OFFER", JSONObject().put("sdp",desc.description)) }
++            override fun onCreateFailure(error:String?) { onError(error ?: "Unable to create call offer") }
++        }, MediaConstraints())
++    }
++
++    fun acceptOffer(sdp:String) {
++        val pc=peer ?: return onError("Call engine unavailable")
++        val remote=SessionDescription(SessionDescription.Type.OFFER,sdp)
++        pc.setRemoteDescription(object:SdpAdapter(){
++            override fun onSetSuccess() {
++                pc.createAnswer(object:SdpAdapter(){
++                    override fun onCreateSuccess(desc: SessionDescription?) { if(desc==null)return; pc.setLocalDescription(SdpAdapter(),desc); onLocalSignal("ANSWER",JSONObject().put("sdp",desc.description)) }
++                    override fun onCreateFailure(error:String?) { onError(error ?: "Unable to create call answer") }
++                },MediaConstraints())
++            }
++            override fun onSetFailure(error:String?) { onError(error ?: "Unable to apply call offer") }
++        },remote)
++    }
++
++    fun acceptAnswer(sdp:String) { peer?.setRemoteDescription(SdpAdapter(),SessionDescription(SessionDescription.Type.ANSWER,sdp)) }
++    fun addRemoteIce(payload:JSONObject) {
++        val mid=payload.optString("sdp_mid").takeIf{it.isNotBlank()}
++        val index=payload.optInt("sdp_mline_index",0)
++        val candidate=payload.optString("candidate")
++        if(candidate.isNotBlank()) peer?.addIceCandidate(IceCandidate(mid,index,candidate))
++    }
++    fun setMuted(muted:Boolean){ audioTrack?.setEnabled(!muted) }
++
++    fun setSpeaker(speaker:Boolean) {
++        if (Build.VERSION.SDK_INT >= 31) {
++            val hasBt = ContextCompat.checkSelfPermission(appContext, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
++            val devices = runCatching { audioManager.availableCommunicationDevices }.getOrDefault(emptyList())
++            val target = if (speaker) devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
++            else devices.firstOrNull { hasBt && it.type in setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER) }
++                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
++            if (target != null) runCatching { audioManager.setCommunicationDevice(target) }
++            onRoute(routeLabel(audioManager.communicationDevice))
++        } else {
++            @Suppress("DEPRECATION")
++            run { audioManager.isSpeakerphoneOn = speaker }
++            onRoute(if(speaker) "Speaker" else "Phone")
++        }
++    }
++
++    fun close() {
++        if(closed)return; closed=true
++        runCatching{peer?.close()}; peer=null
++        runCatching{audioTrack?.dispose()}; audioTrack=null
++        runCatching{audioSource?.dispose()}; audioSource=null
++        runCatching{factory?.dispose()}; factory=null
++        if(Build.VERSION.SDK_INT>=31) runCatching{audioManager.clearCommunicationDevice()}
++        audioManager.mode=AudioManager.MODE_NORMAL
++        audioFocusRequest?.let { runCatching { audioManager.abandonAudioFocusRequest(it) } }
++    }
++
++    private fun enterCommunicationMode(){
++        audioManager.mode=AudioManager.MODE_IN_COMMUNICATION
++        if(Build.VERSION.SDK_INT>=26){
++            val attrs=AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
++            val req=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attrs).setOnAudioFocusChangeListener { }.build()
++            audioFocusRequest=req; audioManager.requestAudioFocus(req)
++        } else @Suppress("DEPRECATION") { audioManager.requestAudioFocus(null,AudioManager.STREAM_VOICE_CALL,AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) }
++        setSpeaker(false)
++    }
++
++    private fun routeLabel(d:AudioDeviceInfo?):String = when(d?.type){
++        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,AudioDeviceInfo.TYPE_BLE_HEADSET,AudioDeviceInfo.TYPE_BLE_SPEAKER -> "Bluetooth"
++        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Speaker"
++        AudioDeviceInfo.TYPE_WIRED_HEADSET,AudioDeviceInfo.TYPE_WIRED_HEADPHONES,AudioDeviceInfo.TYPE_USB_HEADSET -> "Headset"
++        else -> "Phone"
++    }
++
++    private fun observer()=object:PeerConnection.Observer{
++        override fun onSignalingChange(newState:PeerConnection.SignalingState?){}
++        override fun onIceConnectionChange(newState:PeerConnection.IceConnectionState?){ when(newState){ PeerConnection.IceConnectionState.CONNECTED,PeerConnection.IceConnectionState.COMPLETED->onState(VoiceCallPhase.CONNECTED); PeerConnection.IceConnectionState.DISCONNECTED->onState(VoiceCallPhase.RECONNECTING); PeerConnection.IceConnectionState.FAILED->onError("Call connection failed"); else->Unit } }
++        override fun onConnectionChange(newState:PeerConnection.PeerConnectionState?){ when(newState){ PeerConnection.PeerConnectionState.CONNECTED->onState(VoiceCallPhase.CONNECTED); PeerConnection.PeerConnectionState.DISCONNECTED->onState(VoiceCallPhase.RECONNECTING); PeerConnection.PeerConnectionState.FAILED->onError("Call connection failed"); PeerConnection.PeerConnectionState.CLOSED->onState(VoiceCallPhase.ENDED); else->Unit } }
++        override fun onIceConnectionReceivingChange(receiving:Boolean){}
++        override fun onIceGatheringChange(newState:PeerConnection.IceGatheringState?){}
++        override fun onIceCandidate(candidate:IceCandidate?){ if(candidate!=null) onLocalSignal("ICE",JSONObject().put("sdp_mid",candidate.sdpMid).put("sdp_mline_index",candidate.sdpMLineIndex).put("candidate",candidate.sdp)) }
++        override fun onIceCandidatesRemoved(candidates:Array<out IceCandidate>?){}
++        override fun onAddStream(stream:MediaStream?){}
++        override fun onRemoveStream(stream:MediaStream?){}
++        override fun onDataChannel(channel:DataChannel?){}
++        override fun onRenegotiationNeeded(){}
++        override fun onAddTrack(receiver:RtpReceiver?,mediaStreams:Array<out MediaStream>?){}
++    }
++
++    private open class SdpAdapter:SdpObserver{
++        override fun onCreateSuccess(desc:SessionDescription?){}
++        override fun onSetSuccess(){}
++        override fun onCreateFailure(error:String?){}
++        override fun onSetFailure(error:String?){}
++    }
++}

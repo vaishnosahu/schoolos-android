@@ -230,6 +230,8 @@ jobs:
           grep -q 'fun pause()' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/VoiceNoteRecorder.kt
           grep -q 'cycleAudioPlaybackSpeed' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
           grep -q 'Clear downloaded media' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerApp.kt
+          python3 "$GITHUB_WORKSPACE/tmp-messenger-build/mv28_compile_fix.py"
+          grep -q 'formatVoiceRecordingDuration' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerApp.kt
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live

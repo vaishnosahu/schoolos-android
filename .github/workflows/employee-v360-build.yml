@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tr -d '[:space:]' < employee-v360/android-v360-clean.patch.gz.b64 | base64 -d > /tmp/employee-v360/android-v360.patch.gz
+          cat employee-v360/patch_00.b64 employee-v360/patch_01.b64 employee-v360/patch_02.b64 employee-v360/patch_03.b64 employee-v360/patch_04.b64 | tr -d '[:space:]' | base64 -d > /tmp/employee-v360/android-v360.patch.gz
           echo "62417dc72d5a4745fb67b97f992dd4c26b1069a092e11d6957ae26b2bea4abcb  /tmp/employee-v360/android-v360.patch.gz" | sha256sum -c -
           gunzip -c /tmp/employee-v360/android-v360.patch.gz > /tmp/employee-v360/android-v360.patch
           cd /tmp/employee-v360/src/employee-combined

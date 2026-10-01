@@ -245,6 +245,9 @@ jobs:
           grep -q 'fun startVoiceCall' app/src/main/java/com/example/messengerui/AppViewModel.kt
           grep -q 'eventType == "call.incoming"' app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt
           grep -q 'FOREGROUND_SERVICE_MICROPHONE' app/src/main/AndroidManifest.xml
+          python3 "$GITHUB_WORKSPACE/tmp-messenger-build/call29_quality_fix.py"
+          grep -q 'rememberVoiceCallPermissionAction' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          ! grep -q 'Create call link' app/src/main/java/com/example/messengerui/MessengerApp.kt
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live

@@ -46,7 +46,7 @@ jobs:
           done
           test "$(wc -c < /tmp/employee-build/source.b64)" -eq 87824
           base64 -d /tmp/employee-build/source.b64 > /tmp/employee-build/source.zip
-          echo "35ecf5c0bd6767ef85885c9fdbe83f3c950d8c11076e121e9c58a1d45b3bd8f6  /tmp/employee-build/source.zip" | sha256sum -c -
+          echo "35ecf504274570feb5e7161a285482a68fb1b7fd7b9b288d76153ef9c064d8f6  /tmp/employee-build/source.zip" | sha256sum -c -
           unzip -t /tmp/employee-build/source.zip
           unzip -q /tmp/employee-build/source.zip -d /tmp/employee-build/src
           test -f /tmp/employee-build/src/employee-combined/app/build.gradle

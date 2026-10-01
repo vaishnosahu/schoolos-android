@@ -1,0 +1,78 @@
+name: Employee Management APK
+
+on:
+  push:
+    branches:
+      - employee-management-apk-build
+    paths:
+      - 'employee-management-build/**'
+      - '.github/workflows/employee-management-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated build branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p employee-management-android
+          cat employee-management-build/source/part00.b64               employee-management-build/source/part01.b64               employee-management-build/source/part02.b64               employee-management-build/source/part03.b64 > /tmp/employee-source.b64
+          base64 -d /tmp/employee-source.b64 > /tmp/employee-source.tgz
+          tar -xzf /tmp/employee-source.tgz -C employee-management-android
+          test -f employee-management-android/settings.gradle
+          test -f employee-management-android/app/build.gradle
+          grep -q 'com.alkeynes.employee.management.nativeui' employee-management-android/app/build.gradle
+          grep -q 'versionCode 3500' employee-management-android/app/build.gradle
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build updated debug APK
+        working-directory: employee-management-android
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Prepare APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p employee-management-android/dist
+          cp employee-management-android/app/build/outputs/apk/debug/app-debug.apk              employee-management-android/dist/Employee-Management-v3.5.0.apk
+          sha256sum employee-management-android/dist/Employee-Management-v3.5.0.apk              > employee-management-android/dist/Employee-Management-v3.5.0.sha256.txt
+          ls -lh employee-management-android/dist/
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Employee-Management-v3.5.0-APK
+          path: employee-management-android/dist/
+          if-no-files-found: error
+          retention-days: 14

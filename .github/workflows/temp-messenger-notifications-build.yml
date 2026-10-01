@@ -1,4 +1,4 @@
-name: Temporary Messenger Notifications APK Build
+name: Temporary Messenger Send Sync Fix APK Build
 
 on:
   pull_request:
@@ -49,7 +49,7 @@ jobs:
           unzip -q /tmp/Messenger-Android-Notifications-Background-CI-Source.zip -d /tmp/messenger-build
           test -f /tmp/messenger-build/messenger_live/settings.gradle.kts
 
-      - name: Apply compile closure
+      - name: Apply compile and send-sync regression closure
         shell: bash
         run: |
           find /tmp/messenger-build/messenger_live/app/src/main/java -name '*.kt' -type f -exec sed -i \
@@ -57,6 +57,118 @@ jobs:
             -e 's/setNotificationsGroupsEnabled/updateNotificationsGroupsEnabled/g' \
             -e 's/setNotificationsStatusEnabled/updateNotificationsStatusEnabled/g' \
             -e 's/setNotificationPreviewMode/updateNotificationPreviewMode/g' {} +
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("/tmp/messenger-build/messenger_live")
+          vm = root / "app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          s = vm.read_text()
+          s = s.replace(
+          """    init {
+                  runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+                  if (serverMode) startServerSync()
+              }""",
+          """    init {
+                  runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+                  if (serverMode) {
+                      db.makePendingMessagesRetryableNow()
+                      refreshFailedMessages()
+                      startServerSync()
+                  }
+              }"""
+          )
+          old = """        realtimeJob = viewModelScope.launch {
+                      connectionState = if(networkAvailable) SyncConnectionState.CONNECTING else SyncConnectionState.OFFLINE
+                      val forceFullSync = db.consumeForceFullSync()
+                      val localCursor = if (forceFullSync) 0L else db.serverSyncCursor()
+                      val bootstrapCursor=bootstrapServer(advanceCursor = localCursor == 0L)
+                      if(localCursor>0L && bootstrapCursor!=null && bootstrapCursor>localCursor) catchUpServerEvents(localCursor, bootstrapCursor)
+                      refreshPresence()
+                      var failures=0
+                      var pollCount=0
+                      while (isActive && serverMode) {
+                          if(!networkAvailable){ connectionState=SyncConnectionState.OFFLINE; delay(1_000); continue }
+                          connectionState=SyncConnectionState.SYNCING
+                          flushPendingServerMessages()
+                          val token=db.serverToken(); val cursor=db.serverSyncCursor(); if(token.isBlank()) break
+                          val result=runCatching { withContext(Dispatchers.IO) { api.poll(token,cursor,20) } }
+                          result.onSuccess { poll ->
+                              for(event in poll.events) handleRemoteEvent(event)
+                              if(poll.cursor>cursor) db.setServerSyncCursor(poll.cursor)
+                              failures=0; pollCount++; connectionState=SyncConnectionState.ONLINE
+                              if(pollCount % 2 == 0) refreshPresence()
+                          }.onFailure { error ->
+                              if(error is ApiException && error.statusCode==401){ lastToast="Session expired. Please verify your number again."; db.clearServerSession(); db.setLoggedIn(false); screen=AppScreen.Login; return@launch }
+                              failures++; connectionState=if(networkAvailable) SyncConnectionState.RETRYING else SyncConnectionState.OFFLINE
+                              val backoff=(1_000L shl (failures-1).coerceIn(0,5)).coerceAtMost(30_000L); delay(backoff)
+                          }
+                      }
+                  }"""
+          new = """        realtimeJob = viewModelScope.launch {
+                      connectionState = if(networkAvailable) SyncConnectionState.CONNECTING else SyncConnectionState.OFFLINE
+                      val forceFullSync = db.consumeForceFullSync()
+                      val localCursor = if (forceFullSync) 0L else db.serverSyncCursor()
+                      if (networkAvailable) connectionState = SyncConnectionState.SYNCING
+                      val bootstrapCursor=bootstrapServer(advanceCursor = localCursor == 0L)
+                      if(localCursor>0L && bootstrapCursor!=null && bootstrapCursor>localCursor) catchUpServerEvents(localCursor, bootstrapCursor)
+                      if (networkAvailable && serverMode && db.serverToken().isNotBlank()) connectionState = SyncConnectionState.ONLINE
+                      refreshPresence()
+                      var failures=0
+                      var pollCount=0
+                      while (isActive && serverMode) {
+                          if(!networkAvailable){ connectionState=SyncConnectionState.OFFLINE; delay(1_000); continue }
+                          if (failures == 0) connectionState = SyncConnectionState.ONLINE
+                          flushPendingServerMessages()
+                          val token=db.serverToken(); val cursor=db.serverSyncCursor(); if(token.isBlank()) break
+                          val result=runCatching { withContext(Dispatchers.IO) { api.poll(token,cursor,20) } }
+                          result.onSuccess { poll ->
+                              for(event in poll.events) handleRemoteEvent(event)
+                              if(poll.cursor>cursor) db.setServerSyncCursor(poll.cursor)
+                              failures=0; pollCount++; connectionState=SyncConnectionState.ONLINE
+                              if(pollCount % 2 == 0) refreshPresence()
+                          }.onFailure { error ->
+                              if(error is ApiException && error.statusCode==401){ lastToast="Session expired. Please verify your number again."; db.clearServerSession(); db.setLoggedIn(false); screen=AppScreen.Login; return@launch }
+                              failures++; connectionState=if(networkAvailable) SyncConnectionState.RETRYING else SyncConnectionState.OFFLINE
+                              val backoff=(1_000L shl (failures-1).coerceIn(0,5)).coerceAtMost(30_000L); delay(backoff)
+                          }
+                      }
+                  }"""
+          if old not in s:
+              raise SystemExit("AppViewModel sync block not found")
+          s = s.replace(old, new)
+          vm.write_text(s)
+
+          db = root / "app/src/main/java/com/example/messengerui/LocalMessengerDb.kt"
+          s = db.read_text()
+          old = """    fun retryMessageNow(localId: Long) {
+                  writableDatabase.update("messages", ContentValues().apply { put("next_retry_at_ms", 0); putNull("last_error") }, "id=?", arrayOf(localId.toString()))
+              }
+
+              fun failedMessageIds(): List<Long> = readableDatabase.rawQuery("SELECT id FROM messages WHERE outgoing=1 AND status='SENDING' AND last_error IS NOT NULL", null).use { c -> buildList { while(c.moveToNext()) add(c.getLong(0)) } }"""
+          new = """    fun retryMessageNow(localId: Long) {
+                  writableDatabase.update("messages", ContentValues().apply { put("retry_count", 0); put("next_retry_at_ms", 0); putNull("last_error") }, "id=?", arrayOf(localId.toString()))
+              }
+
+              fun makePendingMessagesRetryableNow() {
+                  writableDatabase.execSQL("UPDATE messages SET next_retry_at_ms=0 WHERE outgoing=1 AND status='SENDING' AND client_uuid IS NOT NULL")
+              }
+
+              fun failedMessageIds(): List<Long> = readableDatabase.rawQuery("SELECT id FROM messages WHERE outgoing=1 AND status='SENDING' AND last_error IS NOT NULL AND retry_count>=3", null).use { c -> buildList { while(c.moveToNext()) add(c.getLong(0)) } }"""
+          if old not in s:
+              raise SystemExit("LocalMessengerDb retry block not found")
+          db.write_text(s.replace(old, new))
+
+          build = root / "app/build.gradle.kts"
+          s = build.read_text()
+          s = s.replace("versionCode = 13", "versionCode = 14")
+          s = s.replace('versionName = "2.2"', 'versionName = "2.3"')
+          build.write_text(s)
+          PY
+
+          grep -q "makePendingMessagesRetryableNow" /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
+          grep -q "if (failures == 0) connectionState = SyncConnectionState.ONLINE" /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'versionName = "2.3"' /tmp/messenger-build/messenger_live/app/build.gradle.kts
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
@@ -71,21 +183,21 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           test -x "$AAPT"
           test -x "$APKSIGNER"
-          "$AAPT" dump badging "$APK" | tee messenger-notifications-apk-badging.txt
-          grep -q "package: name='com.example.messengerui'" messenger-notifications-apk-badging.txt
-          grep -q "versionName='2.2'" messenger-notifications-apk-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-notifications-apksigner.txt
-          cp "$APK" Messenger-Notifications-Background-Debug.apk
-          sha256sum Messenger-Notifications-Background-Debug.apk | tee Messenger-Notifications-Background-Debug.sha256
+          "$AAPT" dump badging "$APK" | tee messenger-send-sync-fix-apk-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-send-sync-fix-apk-badging.txt
+          grep -q "versionName='2.3'" messenger-send-sync-fix-apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-send-sync-fix-apksigner.txt
+          cp "$APK" Messenger-Send-Sync-Regression-Fix-Debug.apk
+          sha256sum Messenger-Send-Sync-Regression-Fix-Debug.apk | tee Messenger-Send-Sync-Regression-Fix-Debug.sha256
 
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Notifications-Background-Debug
+          name: Messenger-Send-Sync-Regression-Fix-Debug
           path: |
-            Messenger-Notifications-Background-Debug.apk
-            Messenger-Notifications-Background-Debug.sha256
-            messenger-notifications-apk-badging.txt
-            messenger-notifications-apksigner.txt
+            Messenger-Send-Sync-Regression-Fix-Debug.apk
+            Messenger-Send-Sync-Regression-Fix-Debug.sha256
+            messenger-send-sync-fix-apk-badging.txt
+            messenger-send-sync-fix-apksigner.txt
           if-no-files-found: error
           retention-days: 1

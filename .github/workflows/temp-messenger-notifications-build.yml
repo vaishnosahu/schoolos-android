@@ -201,6 +201,7 @@ jobs:
         shell: bash
         run: |
           cat tmp-messenger-build/gs27-patch/part-00.patch > /tmp/gs27.patch
+          echo >> /tmp/gs27.patch
           tail -n +6 tmp-messenger-build/gs27-patch/part-01.patch >> /tmp/gs27.patch
           cat tmp-messenger-build/gs27-patch/part-02.patch tmp-messenger-build/gs27-patch/part-03.patch tmp-messenger-build/gs27-patch/part-04.patch >> /tmp/gs27.patch
           cd /tmp/messenger-build/messenger_live

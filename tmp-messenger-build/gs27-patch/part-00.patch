@@ -1,0 +1,159 @@
+diff -ruN a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts	2026-10-01 13:24:30.000000000 +0000
++++ b/app/build.gradle.kts	2026-10-01 13:50:33.139886012 +0000
+@@ -12,8 +12,8 @@
+         applicationId = "com.example.messengerui"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 17
+-        versionName = "2.6"
++        versionCode = 18
++        versionName = "2.7"
+     }
+ 
+     buildFeatures {
+diff -ruN a/app/src/main/java/com/example/messengerui/ApiClient.kt b/app/src/main/java/com/example/messengerui/ApiClient.kt
+--- a/app/src/main/java/com/example/messengerui/ApiClient.kt	2026-10-01 13:24:30.000000000 +0000
++++ b/app/src/main/java/com/example/messengerui/ApiClient.kt	2026-10-01 13:51:06.491089463 +0000
+@@ -192,6 +192,10 @@
+         return json.optJSONArray("viewers")?.mapObjects { o -> RemoteStatusViewer(o.optString("id"),o.optString("name","Messenger User"),o.optString("phone"),o.optStringOrNull("viewed_at")) } ?: emptyList()
+     }
+ 
++    fun muteStatusOwner(token: String, ownerId: String, muted: Boolean) {
++        request("POST", "statuses/mute.php", JSONObject().put("owner_id", ownerId).put("muted", muted), token)
++    }
++
+     fun registerPushToken(
+         token: String,
+         pushToken: String,
+@@ -351,7 +355,7 @@
+         id = optString("id"), ownerId = optString("owner_id"), ownerName = optString("owner_name","Messenger User"),
+         kind = runCatching { MessageKind.valueOf(optString("kind","TEXT")) }.getOrDefault(MessageKind.TEXT),
+         text = optString("text"), privacy = optString("privacy","EVERYONE"), createdAtIso = optStringOrNull("created_at"), expiresAtIso = optStringOrNull("expires_at"),
+-        mine = optBoolean("mine",false), viewed = optBoolean("viewed",false), viewerCount = optInt("viewer_count",0), media = optJSONObject("media")?.toRemoteMedia()
++        mine = optBoolean("mine",false), viewed = optBoolean("viewed",false), viewerCount = optInt("viewer_count",0), muted = optBoolean("muted", false), media = optJSONObject("media")?.toRemoteMedia()
+     )
+ 
+     private fun JSONObject.toRemoteConversation() = RemoteConversation(
+diff -ruN a/app/src/main/java/com/example/messengerui/ApiModels.kt b/app/src/main/java/com/example/messengerui/ApiModels.kt
+--- a/app/src/main/java/com/example/messengerui/ApiModels.kt	2026-10-01 13:24:30.000000000 +0000
++++ b/app/src/main/java/com/example/messengerui/ApiModels.kt	2026-10-01 13:50:33.140439738 +0000
+@@ -97,6 +97,7 @@
+     val mine: Boolean,
+     val viewed: Boolean,
+     val viewerCount: Int,
++    val muted: Boolean = false,
+     val media: RemoteMedia? = null
+ )
+ 
+diff -ruN a/app/src/main/java/com/example/messengerui/AppViewModel.kt b/app/src/main/java/com/example/messengerui/AppViewModel.kt
+--- a/app/src/main/java/com/example/messengerui/AppViewModel.kt	2026-10-01 13:24:30.000000000 +0000
++++ b/app/src/main/java/com/example/messengerui/AppViewModel.kt	2026-10-01 13:52:24.103352462 +0000
+@@ -85,6 +85,10 @@
+         private set
+     val transferProgress = mutableStateMapOf<Long, Int>()
+     val statusTransferProgress = mutableStateMapOf<String, Int>()
++    val statusViewers = mutableStateListOf<RemoteStatusViewer>()
++    var statusViewersLoading by mutableStateOf(false)
++        private set
++    val groupActionBusy = mutableStateMapOf<String, Boolean>()
+     val typingByChat = mutableStateMapOf<String, String>()
+     val historyHasMore = mutableStateMapOf<String, Boolean>()
+     val unreadAnchorByChat = mutableStateMapOf<String, Long>()
+@@ -783,6 +787,8 @@
+             return
+         }
+         if (serverMode && selectedIds.all(::isServerUserId)) {
++            if (groupActionBusy["create"] == true) return
++            groupActionBusy["create"] = true
+             val token = db.serverToken()
+             viewModelScope.launch {
+                 runCatching { withContext(Dispatchers.IO) { api.createGroup(token, cleanName, selectedIds, UUID.randomUUID().toString()) } }
+@@ -792,6 +798,7 @@
+                         openChat(remote.id)
+                     }
+                     .onFailure { lastToast = it.userMessage("Unable to create group") }
++                groupActionBusy.remove("create")
+             }
+             return
+         }
+@@ -826,21 +833,28 @@
+ 
+     private fun changeGroupMember(chatId: String, action: String, userId: String) {
+         if (!serverMode || !canManageGroup(chatId)) { lastToast="Only group admins can manage participants"; return }
++        val key="$chatId:$userId:$action"
++        if (groupActionBusy[key] == true) return
++        groupActionBusy[key] = true
+         val token=db.serverToken()
+         viewModelScope.launch {
+             runCatching { withContext(Dispatchers.IO) { api.updateGroupMember(token,chatId,action,userId) } }
+                 .onSuccess { group -> if(group!=null) withContext(Dispatchers.IO){db.upsertRemoteGroup(group)}; reloadCollections(); lastToast="Group updated" }
+                 .onFailure { lastToast=it.userMessage("Unable to update group") }
++            groupActionBusy.remove(key)
+         }
+     }
+ 
+     fun leaveGroup(chatId: String) {
++        if (groupActionBusy["$chatId:leave"] == true) return
+         if (!serverMode || !isServerConversationId(chatId)) { db.removeChat(chatId); reloadCollections(); history.clear(); screen=AppScreen.Home; return }
++        groupActionBusy["$chatId:leave"] = true
+         val token=db.serverToken()
+         viewModelScope.launch {
+             runCatching { withContext(Dispatchers.IO) { api.updateGroupMember(token,chatId,"leave") } }
+                 .onSuccess { withContext(Dispatchers.IO){db.removeChat(chatId)}; reloadCollections(); history.clear(); screen=AppScreen.Home; lastToast="You left the group" }
+                 .onFailure { lastToast=it.userMessage("Unable to leave group") }
++            groupActionBusy.remove("$chatId:leave")
+         }
+     }
+ 
+@@ -848,11 +862,15 @@
+         val clean=name.trim()
+         if(clean.isBlank()) { lastToast="Group name is required"; return }
+         if(!serverMode || !canManageGroup(chatId)) { lastToast="Only group admins can edit group settings"; return }
++        val key="$chatId:settings"
++        if (groupActionBusy[key] == true) return
++        groupActionBusy[key] = true
+         val token=db.serverToken()
+         viewModelScope.launch {
+             runCatching { withContext(Dispatchers.IO) { api.updateGroup(token,chatId,clean,description.trim(),onlyAdminsCanSend) } }
+                 .onSuccess { group -> withContext(Dispatchers.IO){db.upsertRemoteGroup(group)}; reloadCollections(); lastToast="Group settings saved"; back() }
+                 .onFailure { lastToast=it.userMessage("Unable to save group settings") }
++            groupActionBusy.remove(key)
+         }
+     }
+ 
+@@ -900,11 +918,14 @@
+     }
+ 
+     fun viewStatus(status: StatusItem) {
+-        if (status.mine || !serverMode) return
++        if (status.mine) return
++        val index=statuses.indexOfFirst { it.id==status.id }
++        if(index>=0 && !statuses[index].viewed) statuses[index]=statuses[index].copy(viewed=true)
++        db.updateStatusViewed(status.id)
++        if (!serverMode || !readReceipts) return
+         val token=db.serverToken()
+         viewModelScope.launch {
+-            runCatching { withContext(Dispatchers.IO) { if (readReceipts) api.viewStatus(token,status.id) else 0 } }
+-                .onSuccess { count -> db.updateStatusViewed(status.id,if(count>0) count else null); refreshServerStatuses() }
++            runCatching { withContext(Dispatchers.IO) { api.viewStatus(token,status.id) } }
+         }
+     }
+ 
+@@ -941,6 +962,36 @@
+         viewModelScope.launch { runCatching { withContext(Dispatchers.IO){ api.deleteStatus(token,statusId) } }.onSuccess { db.deleteStatus(statusId); refreshServerStatuses(); lastToast="Status deleted" }.onFailure { lastToast=it.userMessage("Unable to delete status") } }
+     }
+ 
++    fun setStatusOwnerMuted(ownerId: String, muted: Boolean) {
++        if (ownerId.isBlank()) return
++        db.setStatusOwnerMuted(ownerId, muted)
++        for (i in statuses.indices) if (statuses[i].ownerId == ownerId && !statuses[i].mine) statuses[i] = statuses[i].copy(muted = muted)
++        if (serverMode) {
++            val token=db.serverToken()
++            viewModelScope.launch {
++                runCatching { withContext(Dispatchers.IO) { api.muteStatusOwner(token, ownerId, muted) } }
++                    .onFailure { lastToast=it.userMessage("Unable to update status mute") }
++            }
++        }
++    }
++

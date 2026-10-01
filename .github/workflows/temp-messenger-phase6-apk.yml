@@ -277,7 +277,9 @@ jobs:
           s=p.read_text()
           marker='            "message.receipt" -> {'
           if '"status.created", "status.deleted"' not in s:
-              s=s.replace(marker,'            "status.created", "status.deleted" -> refreshServerStatuses()\\n            "status.viewed" -> refreshServerStatuses()\\n'+marker)
+              s=s.replace(marker,'''            \"status.created\", \"status.deleted\" -> refreshServerStatuses()
+            \"status.viewed\" -> refreshServerStatuses()
+'''+marker)
           p.write_text(s)
           PY
           rm -f app/src/main/java/com/example/messengerui/*.rej

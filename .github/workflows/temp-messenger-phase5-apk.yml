@@ -5,7 +5,8 @@ on:
     branches:
       - temp-messenger-live-apk
     paths:
-      - ".github/workflows/temp-messenger-phase5-apk.yml"\n      - "messenger-build/phase5/**"
+      - ".github/workflows/temp-messenger-phase5-apk.yml"
+      - "messenger-build/phase5/**"
   workflow_dispatch:
 
 permissions:

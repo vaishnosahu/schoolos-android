@@ -49,6 +49,15 @@ jobs:
           unzip -q /tmp/Messenger-Android-Notifications-Background-CI-Source.zip -d /tmp/messenger-build
           test -f /tmp/messenger-build/messenger_live/settings.gradle.kts
 
+      - name: Apply compile closure
+        shell: bash
+        run: |
+          find /tmp/messenger-build/messenger_live/app/src/main/java -name '*.kt' -type f -exec sed -i \
+            -e 's/setNotificationsMessagesEnabled/updateNotificationsMessagesEnabled/g' \
+            -e 's/setNotificationsGroupsEnabled/updateNotificationsGroupsEnabled/g' \
+            -e 's/setNotificationsStatusEnabled/updateNotificationsStatusEnabled/g' \
+            -e 's/setNotificationPreviewMode/updateNotificationPreviewMode/g' {} +
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug

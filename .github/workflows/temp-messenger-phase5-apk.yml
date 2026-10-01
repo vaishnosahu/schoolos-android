@@ -1,0 +1,318 @@
+name: Temporary Messenger Phase5 Groups APK
+
+on:
+  push:
+    branches:
+      - temp-messenger-live-apk
+    paths:
+      - ".github/workflows/temp-messenger-phase5-apk.yml"
+      - "messenger-build/phase5/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rebuild Phase 3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat messenger-build/phase3/part*.b64 > /tmp/p3.b64
+          base64 --decode /tmp/p3.b64 > /tmp/p3.zip
+          echo "888036d4b7231482211335a001df2a956d50d9b4a63017e3a9a22b00cccdfa00  /tmp/p3.zip" | sha256sum -c -
+          rm -rf build-input
+          mkdir build-input
+          unzip -q /tmp/p3.zip -d build-input
+
+      - name: Apply Phase 4 message interaction patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root=Path("build-input")
+
+          p=root/"app/build.gradle.kts"
+          s=p.read_text().replace('versionCode = 5','versionCode = 6').replace('versionName = "1.4"','versionName = "1.5"')
+          p.write_text(s)
+
+          p=root/"app/src/main/java/com/example/messengerui/Models.kt"
+          s=p.read_text().replace('    val replyTo: String? = null,\n    val attachmentPath',
+                                  '    val replyTo: String? = null,\n    val replyToServerId: String? = null,\n    val deleted: Boolean = false,\n    val attachmentPath')
+          p.write_text(s)
+
+          p=root/"app/src/main/java/com/example/messengerui/ApiModels.kt"
+          s=p.read_text().replace('    val status: MessageStatus,\n    val media: RemoteMedia? = null\n)',
+                                  '    val status: MessageStatus,\n    val media: RemoteMedia? = null,\n    val edited: Boolean = false,\n    val deleted: Boolean = false,\n    val replyToId: String? = null,\n    val replyToText: String? = null,\n    val reaction: String? = null\n)')
+          p.write_text(s)
+
+          p=root/"app/src/main/java/com/example/messengerui/ApiClient.kt"
+          s=p.read_text()
+          s=s.replace('fun sendMessage(token: String, conversationId: String, clientUuid: String, text: String, kind: MessageKind, mediaId: String? = null): RemoteMessage {',
+                      'fun sendMessage(token: String, conversationId: String, clientUuid: String, text: String, kind: MessageKind, mediaId: String? = null, replyToId: String? = null): RemoteMessage {')
+          s=s.replace('if (!mediaId.isNullOrBlank()) body.put("media_id", mediaId)',
+                      'if (!mediaId.isNullOrBlank()) body.put("media_id", mediaId)\n        if (!replyToId.isNullOrBlank()) body.put("reply_to_message_id", replyToId)')
+          insert='''
+
+              fun editMessage(token: String, messageId: String, text: String): RemoteMessage {
+                  val json = request("POST", "messages/edit.php", JSONObject().put("message_id", messageId).put("text", text), token)
+                  return json.getJSONObject("message").toRemoteMessage()
+              }
+
+              fun deleteMessageForEveryone(token: String, messageId: String) {
+                  request("POST", "messages/delete.php", JSONObject().put("message_id", messageId), token)
+              }
+
+              fun reactMessage(token: String, messageId: String, reaction: String?) {
+                  val body = JSONObject().put("message_id", messageId)
+                  if (reaction == null) body.put("reaction", JSONObject.NULL) else body.put("reaction", reaction)
+                  request("POST", "messages/react.php", body, token)
+              }
+          '''
+          s=s.replace('    fun uploadMedia(', insert+'\n    fun uploadMedia(')
+          s=s.replace('        media = optJSONObject("media")?.toRemoteMedia()\n    )',
+                      '        media = optJSONObject("media")?.toRemoteMedia(),\n        edited = optBoolean("edited", false) || !optStringOrNull("edited_at").isNullOrBlank(),\n        deleted = optBoolean("deleted", false) || !optStringOrNull("deleted_at").isNullOrBlank(),\n        replyToId = optJSONObject("reply_to")?.optStringOrNull("id"),\n        replyToText = optJSONObject("reply_to")?.optStringOrNull("text"),\n        reaction = optStringOrNull("my_reaction")\n    )')
+          p.write_text(s)
+
+          p=root/"app/src/main/java/com/example/messengerui/LocalMessengerDb.kt"
+          s=p.read_text()
+          s=s.replace('reaction TEXT, reply_to TEXT, attachment_path',
+                      'reaction TEXT, reply_to TEXT, reply_to_server_id TEXT, deleted INTEGER NOT NULL DEFAULT 0, attachment_path')
+          s=s.replace('        if (oldVersion < 4) {\n            safeAlter(db, "ALTER TABLE messages ADD COLUMN remote_media_id TEXT")\n        }',
+                      '        if (oldVersion < 4) {\n            safeAlter(db, "ALTER TABLE messages ADD COLUMN remote_media_id TEXT")\n        }\n        if (oldVersion < 5) {\n            safeAlter(db, "ALTER TABLE messages ADD COLUMN reply_to_server_id TEXT")\n            safeAlter(db, "ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")\n        }')
+          s=s.replace('private const val DB_VERSION = 4', 'private const val DB_VERSION = 5')
+          s=s.replace('put("reply_to", message.replyTo)',
+                      'put("reply_to", message.replyTo)\n            put("reply_to_server_id", message.replyToServerId)\n            put("deleted", if (message.deleted) 1 else 0)')
+          s=s.replace('reaction,reply_to,attachment_path', 'reaction,reply_to,reply_to_server_id,deleted,attachment_path')
+          s=s.replace('reaction = c.optString(9), replyTo = c.optString(10), attachmentPath = c.optString(11), mimeType = c.optString(12), fileName = c.optString(13),\n                durationMs = c.getLong(14), fileSizeBytes = c.getLong(15), serverId = c.optString(16), clientUuid = c.optString(17), remoteMediaId = c.optString(18)',
+                      'reaction = c.optString(9), replyTo = c.optString(10), replyToServerId = c.optString(11), deleted = c.getInt(12) == 1, attachmentPath = c.optString(13), mimeType = c.optString(14), fileName = c.optString(15),\n                durationMs = c.getLong(16), fileSizeBytes = c.getLong(17), serverId = c.optString(18), clientUuid = c.optString(19), remoteMediaId = c.optString(20)')
+          s=s.replace('reaction=c.optString(9), replyTo=c.optString(10), attachmentPath=c.optString(11), mimeType=c.optString(12), fileName=c.optString(13),\n                durationMs=c.getLong(14), fileSizeBytes=c.getLong(15), serverId=c.optString(16), clientUuid=c.optString(17), remoteMediaId=c.optString(18)',
+                      'reaction=c.optString(9), replyTo=c.optString(10), replyToServerId=c.optString(11), deleted=c.getInt(12)==1, attachmentPath=c.optString(13), mimeType=c.optString(14), fileName=c.optString(15),\n                durationMs=c.getLong(16), fileSizeBytes=c.getLong(17), serverId=c.optString(18), clientUuid=c.optString(19), remoteMediaId=c.optString(20)')
+          s=s.replace('            status = remote.status,\n            mimeType = remote.media?.mimeType,',
+                      '            status = remote.status,\n            edited = remote.edited,\n            reaction = remote.reaction,\n            replyTo = remote.replyToText,\n            replyToServerId = remote.replyToId,\n            deleted = remote.deleted,\n            mimeType = remote.media?.mimeType,')
+          s=re.sub(r'    private fun messagePayload\(message: Message\): String = JSONObject\(\).*?\.toString\(\)\n\n',
+          '''    private fun messagePayload(message: Message): String = JSONObject()
+                  .put("chat_id", message.chatId).put("text", message.text).put("kind", message.kind.name).put("status", message.status.name)
+                  .put("edited", message.edited).put("reaction", message.reaction).put("reply_to", message.replyTo)
+                  .put("reply_to_server_id", message.replyToServerId).put("deleted", message.deleted)
+                  .put("attachment_path", message.attachmentPath).put("mime_type", message.mimeType).put("file_name", message.fileName)
+                  .put("duration_ms", message.durationMs).put("file_size_bytes", message.fileSizeBytes).put("client_uuid", message.clientUuid)
+                  .put("server_message_id", message.serverId).put("remote_media_id", message.remoteMediaId).toString()
+
+          ''',s,flags=re.S)
+          helpers='''    fun updateRemoteMessageContent(serverId: String, text: String, edited: Boolean, deleted: Boolean) {
+                  writableDatabase.update("messages", ContentValues().apply {
+                      put("text", text); put("edited", boolInt(edited)); put("deleted", boolInt(deleted)); put("sync_state", "SYNCED")
+                      if (deleted) { putNull("reaction"); putNull("attachment_path"); putNull("remote_media_id") }
+                  }, "server_message_id=?", arrayOf(serverId))
+              }
+
+              fun updateRemoteMessageReaction(serverId: String, reaction: String?) {
+                  writableDatabase.update("messages", ContentValues().apply { put("reaction", reaction); put("sync_state", "SYNCED") }, "server_message_id=?", arrayOf(serverId))
+              }
+
+          '''
+          s=s.replace('    fun incomingServerMessageIds(chatId: String): List<String> = readableDatabase.rawQuery(', helpers+'    fun incomingServerMessageIds(chatId: String): List<String> = readableDatabase.rawQuery(')
+          p.write_text(s)
+
+          p=root/"app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          s=p.read_text()
+          old='''        if (editId != null) {
+                  val index = messages.indexOfFirst { it.id == editId }
+                  if (index >= 0) {
+                      messages[index] = messages[index].copy(text = text, edited = true)
+                      db.updateMessage(messages[index])
+                  }
+                  editMessageId = null
+                  selectedMessageId = null
+                  updateChatPreview(chatId, text)
+                  return
+              }'''
+          new='''        if (editId != null) {
+                  val index = messages.indexOfFirst { it.id == editId }
+                  val current = messages.getOrNull(index)
+                  if (index >= 0 && current != null) {
+                      messages[index] = current.copy(text = text, edited = true)
+                      db.updateMessage(messages[index])
+                      if (serverMode && !current.serverId.isNullOrBlank()) {
+                          val token = db.serverToken()
+                          viewModelScope.launch {
+                              runCatching { withContext(Dispatchers.IO) { api.editMessage(token, current.serverId, text) } }
+                                  .onFailure { lastToast = it.userMessage("Unable to edit message") }
+                          }
+                      }
+                  }
+                  editMessageId = null
+                  selectedMessageId = null
+                  updateChatPreview(chatId, text)
+                  return
+              }'''
+          s=s.replace(old,new)
+          s=s.replace('val replyText = replyMessageId?.let { id -> messages.firstOrNull { it.id == id }?.text }',
+                      'val replyMessage = replyMessageId?.let { id -> messages.firstOrNull { it.id == id } }\n        val replyText = replyMessage?.text\n        val replyServerId = replyMessage?.serverId')
+          s=s.replace('            replyTo = replyText,\n            clientUuid = clientUuid',
+                      '            replyTo = replyText,\n            replyToServerId = replyServerId,\n            clientUuid = clientUuid')
+          s=s.replace('api.sendMessage(token, message.chatId, uuid, message.text, message.kind, mediaId)',
+                      'api.sendMessage(token, message.chatId, uuid, message.text, message.kind, mediaId, message.replyToServerId)')
+          old=re.search(r'    fun toggleReaction\(messageId: Long, reaction: String = "❤️"\) \{.*?\n    \}\n\n    fun deleteMessage',s,re.S).group(0)
+          s=s.replace(old,'''    fun toggleReaction(messageId: Long, reaction: String = "❤️") {
+                  val index = messages.indexOfFirst { it.id == messageId }
+                  if (index >= 0) {
+                      val current = messages[index]
+                      val next = if (current.reaction == reaction) null else reaction
+                      messages[index] = current.copy(reaction = next)
+                      db.updateMessage(messages[index])
+                      if (serverMode && !current.serverId.isNullOrBlank()) {
+                          val token = db.serverToken()
+                          viewModelScope.launch {
+                              runCatching { withContext(Dispatchers.IO) { api.reactMessage(token, current.serverId, next) } }
+                                  .onFailure { lastToast = it.userMessage("Unable to update reaction") }
+                          }
+                      }
+                  }
+                  selectedMessageId = null
+              }
+
+              fun deleteMessage''')
+          old=re.search(r'    fun deleteMessage\(messageId: Long\) \{.*?\n    \}\n\n    private fun refreshChatPreviewFromMessages',s,re.S).group(0)
+          s=s.replace(old,'''    fun deleteMessage(messageId: Long) {
+                  val message = messages.firstOrNull { it.id == messageId }
+                  val chatId = message?.chatId
+                  if (playingAudioMessageId == messageId) stopAudioPlayback()
+                  if (message != null && serverMode && message.outgoing && !message.serverId.isNullOrBlank()) {
+                      val tombstone = message.copy(text = "Message deleted", deleted = true, attachmentPath = null, remoteMediaId = null, reaction = null)
+                      val idx = messages.indexOfFirst { it.id == messageId }
+                      if (idx >= 0) messages[idx] = tombstone
+                      db.updateMessage(tombstone)
+                      attachmentStore.deleteIfExists(message.attachmentPath)
+                      val token = db.serverToken()
+                      viewModelScope.launch {
+                          runCatching { withContext(Dispatchers.IO) { api.deleteMessageForEveryone(token, message.serverId) } }
+                              .onFailure { lastToast = it.userMessage("Unable to delete for everyone") }
+                      }
+                      lastToast = "Message deleted for everyone"
+                  } else {
+                      messages.removeAll { it.id == messageId }
+                      starredMessageIds.remove(messageId)
+                      db.deleteMessage(messageId)
+                      attachmentStore.deleteIfExists(message?.attachmentPath)
+                      lastToast = "Message deleted from this device"
+                  }
+                  selectedMessageId = null
+                  if (chatId != null) refreshChatPreviewFromMessages(chatId)
+              }
+
+              private fun refreshChatPreviewFromMessages''')
+          marker='''            "message.receipt" -> {'''
+          cases='''            "message.updated" -> {
+                      val messageId = event.payload.optString("message_id")
+                      val text = event.payload.optString("text")
+                      if (messageId.isNotBlank()) {
+                          withContext(Dispatchers.IO) { db.updateRemoteMessageContent(messageId, text, edited = true, deleted = false) }
+                          reloadMessages()
+                      }
+                  }
+                  "message.deleted" -> {
+                      val messageId = event.payload.optString("message_id")
+                      if (messageId.isNotBlank()) {
+                          withContext(Dispatchers.IO) { db.updateRemoteMessageContent(messageId, "Message deleted", edited = false, deleted = true) }
+                          reloadMessages()
+                      }
+                  }
+                  "message.reaction" -> {
+                      val messageId = event.payload.optString("message_id")
+                      val reaction = event.payload.optString("reaction").takeIf { it.isNotBlank() }
+                      if (messageId.isNotBlank()) {
+                          withContext(Dispatchers.IO) { db.updateRemoteMessageReaction(messageId, reaction) }
+                          reloadMessages()
+                      }
+                  }
+          '''
+          s=s.replace(marker,cases+marker)
+          s=s.replace('                    media = event.payload.optJSONObject("media")?.let { m -> RemoteMedia(',
+                      '                    edited = event.payload.optBoolean("edited", false),\n                    deleted = event.payload.optBoolean("deleted", false),\n                    replyToId = event.payload.optJSONObject("reply_to")?.optString("id")?.takeIf { it.isNotBlank() },\n                    replyToText = event.payload.optJSONObject("reply_to")?.optString("text")?.takeIf { it.isNotBlank() },\n                    reaction = event.payload.optString("my_reaction").takeIf { it.isNotBlank() },\n                    media = event.payload.optJSONObject("media")?.let { m -> RemoteMedia(')
+          p.write_text(s)
+
+          p=root/"app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          s=p.read_text()
+          s=s.replace('IconButton(onClick = { vm.startReply(selectedId) }) { Icon(Icons.Outlined.Reply, "Reply") }',
+                      'if (!msg.deleted) IconButton(onClick = { vm.startReply(selectedId) }) { Icon(Icons.Outlined.Reply, "Reply") }')
+          s=s.replace('IconButton(onClick = { vm.toggleReaction(selectedId) }) { Icon(Icons.Outlined.FavoriteBorder, "React") }',
+                      'if (!msg.deleted) IconButton(onClick = { vm.toggleReaction(selectedId) }) { Icon(Icons.Outlined.FavoriteBorder, "React") }')
+          s=s.replace('if (msg.outgoing && msg.kind == MessageKind.TEXT) IconButton(onClick = { vm.startEdit(selectedId) })',
+                      'if (msg.outgoing && msg.kind == MessageKind.TEXT && !msg.deleted) IconButton(onClick = { vm.startEdit(selectedId) })')
+          p.write_text(s)
+          PY
+
+      - name: Apply Phase 5 groups patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode messenger-build/phase5/groups_rel.patch.gz.b64 | gunzip > /tmp/groups.patch
+          cd build-input
+          patch -p1 < /tmp/groups.patch
+          grep -q 'versionCode = 7' app/build.gradle.kts
+          grep -q 'versionName = "1.6"' app/build.gradle.kts
+          grep -q 'groups/create.php' app/src/main/java/com/example/messengerui/ApiClient.kt
+          grep -q 'private const val DB_VERSION = 6' app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build and verify Phase 5 Groups APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p build-input :app:assembleDebug --stacktrace
+          APK="build-input/app/build/outputs/apk/debug/app-debug.apk"
+          OUT="Messenger-Groups-Debug.apk"
+          cp "$APK" "$OUT"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$OUT" | tee messenger-groups-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-groups-badging.txt
+          grep -q "versionCode='7'" messenger-groups-badging.txt
+          grep -q "versionName='1.6'" messenger-groups-badging.txt
+          grep -q "application-label:'Messenger'" messenger-groups-badging.txt
+          "$APKSIGNER" verify --verbose "$OUT" | tee messenger-groups-signature.txt
+          sha256sum "$OUT" | tee Messenger-Groups-Debug-SHA256.txt
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/edit.php' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/delete.php' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/react.php' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'groups/create.php' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'groups/members.php' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'groups/update.php' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'https://alkeynesprjects.com/messenger-api/api/v1/' >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-Groups-Debug-APK
+          path: |
+            Messenger-Groups-Debug.apk
+            Messenger-Groups-Debug-SHA256.txt
+            messenger-groups-badging.txt
+            messenger-groups-signature.txt
+          if-no-files-found: error
+          retention-days: 1

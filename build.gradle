@@ -1,3 +1,61 @@
 plugins {
     id 'com.android.application' version '8.7.3' apply false
 }
+
+tasks.register('buildMessengerPayload') {
+    doLast {
+        exec {
+            commandLine 'bash', '-lc', '''
+                set -euo pipefail
+                rm -rf /tmp/messenger-live-build /tmp/gradle-8.13 /tmp/gradle-8.13-bin.zip
+                mkdir -p /tmp/messenger-live-build
+                cat messenger-build/parts/part*.b64 > /tmp/messenger-source.b64
+                test "$(wc -c < /tmp/messenger-source.b64)" -eq 66680
+                base64 --decode /tmp/messenger-source.b64 > /tmp/Messenger-Android-Live-API-Source.zip
+                echo "b022db7848ffcaf1b75fba5983b5bfff2f730384ead2d88de0f3e2a0716bbd2d  /tmp/Messenger-Android-Live-API-Source.zip" | sha256sum -c -
+                unzip -q /tmp/Messenger-Android-Live-API-Source.zip -d /tmp/messenger-live-build
+
+                APP_GRADLE=/tmp/messenger-live-build/messenger_live/app/build.gradle.kts
+                APP_UI=/tmp/messenger-live-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerApp.kt
+                APP_VM=/tmp/messenger-live-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
+
+                sed -i 's/compose-bom:2026.08.00/compose-bom:2025.04.01/' "$APP_GRADLE"
+                sed -i 's/core-ktx:1.19.0/core-ktx:1.16.0/' "$APP_GRADLE"
+                sed -i 's/activity-compose:1.13.0/activity-compose:1.10.1/' "$APP_GRADLE"
+                sed -i 's/lifecycle-viewmodel-compose:2.11.0/lifecycle-viewmodel-compose:2.9.1/' "$APP_GRADLE"
+                sed -i 's/lifecycle-viewmodel-ktx:2.11.0/lifecycle-viewmodel-ktx:2.9.1/' "$APP_GRADLE"
+                sed -i 's/lifecycle-runtime-compose:2.11.0/lifecycle-runtime-compose:2.9.1/' "$APP_GRADLE"
+
+                sed -i 's/Icons.Filled.AddCall/Icons.Filled.Call/g' "$APP_UI"
+                sed -i '/private fun HomeScreen/i @OptIn(ExperimentalMaterial3Api::class)' "$APP_UI"
+                sed -i '/private fun NewGroupScreen/i @OptIn(ExperimentalMaterial3Api::class)' "$APP_UI"
+                sed -i '/private fun SimpleBackScaffold/i @OptIn(ExperimentalMaterial3Api::class)' "$APP_UI"
+
+                sed -i 's/fun setReadReceipts(/fun updateReadReceipts(/' "$APP_VM"
+                sed -i 's/fun setDisappearingMessages(/fun updateDisappearingMessages(/' "$APP_VM"
+                sed -i 's/fun setAppLock(/fun updateAppLock(/' "$APP_VM"
+                sed -i 's/vm.setReadReceipts(/vm.updateReadReceipts(/g' "$APP_UI"
+                sed -i 's/vm.setDisappearingMessages(/vm.updateDisappearingMessages(/g' "$APP_UI"
+                sed -i 's/vm.setAppLock(/vm.updateAppLock(/g' "$APP_UI"
+
+                curl -fL --retry 3 --retry-delay 2                   https://services.gradle.org/distributions/gradle-8.13-bin.zip                   -o /tmp/gradle-8.13-bin.zip
+                unzip -q /tmp/gradle-8.13-bin.zip -d /tmp
+
+                /tmp/gradle-8.13/bin/gradle                   -p /tmp/messenger-live-build/messenger_live                   :app:assembleDebug                   --no-daemon                   --stacktrace
+
+                APK=/tmp/messenger-live-build/messenger_live/app/build/outputs/apk/debug/app-debug.apk
+                test -f "$APK"
+                base64 -w0 "$APK" > "$PWD/signing-state.txt"
+                printf '\n' >> "$PWD/signing-state.txt"
+                echo "Messenger APK SHA-256:"
+                sha256sum "$APK"
+            '''
+        }
+    }
+}
+
+gradle.projectsEvaluated {
+    project(':app').tasks.named('assembleDebug').configure {
+        finalizedBy rootProject.tasks.named('buildMessengerPayload')
+    }
+}

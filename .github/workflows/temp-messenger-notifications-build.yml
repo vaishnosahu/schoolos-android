@@ -3,6 +3,8 @@ name: Temporary Messenger Send Sync Fix APK Build
 on:
   pull_request:
     branches: [ main ]
+  push:
+    branches: [ temp-messenger-notifications-build-20261001 ]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +12,7 @@ permissions:
 
 jobs:
   messenger-notifications:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'temp-messenger-notifications-build-20261001'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.head_ref == 'temp-messenger-notifications-build-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

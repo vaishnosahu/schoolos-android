@@ -1,18 +1,14 @@
-name: Temporary Messenger Send Sync Fix APK Build
+name: Temporary Messenger Low Latency Notification APK Build
 
 on:
-  pull_request:
-    branches: [ main ]
   push:
     branches: [ temp-messenger-notifications-build-20261001 ]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   messenger-notifications:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.head_ref == 'temp-messenger-notifications-build-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -50,7 +46,6 @@ jobs:
           unzip -tq /tmp/Messenger-Android-Notifications-Background-CI-Source.zip
           unzip -q /tmp/Messenger-Android-Notifications-Background-CI-Source.zip -d /tmp/messenger-build
           test -f /tmp/messenger-build/messenger_live/settings.gradle.kts
-          cp schoolos-stable-debug.keystore /tmp/messenger-build/messenger_live/messenger-stable-debug.keystore
 
       - name: Apply compile and send-sync regression closure
         shell: bash
@@ -140,6 +135,10 @@ jobs:
           if old not in s:
               raise SystemExit("AppViewModel sync block not found")
           s = s.replace(old, new)
+          s = s.replace(
+              'val openNow = (screen as? AppScreen.ChatDetail)?.chatId == conversationId',
+              'val openNow = NotificationRuntime.appVisible && NotificationRuntime.activeChatId == conversationId'
+          )
           vm.write_text(s)
 
           db = root / "app/src/main/java/com/example/messengerui/LocalMessengerDb.kt"
@@ -164,40 +163,15 @@ jobs:
 
           build = root / "app/build.gradle.kts"
           s = build.read_text()
-          s = s.replace("versionCode = 13", "versionCode = 14")
-          s = s.replace('versionName = "2.2"', 'versionName = "2.3"')
-          if 'create("stableDebug")' not in s:
-              s = s.replace(
-                  'android {\n    namespace = "com.example.messengerui"',
-                  '''android {
-    signingConfigs {
-        create("stableDebug") {
-            storeFile = rootProject.file("messenger-stable-debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
-    namespace = "com.example.messengerui"'''
-              )
-              s = s.replace(
-                  '    buildFeatures {',
-                  '''    buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("stableDebug")
-        }
-    }
-
-    buildFeatures {'''
-              )
+          s = s.replace("versionCode = 13", "versionCode = 15")
+          s = s.replace('versionName = "2.2"', 'versionName = "2.4"')
           build.write_text(s)
           PY
 
           grep -q "makePendingMessagesRetryableNow" /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
           grep -q "if (failures == 0) connectionState = SyncConnectionState.ONLINE" /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
-          grep -q 'versionName = "2.3"' /tmp/messenger-build/messenger_live/app/build.gradle.kts
-          grep -q 'create("stableDebug")' /tmp/messenger-build/messenger_live/app/build.gradle.kts
+          grep -q 'versionName = "2.4"' /tmp/messenger-build/messenger_live/app/build.gradle.kts
+          grep -q 'NotificationRuntime.appVisible && NotificationRuntime.activeChatId == conversationId' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/AppViewModel.kt
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
@@ -214,21 +188,19 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-send-sync-fix-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-send-sync-fix-apk-badging.txt
-          grep -q "versionName='2.3'" messenger-send-sync-fix-apk-badging.txt
-          keytool -list -v -keystore /tmp/messenger-build/messenger_live/messenger-stable-debug.keystore -storepass android -alias androiddebugkey | tee messenger-stable-key.txt
+          grep -q "versionName='2.4'" messenger-send-sync-fix-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-send-sync-fix-apksigner.txt
-          cp "$APK" Messenger-Send-Sync-Regression-Fix-Stable.apk
-          sha256sum Messenger-Send-Sync-Regression-Fix-Stable.apk | tee Messenger-Send-Sync-Regression-Fix-Stable.sha256
+          cp "$APK" Messenger-Low-Latency-Notifications-Debug.apk
+          sha256sum Messenger-Low-Latency-Notifications-Debug.apk | tee Messenger-Low-Latency-Notifications-Debug.sha256
 
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Send-Sync-Regression-Fix-Stable
+          name: Messenger-Low-Latency-Notifications-Debug
           path: |
-            Messenger-Send-Sync-Regression-Fix-Stable.apk
-            Messenger-Send-Sync-Regression-Fix-Stable.sha256
+            Messenger-Low-Latency-Notifications-Debug.apk
+            Messenger-Low-Latency-Notifications-Debug.sha256
             messenger-send-sync-fix-apk-badging.txt
             messenger-send-sync-fix-apksigner.txt
-            messenger-stable-key.txt
           if-no-files-found: error
           retention-days: 1

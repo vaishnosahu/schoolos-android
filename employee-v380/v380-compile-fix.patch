@@ -1,0 +1,21 @@
+diff -ruN a/app/src/main/java/com/alkeynes/employee/management/TrackingService.java b/app/src/main/java/com/alkeynes/employee/management/TrackingService.java
+--- a/app/src/main/java/com/alkeynes/employee/management/TrackingService.java	2026-10-01 06:31:38.244534203 +0000
++++ b/app/src/main/java/com/alkeynes/employee/management/TrackingService.java	2026-10-01 06:31:38.245693634 +0000
+@@ -360,7 +360,7 @@
+         try{
+             String token=store.get("tracking_token");if(token==null||token.isEmpty())return;
+             JSONObject h=new JSONObject();
+-            h.put("attendance_session_id",currentSessionId>0?currentSessionId:JSONObject.NULL);h.put("app_version",BuildConfig.VERSION_NAME);h.put("collector_version","3.8.0");h.put("service_state",serviceState);
++            h.put("attendance_session_id",currentSessionId>0?currentSessionId:JSONObject.NULL);h.put("app_version",appVersion());h.put("collector_version","3.8.0");h.put("service_state",serviceState);
+             boolean fine=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED;h.put("fine_permission",fine);
+             boolean bg=Build.VERSION.SDK_INT<29||checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)==PackageManager.PERMISSION_GRANTED;h.put("background_permission",bg);
+             h.put("location_enabled",locationEnabled());h.put("gps_enabled",providerEnabled(LocationManager.GPS_PROVIDER));h.put("network_provider_enabled",providerEnabled(LocationManager.NETWORK_PROVIDER));
+@@ -376,6 +376,8 @@
+         }catch(Exception ignored){}
+     }
+ 
++    private String appVersion(){try{android.content.pm.PackageInfo info=getPackageManager().getPackageInfo(getPackageName(),0);return info.versionName==null||info.versionName.trim().isEmpty()?"3.8.0-production":info.versionName;}catch(Exception e){return "3.8.0-production";}}
++
+     private boolean locationEnabled(){try{return Build.VERSION.SDK_INT>=28?locationManager!=null&&locationManager.isLocationEnabled():providerEnabled(LocationManager.GPS_PROVIDER)||providerEnabled(LocationManager.NETWORK_PROVIDER);}catch(Exception e){return false;}}
+     private boolean providerEnabled(String provider){try{return locationManager!=null&&locationManager.isProviderEnabled(provider);}catch(Exception e){return false;}}
+     private int batteryPercent(){try{Intent battery=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));if(battery==null)return-1;int level=battery.getIntExtra(BatteryManager.EXTRA_LEVEL,-1),scale=battery.getIntExtra(BatteryManager.EXTRA_SCALE,-1);return level>=0&&scale>0?Math.round(level*100f/scale):-1;}catch(Exception e){return-1;}}

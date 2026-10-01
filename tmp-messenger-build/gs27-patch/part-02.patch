@@ -1,0 +1,112 @@
+             runCatching { db.execSQL("CREATE TABLE IF NOT EXISTS receipt_queue (message_id TEXT PRIMARY KEY, status TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0, next_attempt_at_ms INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at_ms INTEGER NOT NULL)") }
+         }
++        if (oldVersion < 10) {
++            safeAlter(db, "ALTER TABLE statuses ADD COLUMN muted INTEGER NOT NULL DEFAULT 0")
++        }
+     }
+ 
+     private fun safeAlter(db: SQLiteDatabase, sql: String) { runCatching { db.execSQL(sql) } }
+@@ -278,9 +281,9 @@
+     }
+ 
+     fun loadStatuses(): List<StatusItem> = readableDatabase.rawQuery(
+-        "SELECT id,contact_name,time_label,viewed,mine,caption,owner_id,kind,remote_media_id,mime_type,file_name,file_size_bytes,duration_ms,viewer_count,privacy,local_path FROM statuses WHERE expires_at_ms>? OR mine=1 ORDER BY mine DESC, created_at_ms DESC",
++        "SELECT id,contact_name,time_label,viewed,mine,caption,owner_id,kind,remote_media_id,mime_type,file_name,file_size_bytes,duration_ms,viewer_count,privacy,local_path,created_at_ms,expires_at_ms,muted FROM statuses WHERE expires_at_ms>? OR mine=1 ORDER BY mine DESC, created_at_ms DESC",
+         arrayOf(System.currentTimeMillis().toString())
+-    ).use { c -> buildList { while (c.moveToNext()) add(StatusItem(c.getString(0),c.getString(1),c.getString(2),c.getInt(3)==1,c.getInt(4)==1,c.getString(5),c.optString(6),enumValueOrDefault(c.getString(7),MessageKind.TEXT),c.optString(8),c.optString(9),c.optString(10),c.getLong(11),c.getLong(12),c.getInt(13),c.getString(14),c.optString(15))) } }
++    ).use { c -> buildList { while (c.moveToNext()) add(StatusItem(c.getString(0),c.getString(1),c.getString(2),c.getInt(3)==1,c.getInt(4)==1,c.getString(5),c.optString(6),enumValueOrDefault(c.getString(7),MessageKind.TEXT),c.optString(8),c.optString(9),c.optString(10),c.getLong(11),c.getLong(12),c.getInt(13),c.getString(14),c.optString(15),c.getLong(16),c.getLong(17),c.getInt(18)==1)) } }
+ 
+     fun replaceServerStatuses(items: List<StatusItem>) {
+         val cachedPaths = readableDatabase.rawQuery("SELECT id,local_path FROM statuses WHERE local_path IS NOT NULL", null).use { c ->
+@@ -292,7 +295,7 @@
+             db.delete("statuses", null, null)
+             items.forEachIndexed { i,item ->
+                 val cached = cachedPaths[item.id]?.takeIf { java.io.File(it).isFile }
+-                insertStatus(db,item.copy(localPath = item.localPath ?: cached),System.currentTimeMillis()-i)
++                insertStatus(db,item.copy(localPath = item.localPath ?: cached),item.createdAtMs)
+             }
+             db.setTransactionSuccessful()
+         } finally { db.endTransaction() }
+@@ -309,6 +312,16 @@
+ 
+     fun updateStatusLocalPath(statusId: String, path: String) { writableDatabase.update("statuses",ContentValues().apply{put("local_path",path)},"id=?",arrayOf(statusId)) }
+ 
++    fun upsertStatus(item: StatusItem) { insertStatus(writableDatabase, item, item.createdAtMs) }
++
++    fun setStatusOwnerMuted(ownerId: String, muted: Boolean) {
++        writableDatabase.update("statuses", ContentValues().apply { put("muted", boolInt(muted)) }, "owner_id=?", arrayOf(ownerId))
++    }
++
++    fun updateOwnStatusViewerCount(statusId: String, count: Int) {
++        writableDatabase.update("statuses", ContentValues().apply { put("viewer_count", count.coerceAtLeast(0)) }, "id=?", arrayOf(statusId))
++    }
++
+ 
+     fun loadCalls(): List<CallLog> = readableDatabase.rawQuery("SELECT id,contact_name,time_label,type,direction FROM call_logs ORDER BY created_at_ms DESC", null).use { c ->
+         buildList { while (c.moveToNext()) add(CallLog(c.getString(0), c.getString(1), c.getString(2), enumValueOrDefault(c.getString(3), CallType.AUDIO), enumValueOrDefault(c.getString(4), CallDirection.OUTGOING))) }
+@@ -712,8 +725,8 @@
+         db.insertWithOnConflict("statuses", null, ContentValues().apply {
+             put("id",item.id); put("contact_name",item.contactName); put("time_label",item.time); put("viewed",boolInt(item.viewed)); put("mine",boolInt(item.mine)); put("caption",item.caption)
+             put("owner_id",item.ownerId); put("kind",item.kind.name); put("remote_media_id",item.remoteMediaId); put("mime_type",item.mimeType); put("file_name",item.fileName)
+-            put("file_size_bytes",item.fileSizeBytes); put("duration_ms",item.durationMs); put("viewer_count",item.viewerCount); put("privacy",item.privacy); put("local_path",item.localPath)
+-            put("created_at_ms", createdAt); put("expires_at_ms", createdAt + 86_400_000L)
++            put("file_size_bytes",item.fileSizeBytes); put("duration_ms",item.durationMs); put("viewer_count",item.viewerCount); put("privacy",item.privacy); put("local_path",item.localPath); put("muted",boolInt(item.muted))
++            put("created_at_ms", if (item.createdAtMs > 0L) item.createdAtMs else createdAt); put("expires_at_ms", if (item.expiresAtMs > 0L) item.expiresAtMs else createdAt + 86_400_000L)
+         }, SQLiteDatabase.CONFLICT_REPLACE)
+     }
+ 
+@@ -734,6 +747,6 @@
+ 
+     companion object {
+         private const val DB_NAME = "messenger_local.db"
+-        private const val DB_VERSION = 9
++        private const val DB_VERSION = 10
+     }
+ }
+diff -ruN a/app/src/main/java/com/example/messengerui/MediaPresentation.kt b/app/src/main/java/com/example/messengerui/MediaPresentation.kt
+--- a/app/src/main/java/com/example/messengerui/MediaPresentation.kt	2026-10-01 11:18:54.000000000 +0000
++++ b/app/src/main/java/com/example/messengerui/MediaPresentation.kt	2026-10-01 13:53:17.180915934 +0000
+@@ -239,7 +239,9 @@
+     onPrevious: () -> Unit,
+     onNext: () -> Unit,
+     onDelete: () -> Unit,
+-    onEnsureMedia: () -> Unit
++    onEnsureMedia: () -> Unit,
++    onViewers: () -> Unit,
++    onToggleMute: () -> Unit
+ ) {
+     val mediaFile = status.localPath?.let(::File)?.takeIf { it.isFile }
+     var progress by remember(status.id, mediaFile?.absolutePath) { mutableFloatStateOf(0f) }
+@@ -280,10 +282,10 @@
+                     MessageKind.IMAGE -> {
+                         val image = rememberMediaBitmap(mediaFile, MessageKind.IMAGE, status.mimeType, status.fileName)
+                         if (image != null) Image(image, status.caption, Modifier.fillMaxSize().padding(vertical = 80.dp), contentScale = ContentScale.Fit)
+-                        else StatusLoading(transferProgress)
++                        else StatusLoading(transferProgress, onEnsureMedia)
+                     }
+-                    MessageKind.VIDEO -> if (mediaFile != null) InAppVideo(mediaFile, Modifier.fillMaxSize().padding(vertical = 80.dp)) else StatusLoading(transferProgress)
+-                    else -> StatusLoading(transferProgress)
++                    MessageKind.VIDEO -> if (mediaFile != null) InAppVideo(mediaFile, Modifier.fillMaxSize().padding(vertical = 80.dp)) else StatusLoading(transferProgress, onEnsureMedia)
++                    else -> StatusLoading(transferProgress, onEnsureMedia)
+                 }
+ 
+                 Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(horizontal = 12.dp, vertical = 10.dp)) {
+@@ -296,7 +298,12 @@
+                             Text(status.contactName, color = Color.White, fontWeight = FontWeight.SemiBold)
+                             Text(buildString { append(status.time); if (status.mine) append(" · ${status.viewerCount} views") }, color = Color.White.copy(alpha = .76f), style = MaterialTheme.typography.labelSmall)
+                         }
+-                        if (status.mine) IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, "Delete status", tint = Color.White) }
++                        if (status.mine) {
++                            TextButton(onClick = onViewers) { Text("${status.viewerCount} views", color = Color.White) }
++                            IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, "Delete status", tint = Color.White) }
++                        } else {
++                            IconButton(onClick = onToggleMute) { Icon(if (status.muted) Icons.Outlined.VolumeUp else Icons.Outlined.VolumeOff, if (status.muted) "Unmute status" else "Mute status", tint = Color.White) }
++                        }
+                         IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close status", tint = Color.White) }
+                     }
+                 }
+@@ -312,11 +319,12 @@
+ }
+ 
+ @Composable
+-private fun StatusLoading(progress: Int?) {

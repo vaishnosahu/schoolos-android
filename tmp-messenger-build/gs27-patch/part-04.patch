@@ -1,0 +1,70 @@
+-private fun StatusListRow(status: StatusItem, onClick: () -> Unit) {
++private fun StatusListRow(status: StatusItem, count: Int = 1, onClick: () -> Unit) {
+     Surface(
+         modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp).clickable(onClick = onClick),
+         shape = RoundedCornerShape(18.dp),
+@@ -559,8 +586,10 @@
+                 Text(
+                     buildString {
+                         append(status.time)
+-                        if (status.kind != MessageKind.TEXT) append(" · ${status.kind.name.lowercase()}")
++                        if (count > 1) append(" · $count updates")
++                        else if (status.kind != MessageKind.TEXT) append(" · ${status.kind.name.lowercase()}")
+                         if (status.mine) append(" · ${status.viewerCount} views")
++                        if (status.muted) append(" · muted")
+                         if (status.caption.isNotBlank()) append(" · ${status.caption.take(38)}")
+                     },
+                     maxLines = 1,
+@@ -1496,7 +1525,7 @@
+                             if (role == "admin") AssistChip(onClick = {}, label = { Text("Admin") })
+                             if (vm.canManageGroup(chatId) && !me) {
+                                 Box {
+-                                    IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "Member actions") }
++                                    IconButton(enabled = vm.groupActionBusy.keys.none { it.startsWith("$chatId:$id:") }, onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "Member actions") }
+                                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                         DropdownMenuItem(text = { Text(if (role == "admin") "Remove admin" else "Make group admin") }, onClick = { menu = false; if (role == "admin") vm.demoteGroupMember(chatId,id) else vm.promoteGroupMember(chatId,id) }, leadingIcon = { Icon(Icons.Outlined.AdminPanelSettings, null) })
+                                         DropdownMenuItem(text = { Text("Remove participant", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; vm.removeGroupMember(chatId,id) }, leadingIcon = { Icon(Icons.Outlined.PersonRemove, null, tint = MaterialTheme.colorScheme.error) })
+@@ -1511,11 +1540,11 @@
+                 item { HorizontalDivider(Modifier.padding(horizontal = 16.dp)); SectionLabel("Add participants") }
+                 items(vm.contacts.filter { it.id !in chat.memberIds }, key = { "add-${it.id}" }) { contact ->
+                     ListItem(
+-                        modifier = Modifier.clickable { vm.addGroupMember(chatId, contact.id) },
++                        modifier = Modifier.clickable(enabled = vm.groupActionBusy.keys.none { it.startsWith("$chatId:${contact.id}:") }) { vm.addGroupMember(chatId, contact.id) },
+                         leadingContent = { Avatar(contact.name) },
+                         headlineContent = { Text(contact.name, fontWeight = FontWeight.SemiBold) },
+                         supportingContent = { Text(contact.about.ifBlank { contact.phone }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+-                        trailingContent = { FilledTonalIconButton(onClick = { vm.addGroupMember(chatId, contact.id) }) { Icon(Icons.Outlined.PersonAdd, "Add") } }
++                        trailingContent = { FilledTonalIconButton(enabled = vm.groupActionBusy.keys.none { it.startsWith("$chatId:${contact.id}:") }, onClick = { vm.addGroupMember(chatId, contact.id) }) { Icon(Icons.Outlined.PersonAdd, "Add") } }
+                     )
+                 }
+             }
+@@ -1563,7 +1592,13 @@
+                     }
+                 }
+             }
+-            item { Button(onClick={ vm.saveGroupSettings(chatId,name.trim(),description.trim(),adminsOnly) }, enabled = name.isNotBlank(), modifier=Modifier.fillMaxWidth().height(52.dp)) { Icon(Icons.Outlined.Save, null); Spacer(Modifier.width(8.dp)); Text("Save changes") } }
++            item {
++                val saving = vm.groupActionBusy["$chatId:settings"] == true
++                Button(onClick={ vm.saveGroupSettings(chatId,name.trim(),description.trim(),adminsOnly) }, enabled = name.isNotBlank() && !saving, modifier=Modifier.fillMaxWidth().height(52.dp)) {
++                    if (saving) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text("Saving…") }
++                    else { Icon(Icons.Outlined.Save, null); Spacer(Modifier.width(8.dp)); Text("Save changes") }
++                }
++            }
+         }
+     }
+ }
+diff -ruN a/app/src/main/java/com/example/messengerui/Models.kt b/app/src/main/java/com/example/messengerui/Models.kt
+--- a/app/src/main/java/com/example/messengerui/Models.kt	2026-10-01 11:18:54.000000000 +0000
++++ b/app/src/main/java/com/example/messengerui/Models.kt	2026-10-01 13:50:33.140052113 +0000
+@@ -73,7 +73,10 @@
+     val durationMs: Long = 0L,
+     val viewerCount: Int = 0,
+     val privacy: String = "EVERYONE",
+-    val localPath: String? = null
++    val localPath: String? = null,
++    val createdAtMs: Long = System.currentTimeMillis(),
++    val expiresAtMs: Long = createdAtMs + 86_400_000L,
++    val muted: Boolean = false
+ )
+ 
+ data class CallLog(

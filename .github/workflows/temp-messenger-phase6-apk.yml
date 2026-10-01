@@ -270,7 +270,17 @@ jobs:
           set -euo pipefail
           base64 --decode messenger-build/phase6/status_groupfix.patch.gz.b64 | gunzip > /tmp/status.patch
           cd build-input
-          patch -p1 < /tmp/status.patch
+          patch -p1 < /tmp/status.patch || true
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=p.read_text()
+          marker='            "message.receipt" -> {'
+          if '"status.created", "status.deleted"' not in s:
+              s=s.replace(marker,'            "status.created", "status.deleted" -> refreshServerStatuses()\\n            "status.viewed" -> refreshServerStatuses()\\n'+marker)
+          p.write_text(s)
+          PY
+          rm -f app/src/main/java/com/example/messengerui/*.rej
           grep -q 'versionCode = 8' app/build.gradle.kts
           grep -q 'versionName = "1.7"' app/build.gradle.kts
           grep -q 'statuses/create.php' app/src/main/java/com/example/messengerui/ApiClient.kt

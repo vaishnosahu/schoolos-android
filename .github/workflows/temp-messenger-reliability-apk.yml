@@ -328,6 +328,10 @@ jobs:
           grep -q 'sync/typing.php' app/src/main/java/com/example/messengerui/ApiClient.kt
           grep -q 'messages/history.php' app/src/main/java/com/example/messengerui/ApiClient.kt
           grep -q 'private const val DB_VERSION = 8' app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
+          grep -q 'Reconnecting…' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Unread messages' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Load older messages' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'typing.changed' app/src/main/java/com/example/messengerui/AppViewModel.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -383,9 +387,6 @@ jobs:
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'sync/presence.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'sync/typing.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/history.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'Reconnecting…' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'Unread messages' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'Load older messages' >/dev/null
 
       - uses: actions/upload-artifact@v4
         with:

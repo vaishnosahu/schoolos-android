@@ -1,4 +1,5 @@
 name: Employee Management APK Temporary Build
+# rebuild after verified chunk repair
 
 on:
   push:

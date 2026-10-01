@@ -103,7 +103,7 @@ jobs:
           echo "a2fac9847cf4864df1a370e85723e8662eb5509ae2d920f513cddd2728c6310e  /tmp/employee-v380/android-v380.patch" | sha256sum -c -
           cd /tmp/employee-v380/src/employee-combined
           patch -p6 --dry-run --batch < /tmp/employee-v380/android-v380.patch
-          patch -p6 --batch < /tmp/employee-v380/android-v380.patch
+          patch -p6 --batch < /tmp/employee-v380/android-v380.patch\n          echo "719b4c95737919359f3ce0b6aceaf3fe90d66ddd8334d062197a456e30cf911e  employee-v380/v380-compile-fix.patch" | sha256sum -c -\n          patch -p1 --batch < employee-v380/v380-compile-fix.patch
           grep -q "versionCode 3800" app/build.gradle
           grep -q "versionName '3.8.0-production'" app/build.gradle
           grep -q "HEALTH_API" app/src/main/java/com/alkeynes/employee/management/ApiClient.java

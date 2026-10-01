@@ -271,7 +271,18 @@ jobs:
           cat messenger-build/phase6/chunks/chunk*.b64 > /tmp/status-groupfix.b64
           base64 --decode /tmp/status-groupfix.b64 | gunzip > /tmp/status-groupfix.patch
           cd build-input
-          patch -p1 < /tmp/status-groupfix.patch
+          patch -p1 < /tmp/status-groupfix.patch || true
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=p.read_text()
+          marker='            "message.receipt" -> {'
+          block='            "status.created", "status.deleted" -> refreshServerStatuses()\n            "status.viewed" -> refreshServerStatuses()\n'
+          if block not in s:
+              if marker not in s: raise SystemExit("message receipt event marker missing")
+              s=s.replace(marker,block+marker,1)
+          p.write_text(s)
+          PY
           grep -q 'versionCode = 8' app/build.gradle.kts
           grep -q 'versionName = "1.7"' app/build.gradle.kts
           grep -q 'statuses/feed.php' app/src/main/java/com/example/messengerui/ApiClient.kt

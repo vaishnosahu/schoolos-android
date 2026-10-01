@@ -102,8 +102,8 @@ jobs:
           gunzip -c /tmp/employee-v380/android-v380.patch.gz > /tmp/employee-v380/android-v380.patch
           echo "a2fac9847cf4864df1a370e85723e8662eb5509ae2d920f513cddd2728c6310e  /tmp/employee-v380/android-v380.patch" | sha256sum -c -
           cd /tmp/employee-v380/src/employee-combined
-          patch -p1 --dry-run < /tmp/employee-v380/android-v380.patch
-          patch -p1 < /tmp/employee-v380/android-v380.patch
+          patch -p6 --dry-run --batch < /tmp/employee-v380/android-v380.patch
+          patch -p6 --batch < /tmp/employee-v380/android-v380.patch
           grep -q "versionCode 3800" app/build.gradle
           grep -q "versionName '3.8.0-production'" app/build.gradle
           grep -q "HEALTH_API" app/src/main/java/com/alkeynes/employee/management/ApiClient.java

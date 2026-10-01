@@ -1,0 +1,90 @@
+name: Employee Management APK Temporary Build
+
+on:
+  push:
+    branches:
+      - employee-apk-build-temp
+    paths:
+      - ".github/workflows/employee-apk-temp-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout temporary build branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct and verify exact Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/employee-build/src
+          : > /tmp/employee-build/source.b64
+          for f in \
+            employee-build/chunk_00.b64 \
+            employee-build/chunk_01_fixed.b64 \
+            employee-build/chunk_02.b64 \
+            employee-build/chunk_03.b64 \
+            employee-build/chunk_04.b64 \
+            employee-build/chunk_05.b64 \
+            employee-build/chunk_06.b64 \
+            employee-build/chunk_07.b64 \
+            employee-build/chunk_08.b64 \
+            employee-build/chunk_09.b64 \
+            employee-build/chunk_10.b64 \
+            employee-build/chunk_11.b64 \
+            employee-build/chunk_12.b64 \
+            employee-build/chunk_13.b64 \
+            employee-build/chunk_14.b64
+          do
+            tr -d '[:space:]' < "$f" >> /tmp/employee-build/source.b64
+          done
+          test "$(wc -c < /tmp/employee-build/source.b64)" -eq 87824
+          base64 -d /tmp/employee-build/source.b64 > /tmp/employee-build/source.zip
+          echo "35ecf5c0bd6767ef85885c9fdbe83f3c950d8c11076e121e9c58a1d45b3bd8f6  /tmp/employee-build/source.zip" | sha256sum -c -
+          unzip -t /tmp/employee-build/source.zip
+          unzip -q /tmp/employee-build/source.zip -d /tmp/employee-build/src
+          test -f /tmp/employee-build/src/employee-combined/app/build.gradle
+          test -f /tmp/employee-build/src/employee-combined/app/src/main/AndroidManifest.xml
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build installable debug APK
+        shell: bash
+        working-directory: /tmp/employee-build/src/employee-combined
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Prepare APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/employee-build/output
+          cp /tmp/employee-build/src/employee-combined/app/build/outputs/apk/debug/app-debug.apk \
+             /tmp/employee-build/output/Employee-Management-v3.5.0-Expense-Upgrade.apk
+          cd /tmp/employee-build/output
+          sha256sum Employee-Management-v3.5.0-Expense-Upgrade.apk > APK-SHA256.txt
+          ls -lh
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Employee-Management-v3.5.0-Expense-Upgrade
+          path: /tmp/employee-build/output/*
+          if-no-files-found: error
+          retention-days: 3

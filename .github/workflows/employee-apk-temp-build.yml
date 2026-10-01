@@ -25,6 +25,51 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/employee-build/src
           : > /tmp/employee-build/source.b64
+          cat > /tmp/employee-build/chunk-hashes.txt <<'EOF'
+00 faf627600e9af9a47c7889da44d1367f8bb600c164412332a20bd0209ca3a2cc
+01 f95cdaf946c9bc8212ca70243c9b9f524b7295e949cd7fcebf761761626a0481
+02 a84088efc1607600da5990871e1e4c133a6fa6fd81d2f893492ae2e2e4fe8f7c
+03 a4deb99ebd5a20f70b8482eb9c8ba4b2a234bf2b0de4a894088abd5f8bb099e8
+04 4fae0c4f5c5148cd9b4ef9e7c5a529ebd71adadd58516761263e798ada5afc1e
+05 f06a7444bb2891b1cdc8667b1c5d7b48d9b0146b28712ead0eb53080c202f650
+06 f5f2686f9aaa99325222ec079b51566024a0d5f5179a4e4f4b6881c409ecce68
+07 39a2692fa82ddfec2e27df7d99c1118dce70bf44d97ef4adeff7e0b4b2c7ef44
+08 3fd5c784c61cd05ccf483aa791e8028fca9f9f41007b0ac647b41bb8804370e7
+09 0163746fae48126eb71429da07152e7310f96d4f294c66392175a7d617e619c5
+10 b1e4fa24ab9b23355c873ff7772b42f5cf83f3154f5f6c0007ab6f623a7306cf
+11 b04f1e94cbbc7db78efe4ee55cbc322526267bd515e273e5a0cff98d317035ba
+12 3c2ad9881cbe7131970f79c53364a17bf910ec39c46b9acda6b8581f563170fb
+13 922a60c523a992a7959457427c5196ba8357856b969cdcf9de45f3bfbfe88d6a
+14 3ef36d5192e5d46daf45a7d8c97baede6272ce756c315df2c03d14484f035cc6
+EOF
+          declare -a CHUNKS=(
+            employee-build/chunk_00.b64
+            employee-build/chunk_01_fixed.b64
+            employee-build/chunk_02.b64
+            employee-build/chunk_03.b64
+            employee-build/chunk_04.b64
+            employee-build/chunk_05.b64
+            employee-build/chunk_06.b64
+            employee-build/chunk_07.b64
+            employee-build/chunk_08.b64
+            employee-build/chunk_09.b64
+            employee-build/chunk_10.b64
+            employee-build/chunk_11.b64
+            employee-build/chunk_12.b64
+            employee-build/chunk_13.b64
+            employee-build/chunk_14.b64
+          )
+          bad=0
+          for idx in $(seq 0 14); do
+            f="${CHUNKS[$idx]}"
+            clean="/tmp/employee-build/chunk-$(printf '%02d' "$idx").txt"
+            tr -d '[:space:]' < "$f" > "$clean"
+            got=$(sha256sum "$clean" | awk '{print $1}')
+            want=$(awk -v i="$(printf '%02d' "$idx")" '$1==i {print $2}' /tmp/employee-build/chunk-hashes.txt)
+            echo "CHUNK $(printf '%02d' "$idx") got=$got want=$want length=$(wc -c < "$clean")"
+            if [ "$got" != "$want" ]; then bad=1; fi
+          done
+          if [ "$bad" -ne 0 ]; then echo "Chunk integrity mismatch"; exit 2; fi
           for f in \
             employee-build/chunk_00.b64 \
             employee-build/chunk_01_fixed.b64 \

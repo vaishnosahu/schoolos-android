@@ -1,0 +1,135 @@
++private fun StatusLoading(progress: Int?, onRetry: () -> Unit) {
+     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+-        CircularProgressIndicator(color = Color.White)
++        if (progress != null) CircularProgressIndicator(color = Color.White) else Icon(Icons.Outlined.CloudDownload, null, tint = Color.White, modifier = Modifier.size(42.dp))
+         Spacer(Modifier.height(12.dp))
+-        Text(if (progress != null) "Loading media $progress%" else "Loading status…", color = Color.White)
++        Text(if (progress != null) "Loading media $progress%" else "Media not loaded", color = Color.White)
++        if (progress == null) TextButton(onClick = onRetry) { Text("Retry", color = Color.White) }
+     }
+ }
+ 
+diff -ruN a/app/src/main/java/com/example/messengerui/MessengerApp.kt b/app/src/main/java/com/example/messengerui/MessengerApp.kt
+--- a/app/src/main/java/com/example/messengerui/MessengerApp.kt	2026-10-01 13:24:30.000000000 +0000
++++ b/app/src/main/java/com/example/messengerui/MessengerApp.kt	2026-10-01 13:53:17.183746158 +0000
+@@ -433,6 +433,7 @@
+ @Composable
+ private fun UpdatesTab(vm: AppViewModel) {
+     var statusViewerId by remember { mutableStateOf<String?>(null) }
++    var statusViewersDialog by remember { mutableStateOf(false) }
+     var addDialog by remember { mutableStateOf(false) }
+     var caption by remember { mutableStateOf("") }
+     var selectedKind by remember { mutableStateOf(MessageKind.TEXT) }
+@@ -447,8 +448,13 @@
+     }
+     LaunchedEffect(Unit) { vm.refreshServerStatuses() }
+     val myStatuses = vm.statuses.filter { it.mine }
+-    val recentStatuses = vm.statuses.filter { !it.mine && !it.viewed }
+-    val viewedStatuses = vm.statuses.filter { !it.mine && it.viewed }
++    val recentStatuses = vm.statuses.filter { !it.mine && !it.viewed && !it.muted }
++    val viewedStatuses = vm.statuses.filter { !it.mine && it.viewed && !it.muted }
++    val mutedStatuses = vm.statuses.filter { !it.mine && it.muted }
++    fun firstForOwner(items: List<StatusItem>): List<Pair<StatusItem,Int>> = items.groupBy { it.ownerId ?: it.contactName }.values.map { group ->
++        val ordered=group.sortedBy { it.createdAtMs }
++        (ordered.firstOrNull { !it.viewed } ?: ordered.last()) to group.size
++    }.sortedByDescending { it.first.createdAtMs }
+ 
+     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+         item {
+@@ -466,22 +472,28 @@
+             if (myStatuses.isNotEmpty()) {
+                 item { SectionLabel("My status") }
+                 items(myStatuses, key = { "mine-${it.id}" }) { status ->
+-                    StatusListRow(status = status, onClick = { vm.viewStatus(status); vm.ensureStatusMedia(status.id); statusViewerId = status.id })
++                    StatusListRow(status = status, count = 1, onClick = { vm.viewStatus(status); vm.ensureStatusMedia(status.id); statusViewerId = status.id })
+                 }
+             }
+             if (recentStatuses.isNotEmpty()) {
+                 item { SectionLabel("Recent updates") }
+-                items(recentStatuses, key = { "recent-${it.id}" }) { status ->
+-                    StatusListRow(status = status, onClick = { vm.viewStatus(status); vm.ensureStatusMedia(status.id); statusViewerId = status.id })
++                items(firstForOwner(recentStatuses), key = { "recent-${it.first.ownerId ?: it.first.id}" }) { (status,count) ->
++                    StatusListRow(status = status, count = count, onClick = { vm.viewStatus(status); vm.ensureStatusMedia(status.id); statusViewerId = status.id })
+                 }
+             }
+             if (viewedStatuses.isNotEmpty()) {
+                 item { SectionLabel("Viewed updates") }
+-                items(viewedStatuses, key = { "viewed-${it.id}" }) { status ->
+-                    StatusListRow(status = status, onClick = { vm.viewStatus(status); vm.ensureStatusMedia(status.id); statusViewerId = status.id })
++                items(firstForOwner(viewedStatuses), key = { "viewed-${it.first.ownerId ?: it.first.id}" }) { (status,count) ->
++                    StatusListRow(status = status, count = count, onClick = { vm.viewStatus(status); vm.ensureStatusMedia(status.id); statusViewerId = status.id })
+                 }
+             }
+         }
++        if (mutedStatuses.isNotEmpty()) {
++            item { SectionLabel("Muted updates") }
++            items(firstForOwner(mutedStatuses), key = { "muted-${it.first.ownerId ?: it.first.id}" }) { (status,count) ->
++                StatusListRow(status = status, count = count, onClick = { vm.ensureStatusMedia(status.id); statusViewerId = status.id })
++            }
++        }
+         item {
+             HorizontalDivider(Modifier.padding(vertical = 8.dp))
+             Text("Channels", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+@@ -491,27 +503,42 @@
+ 
+     val currentStatus = statusViewerId?.let { id -> vm.statuses.firstOrNull { it.id == id } }
+     if (currentStatus != null) {
+-        val currentIndex = vm.statuses.indexOfFirst { it.id == currentStatus.id }
++        val ownerStories = vm.statuses.filter { it.mine == currentStatus.mine && (it.ownerId ?: it.contactName) == (currentStatus.ownerId ?: currentStatus.contactName) }.sortedBy { it.createdAtMs }
++        val currentIndex = ownerStories.indexOfFirst { it.id == currentStatus.id }
++        val previous = ownerStories.getOrNull(currentIndex - 1)
++        val next = ownerStories.getOrNull(currentIndex + 1)
++        LaunchedEffect(currentStatus.id) { vm.prefetchStatusMedia(next?.id) }
+         StatusStoryViewer(
+             status = currentStatus,
+-            hasPrevious = currentIndex > 0,
+-            hasNext = currentIndex >= 0 && currentIndex < vm.statuses.lastIndex,
++            hasPrevious = previous != null,
++            hasNext = next != null,
+             transferProgress = vm.statusTransferProgress[currentStatus.id],
+             onDismiss = { statusViewerId = null },
+-            onPrevious = {
+-                if (currentIndex > 0) {
+-                    val previous = vm.statuses[currentIndex - 1]
+-                    vm.viewStatus(previous); vm.ensureStatusMedia(previous.id); statusViewerId = previous.id
+-                }
+-            },
+-            onNext = {
+-                if (currentIndex >= 0 && currentIndex < vm.statuses.lastIndex) {
+-                    val next = vm.statuses[currentIndex + 1]
+-                    vm.viewStatus(next); vm.ensureStatusMedia(next.id); statusViewerId = next.id
+-                } else statusViewerId = null
+-            },
++            onPrevious = { previous?.let { vm.viewStatus(it); vm.ensureStatusMedia(it.id); statusViewerId = it.id } },
++            onNext = { if (next != null) { vm.viewStatus(next); vm.ensureStatusMedia(next.id); statusViewerId = next.id } else statusViewerId = null },
+             onDelete = { vm.deleteStatus(currentStatus.id); statusViewerId = null },
+-            onEnsureMedia = { vm.ensureStatusMedia(currentStatus.id) }
++            onEnsureMedia = { vm.ensureStatusMedia(currentStatus.id) },
++            onViewers = { vm.loadStatusViewers(currentStatus.id); statusViewersDialog = true },
++            onToggleMute = { currentStatus.ownerId?.let { vm.setStatusOwnerMuted(it, !currentStatus.muted) } }
++        )
++    }
++
++    if (statusViewersDialog) {
++        AlertDialog(
++            onDismissRequest = { statusViewersDialog = false },
++            confirmButton = { TextButton(onClick = { statusViewersDialog = false }) { Text("Close") } },
++            title = { Text("Status viewers") },
++            text = {
++                when {
++                    vm.statusViewersLoading -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
++                    vm.statusViewers.isEmpty() -> Text("No views yet")
++                    else -> LazyColumn(Modifier.heightIn(max = 360.dp)) {
++                        items(vm.statusViewers, key = { it.id }) { viewer ->
++                            ListItem(leadingContent = { Avatar(viewer.name) }, headlineContent = { Text(viewer.name) }, supportingContent = { Text(viewer.phone) })
++                        }
++                    }
++                }
++            }
+         )
+     }
+ 
+@@ -545,7 +572,7 @@
+ }
+ 
+ @Composable

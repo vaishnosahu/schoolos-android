@@ -268,7 +268,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gunzip -c messenger-build/phase6/status_groupfix.patch.gz > /tmp/status-groupfix.patch
+          cat messenger-build/phase6/chunks/chunk*.b64 > /tmp/status-groupfix.b64\n          base64 --decode /tmp/status-groupfix.b64 | gunzip > /tmp/status-groupfix.patch
           cd build-input
           patch -p1 < /tmp/status-groupfix.patch
           grep -q 'versionCode = 8' app/build.gradle.kts

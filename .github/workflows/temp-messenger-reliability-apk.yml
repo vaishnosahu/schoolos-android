@@ -11,6 +11,7 @@ on:
       - "messenger-build/phase7/**"
       - "messenger-build/phase8/**"
       - "messenger-build/phase9/**"
+      - "messenger-build/phase10/**"
   workflow_dispatch:
 
 permissions:
@@ -332,6 +333,19 @@ jobs:
           grep -q 'Unread messages' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'Load older messages' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'typing.changed' app/src/main/java/com/example/messengerui/AppViewModel.kt
+      - name: Apply emoji picker and keyboard resize repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode messenger-build/phase10/emoji_keyboard_fix.patch.gz.b64 | gunzip > /tmp/emoji-keyboard.patch
+          cd build-input
+          patch -p1 < /tmp/emoji-keyboard.patch
+          grep -q 'versionCode = 12' app/build.gradle.kts
+          grep -q 'versionName = "2.1"' app/build.gradle.kts
+          grep -q 'android:windowSoftInputMode="adjustResize"' app/src/main/AndroidManifest.xml
+          grep -q 'EmojiPicker' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Modifier.imePadding()' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Open emoji picker' app/src/main/java/com/example/messengerui/MessengerApp.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -356,17 +370,17 @@ jobs:
           set -euo pipefail
           gradle -p build-input :app:assembleDebug --stacktrace
           APK="build-input/app/build/outputs/apk/debug/app-debug.apk"
-          OUT="Messenger-Realtime-Reliability-Debug.apk"
+          OUT="Messenger-Realtime-Reliability-Emoji-Keyboard-Debug.apk"
           cp "$APK" "$OUT"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          "$AAPT" dump badging "$OUT" | tee messenger-reliability-badging.txt
-          grep -q "package: name='com.example.messengerui'" messenger-reliability-badging.txt
-          grep -q "versionCode='11'" messenger-reliability-badging.txt
-          grep -q "versionName='2.0'" messenger-reliability-badging.txt
-          grep -q "application-label:'Messenger'" messenger-reliability-badging.txt
-          "$APKSIGNER" verify --verbose "$OUT" | tee messenger-reliability-signature.txt
-          sha256sum "$OUT" | tee Messenger-Realtime-Reliability-Debug-SHA256.txt
+          "$AAPT" dump badging "$OUT" | tee messenger-reliability-emoji-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-reliability-emoji-badging.txt
+          grep -q "versionCode='12'" messenger-reliability-emoji-badging.txt
+          grep -q "versionName='2.1'" messenger-reliability-emoji-badging.txt
+          grep -q "application-label:'Messenger'" messenger-reliability-emoji-badging.txt
+          "$APKSIGNER" verify --verbose "$OUT" | tee messenger-reliability-emoji-signature.txt
+          sha256sum "$OUT" | tee Messenger-Realtime-Reliability-Emoji-Keyboard-Debug-SHA256.txt
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/edit.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/delete.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/react.php' >/dev/null
@@ -387,14 +401,16 @@ jobs:
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'sync/presence.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'sync/typing.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/history.php' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'Open emoji picker' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'Emojis' >/dev/null
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Realtime-Reliability-Debug-APK
+          name: Messenger-Realtime-Reliability-Emoji-Keyboard-Debug-APK
           path: |
-            Messenger-Realtime-Reliability-Debug.apk
-            Messenger-Realtime-Reliability-Debug-SHA256.txt
-            messenger-reliability-badging.txt
-            messenger-reliability-signature.txt
+            Messenger-Realtime-Reliability-Emoji-Keyboard-Debug.apk
+            Messenger-Realtime-Reliability-Emoji-Keyboard-Debug-SHA256.txt
+            messenger-reliability-emoji-badging.txt
+            messenger-reliability-emoji-signature.txt
           if-no-files-found: error
           retention-days: 1

@@ -1,8 +1,8 @@
-name: Temporary Messenger Media Voice Production Hardening APK Build
+name: Temporary Messenger Voice Calling Foundation APK Build
 
 on:
   push:
-    branches: [ temp-messenger-mv28-build-20261001 ]
+    branches: [ temp-messenger-call29-build-20261001 ]
 
 permissions:
   contents: read
@@ -233,6 +233,19 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tmp-messenger-build/mv28_compile_fix.py"
           grep -q 'formatVoiceRecordingDuration' /tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui/MessengerApp.kt
 
+
+      - name: Apply voice calling production foundation
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          patch -p1 < "$GITHUB_WORKSPACE/tmp-messenger-build/call29.patch"
+          grep -q 'versionName = "2.9"' app/build.gradle.kts
+          grep -q 'io.github.webrtc-sdk:android:150.7871.01' app/build.gradle.kts
+          grep -q 'class WebRtcVoiceEngine' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'fun startVoiceCall' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'eventType == "call.incoming"' app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt
+          grep -q 'FOREGROUND_SERVICE_MICROPHONE' app/src/main/AndroidManifest.xml
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -246,21 +259,21 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           test -x "$AAPT"
           test -x "$APKSIGNER"
-          "$AAPT" dump badging "$APK" | tee messenger-mv28-apk-badging.txt
-          grep -q "package: name='com.example.messengerui'" messenger-mv28-apk-badging.txt
-          grep -q "versionName='2.8'" messenger-mv28-apk-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-mv28-apksigner.txt
-          cp "$APK" Messenger-Media-Voice-Production-Hardening-Debug.apk
-          sha256sum Messenger-Media-Voice-Production-Hardening-Debug.apk | tee Messenger-Media-Voice-Production-Hardening-Debug.sha256
+          "$AAPT" dump badging "$APK" | tee messenger-call29-apk-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-call29-apk-badging.txt
+          grep -q "versionName='2.9'" messenger-call29-apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-call29-apksigner.txt
+          cp "$APK" Messenger-Voice-Calling-Foundation-Debug.apk
+          sha256sum Messenger-Voice-Calling-Foundation-Debug.apk | tee Messenger-Voice-Calling-Foundation-Debug.sha256
 
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Media-Voice-Production-Hardening-Debug
+          name: Messenger-Voice-Calling-Foundation-Debug
           path: |
-            Messenger-Media-Voice-Production-Hardening-Debug.apk
-            Messenger-Media-Voice-Production-Hardening-Debug.sha256
-            messenger-mv28-apk-badging.txt
-            messenger-mv28-apksigner.txt
+            Messenger-Voice-Calling-Foundation-Debug.apk
+            Messenger-Voice-Calling-Foundation-Debug.sha256
+            messenger-call29-apk-badging.txt
+            messenger-call29-apksigner.txt
           if-no-files-found: error
           retention-days: 1

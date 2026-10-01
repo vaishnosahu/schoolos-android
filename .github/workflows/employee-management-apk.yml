@@ -25,8 +25,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p employee-management-android
-          cat employee-management-build/source/part00.b64               employee-management-build/source/part01.b64               employee-management-build/source/part02.b64               employee-management-build/source/part03.b64 > /tmp/employee-source.b64
+          cat employee-management-build/source/part00.b64 employee-management-build/source/part01.b64 employee-management-build/source/part02.b64 employee-management-build/source/part03.b64 > /tmp/employee-source.b64
+          sed -i 's/C2c0elele6/C2c0iele6/' /tmp/employee-source.b64
+          echo '6a034f011b7c87bbd9c7379b19a020c894c2b9f9659b0ad9ca782ba91f9d6d06  /tmp/employee-source.b64' | sha256sum -c -
           base64 -d /tmp/employee-source.b64 > /tmp/employee-source.tgz
+          echo '580f0ed1663de92d65ff91baa57ac9223eef8b62eb039ad60b2a7aa9524b103c  /tmp/employee-source.tgz' | sha256sum -c -
           tar -xzf /tmp/employee-source.tgz -C employee-management-android
           test -f employee-management-android/settings.gradle
           test -f employee-management-android/app/build.gradle
@@ -65,8 +68,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p employee-management-android/dist
-          cp employee-management-android/app/build/outputs/apk/debug/app-debug.apk              employee-management-android/dist/Employee-Management-v3.5.0.apk
-          sha256sum employee-management-android/dist/Employee-Management-v3.5.0.apk              > employee-management-android/dist/Employee-Management-v3.5.0.sha256.txt
+          cp employee-management-android/app/build/outputs/apk/debug/app-debug.apk employee-management-android/dist/Employee-Management-v3.5.0.apk
+          sha256sum employee-management-android/dist/Employee-Management-v3.5.0.apk > employee-management-android/dist/Employee-Management-v3.5.0.sha256.txt
           ls -lh employee-management-android/dist/
 
       - name: Upload APK

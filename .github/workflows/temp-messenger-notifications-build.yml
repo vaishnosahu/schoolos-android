@@ -211,6 +211,8 @@ jobs:
           grep -q 'fun muteStatusOwner' app/src/main/java/com/example/messengerui/ApiClient.kt
           grep -q 'Status viewers' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'groupActionBusy' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          python3 "$GITHUB_WORKSPACE/tmp-messenger-build/gs27_compile_fix.py"
+          grep -q 'parseStatusPayload' app/src/main/java/com/example/messengerui/ApiClient.kt
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live

@@ -1,4 +1,4 @@
-name: Temporary Messenger Phase6 Status GroupFix APK
+name: Temporary Messenger Phase6 Status APK
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - temp-messenger-live-apk
     paths:
       - ".github/workflows/temp-messenger-phase6-apk.yml"
-      - "messenger-build/phase6/**"
+      - "messenger-build/phase5/**"\n      - "messenger-build/phase6/**"
   workflow_dispatch:
 
 permissions:
@@ -263,23 +263,18 @@ jobs:
           grep -q 'versionName = "1.6"' app/build.gradle.kts
           grep -q 'groups/create.php' app/src/main/java/com/example/messengerui/ApiClient.kt
           grep -q 'private const val DB_VERSION = 6' app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
-      - name: Apply Phase 6 Status Stories and Group Repair patch
+      - name: Apply Phase 6 status and group repair patch
         shell: bash
         run: |
           set -euo pipefail
-          cat messenger-build/phase6/part*.b64 > /tmp/p6.b64
-          echo "1dd66e3d685a52daba55f8208d2c77d86e43a363b7c4c7217e0145366c157e1b  /tmp/p6.b64" | sha256sum -c -
-          base64 --decode /tmp/p6.b64 > /tmp/p6.patch.gz
-          echo "88cc2a7d00c40d14c569494ad21bf8fb362e806454db38720521ac24531eadc4  /tmp/p6.patch.gz" | sha256sum -c -
-          gunzip -c /tmp/p6.patch.gz > /tmp/p6.patch
+          base64 --decode messenger-build/phase6/status_groupfix.patch.gz.b64 | gunzip > /tmp/status.patch
           cd build-input
-          patch -p1 < /tmp/p6.patch
+          patch -p1 < /tmp/status.patch
           grep -q 'versionCode = 8' app/build.gradle.kts
           grep -q 'versionName = "1.7"' app/build.gradle.kts
-          grep -q 'status/create.php' app/src/main/java/com/example/messengerui/ApiClient.kt
-          grep -q 'status/feed.php' app/src/main/java/com/example/messengerui/ApiClient.kt
+          grep -q 'statuses/create.php' app/src/main/java/com/example/messengerui/ApiClient.kt
+          grep -q 'client_uuid' app/src/main/java/com/example/messengerui/ApiClient.kt
           grep -q 'private const val DB_VERSION = 7' app/src/main/java/com/example/messengerui/LocalMessengerDb.kt
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -298,7 +293,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Build and verify Phase 6 Status GroupFix APK
+      - name: Build and verify Phase 6 Status APK
         shell: bash
         run: |
           set -euo pipefail
@@ -320,13 +315,7 @@ jobs:
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'messages/react.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'groups/create.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'groups/members.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'groups/update.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'status/create.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'status/feed.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'status/view.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'status/viewers.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'status/delete.php' >/dev/null
-          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'https://alkeynesprjects.com/messenger-api/api/v1/' >/dev/null
+          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'groups/update.php' >/dev/null\n          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'statuses/create.php' >/dev/null\n          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'statuses/feed.php' >/dev/null\n          unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'statuses/view.php' >/dev/null
           unzip -p "$OUT" 'classes*.dex' | strings | grep -F 'https://alkeynesprjects.com/messenger-api/api/v1/' >/dev/null
 
       - uses: actions/upload-artifact@v4

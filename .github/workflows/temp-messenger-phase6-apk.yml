@@ -268,7 +268,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gunzip -c messenger-build/phase6/status_groupfix.patch.gz > /tmp/status.patch
+          cat messenger-build/phase6/chunks/chunk*.b64 > /tmp/status.b64
+          test "$(wc -c < /tmp/status.b64)" -eq 11436
+          base64 --decode /tmp/status.b64 > /tmp/status.patch.gz
+          echo "d3ed7aae545f30e8a80173f42037610416d4cf9166001c36ee18e3af35b48673  /tmp/status.patch.gz" | sha256sum -c -
+          gunzip -c /tmp/status.patch.gz > /tmp/status.patch
           cd build-input
           patch -p1 < /tmp/status.patch || true
           python - <<'PY'

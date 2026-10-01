@@ -98,8 +98,9 @@ jobs:
         run: |
           set -euo pipefail
           cat employee-v380/v380_chunk_00.b64 employee-v380/v380_chunk_01.b64 | tr -d '[:space:]' | base64 -d > /tmp/employee-v380/android-v380.patch.gz
-          echo "61beb774793274bf0f3a8140ae63e920d717cf48f493268705c96018b5ce8ad8  /tmp/employee-v380/android-v380.patch.gz" | sha256sum -c -
+          gzip -t /tmp/employee-v380/android-v380.patch.gz
           gunzip -c /tmp/employee-v380/android-v380.patch.gz > /tmp/employee-v380/android-v380.patch
+          echo "a2fac9847cf4864df1a370e85723e8662eb5509ae2d920f513cddd2728c6310e  /tmp/employee-v380/android-v380.patch" | sha256sum -c -
           cd /tmp/employee-v380/src/employee-combined
           patch -p1 --dry-run < /tmp/employee-v380/android-v380.patch
           patch -p1 < /tmp/employee-v380/android-v380.patch

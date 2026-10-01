@@ -1,0 +1,138 @@
+name: Employee Management v3.7 Tracking V2 Batch 2 Build
+
+on:
+  push:
+    branches:
+      - employee-management-v370-tracking-b2
+    paths:
+      - ".github/workflows/employee-v370-tracking-b2.yml"
+      - "employee-v370/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated build branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct verified 3.5 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/employee-v370/src
+          chunks=(
+            employee-build/chunk_00.b64
+            employee-build/chunk_01_fixed.b64
+            employee-build/chunk_02.b64
+            employee-build/chunk_03.b64
+            employee-build/chunk_04.b64
+            employee-build/chunk_05.b64
+            employee-build/chunk_06.b64
+            employee-build/chunk_07.b64
+            employee-build/chunk_08.b64
+            employee-build/chunk_09.b64
+            employee-build/chunk_10.b64
+            employee-build/chunk_11.b64
+            employee-build/chunk_12.b64
+            employee-build/chunk_13.b64
+            employee-build/chunk_14.b64
+          )
+          expected=(
+            faf627600e9af9a47c7889da44d1367f8bb600c164412332a20bd0209ca3a2cc
+            f95cdaf946c9bc8212ca70243c9b9f524b7295e949cd7fcebf761761626a0481
+            a84088efc1607600da5990871e1e4c133a6fa6fd81d2f893492ae2e2e4fe8f7c
+            a4deb99ebd5a20f70b8482eb9c8ba4b2a234bf2b0de4a894088abd5f8bb099e8
+            4fae0c4f5c5148cd9b4ef9e7c5a529ebd71adadd58516761263e798ada5afc1e
+            f06a7444bb2891b1cdc8667b1c5d7b48d9b0146b28712ead0eb53080c202f650
+            f5f2686f9aaa99325222ec079b51566024a0d5f5179a4e4f4b6881c409ecce68
+            39a2692fa82ddfec2e27df7d99c1118dce70bf44d97ef4adeff7e0b4b2c7ef44
+            3fd5c784c61cd05ccf483aa791e8028fca9f9f41007b0ac647b41bb8804370e7
+            0163746fae48126eb71429da07152e7310f96d4f294c66392175a7d617e619c5
+            b1e4fa24ab9b23355c873ff7772b42f5cf83f3154f5f6c0007ab6f623a7306cf
+            b04f1e94cbbc7db78efe4ee55cbc322526267bd515e273e5a0cff98d317035ba
+            3c2ad9881cbe7131970f79c53364a17bf910ec39c46b9acda6b8581f563170fb
+            922a60c523a992a7959457427c5196ba8357856b969cdcf9de45f3bfbfe88d6a
+            3ef36d5192e5d46daf45a7d8c97baede6272ce756c315df2c03d14484f035cc6
+          )
+          : > /tmp/employee-v370/source.b64
+          for idx in $(seq 0 14); do
+            clean="/tmp/employee-v370/chunk-$(printf '%02d' "$idx").txt"
+            tr -d '[:space:]' < "${chunks[$idx]}" > "$clean"
+            got=$(sha256sum "$clean" | awk '{print $1}')
+            test "$got" = "${expected[$idx]}"
+            cat "$clean" >> /tmp/employee-v370/source.b64
+          done
+          test "$(wc -c < /tmp/employee-v370/source.b64)" -eq 87824
+          base64 -d /tmp/employee-v370/source.b64 > /tmp/employee-v370/source.zip
+          echo "35ecf504274570feb5e7161a285482a68fb1b7fd7b9b288d76153ef9c064d8f6  /tmp/employee-v370/source.zip" | sha256sum -c -
+          unzip -q /tmp/employee-v370/source.zip -d /tmp/employee-v370/src
+          test -f /tmp/employee-v370/src/employee-combined/app/build.gradle
+
+      - name: Apply verified v3.6 product parity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat employee-v360/patch_00.b64 employee-v360/patch_01.b64 employee-v360/patch_02.b64 employee-v360/patch_03.b64 employee-v360/patch_04.b64 | tr -d '[:space:]' | base64 -d > /tmp/employee-v370/android-v360.patch.gz
+          echo "62417dc72d5a4745fb67b97f992dd4c26b1069a092e11d6957ae26b2bea4abcb  /tmp/employee-v370/android-v360.patch.gz" | sha256sum -c -
+          gunzip -c /tmp/employee-v370/android-v360.patch.gz > /tmp/employee-v370/android-v360.patch
+          cd /tmp/employee-v370/src/employee-combined
+          patch -p1 < /tmp/employee-v370/android-v360.patch
+          grep -q "versionCode 3600" app/build.gradle
+
+      - name: Apply verified v3.7 tracking collector patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat employee-v370/v370_chunk_00.b64 employee-v370/v370_chunk_01.b64 | tr -d '[:space:]' | base64 -d > /tmp/employee-v370/android-v370.patch.gz
+          echo "aa1ff06199d85b7b5a2e2063f8cf8452091ac7f477cef6aaf4fad2bdc9de4620  /tmp/employee-v370/android-v370.patch.gz" | sha256sum -c -
+          gunzip -c /tmp/employee-v370/android-v370.patch.gz > /tmp/employee-v370/android-v370.patch
+          cd /tmp/employee-v370/src/employee-combined
+          patch -p1 --dry-run < /tmp/employee-v370/android-v370.patch
+          patch -p1 < /tmp/employee-v370/android-v370.patch
+          grep -q "versionCode 3700" app/build.gradle
+          grep -q "versionName '3.7.0-production'" app/build.gradle
+          test -f app/src/main/java/com/alkeynes/employee/management/TrackingQueue.java
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build Android APK
+        shell: bash
+        working-directory: /tmp/employee-v370/src/employee-combined
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=/tmp/employee-v370/src/employee-combined/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$src"
+          mkdir -p /tmp/employee-v370/output
+          cp "$src" /tmp/employee-v370/output/Employee-Management-v3.7.0-Tracking-V2-Batch2.apk
+          cd /tmp/employee-v370/output
+          unzip -t Employee-Management-v3.7.0-Tracking-V2-Batch2.apk >/dev/null
+          sha256sum Employee-Management-v3.7.0-Tracking-V2-Batch2.apk > APK-SHA256.txt
+          ls -lh
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Employee-Management-v3.7.0-Tracking-V2-Batch2
+          path: /tmp/employee-v370/output/*
+          if-no-files-found: error
+          retention-days: 3

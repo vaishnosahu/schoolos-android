@@ -268,9 +268,9 @@ jobs:
         run: |
           set -euo pipefail
           cat messenger-build/phase6/part*.b64 > /tmp/p6.b64
-          echo "840e8abf934b845633fff2069f4ad33043371ec60bb73b0cac4c5603d27fe6ca  /tmp/p6.b64" | sha256sum -c -
+          echo "1dd66e3d685a52daba55f8208d2c77d86e43a363b7c4c7217e0145366c157e1b  /tmp/p6.b64" | sha256sum -c -
           base64 --decode /tmp/p6.b64 > /tmp/p6.patch.gz
-          echo "3a1e62eecc93cf6629242e8cf5b1ede2ba23daaa36d9d10fec7b26ca5d368aaa  /tmp/p6.patch.gz" | sha256sum -c -
+          echo "88cc2a7d00c40d14c569494ad21bf8fb362e806454db38720521ac24531eadc4  /tmp/p6.patch.gz" | sha256sum -c -
           gunzip -c /tmp/p6.patch.gz > /tmp/p6.patch
           cd build-input
           patch -p1 < /tmp/p6.patch

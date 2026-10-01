@@ -268,7 +268,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode messenger-build/phase6/status_groupfix.patch.gz.b64 | gunzip > /tmp/status.patch
+          gunzip -c messenger-build/phase6/status_groupfix.patch.gz > /tmp/status.patch
           cd build-input
           patch -p1 < /tmp/status.patch || true
           python - <<'PY'

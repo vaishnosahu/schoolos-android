@@ -1,0 +1,146 @@
+diff -ruN messenger_v212_original/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt messenger_netturn_work/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+--- messenger_v212_original/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt	2026-10-01 18:10:29.000000000 +0000
++++ messenger_netturn_work/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt	2026-10-02 01:35:26.723926671 +0000
+@@ -32,6 +32,7 @@
+     private val onRoute: (String) -> Unit,
+     private val onRoutes: (List<String>) -> Unit,
+     private val onAudioInterruption: (Boolean) -> Unit,
++    private val onQuality: (CallQualityStats) -> Unit,
+     private val onError: (String) -> Unit
+ ) {
+     private val appContext = context.applicationContext
+@@ -44,6 +45,10 @@
+     private var peer: PeerConnection? = null
+     private var closed = false
+     private var selectedRoute = "Phone"
++    private var offerInFlight = false
++    private var relayCandidateAvailable = false
++    private var lastStatsBytes: Long = 0L
++    private var lastStatsAtMs: Long = 0L
+     private val proximityWakeLock: PowerManager.WakeLock? = runCatching {
+         if (powerManager.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
+             powerManager.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "Messenger:VoiceCallProximity").apply { setReferenceCounted(false) }
+@@ -98,11 +103,38 @@
+         }.onFailure { onError(it.message ?: "Unable to initialize call audio") }
+     }
+ 
+-    fun createOffer() {
+-        val pc=peer ?: return onError("Call engine unavailable")
++    fun createOffer() = createOfferInternal()
++
++    fun restartIceAndCreateOffer(): Boolean {
++        val pc = peer ?: return false
++        if (closed || offerInFlight) return false
++        runCatching { pc.restartIce() }.onFailure { return false }
++        createOfferInternal()
++        return true
++    }
++
++    private fun createOfferInternal() {
++        val pc = peer ?: return onError("Call engine unavailable")
++        if (closed || offerInFlight) return
++        offerInFlight = true
+         pc.createOffer(object:SdpAdapter(){
+-            override fun onCreateSuccess(desc: SessionDescription?) { if(desc==null)return; pc.setLocalDescription(SdpAdapter(),desc); onLocalSignal("OFFER", JSONObject().put("sdp",desc.description)) }
+-            override fun onCreateFailure(error:String?) { onError(error ?: "Unable to create call offer") }
++            override fun onCreateSuccess(desc: SessionDescription?) {
++                if(desc==null){ offerInFlight=false; return }
++                pc.setLocalDescription(object:SdpAdapter(){
++                    override fun onSetSuccess() {
++                        offerInFlight=false
++                        onLocalSignal("OFFER", JSONObject().put("sdp",desc.description))
++                    }
++                    override fun onSetFailure(error:String?) {
++                        offerInFlight=false
++                        onError(error ?: "Unable to apply local call offer")
++                    }
++                },desc)
++            }
++            override fun onCreateFailure(error:String?) {
++                offerInFlight=false
++                onError(error ?: "Unable to create call offer")
++            }
+         }, MediaConstraints())
+     }
+ 
+@@ -167,6 +199,66 @@
+         refreshRoutes()
+     }
+ 
++    fun requestQualitySnapshot() {
++        val pc = peer ?: return
++        if (closed) return
++        runCatching {
++            pc.getStats { report ->
++                val stats = report.statsMap
++                val values = stats.values
++                val pair = values.firstOrNull { stat ->
++                    stat.type == "candidate-pair" &&
++                        stat.members["state"]?.toString() == "succeeded" &&
++                        ((stat.members["nominated"] as? Boolean) == true || (stat.members["selected"] as? Boolean) == true)
++                } ?: values.firstOrNull { stat -> stat.type == "candidate-pair" && stat.members["state"]?.toString() == "succeeded" }
++
++                val localId = pair?.members?.get("localCandidateId")?.toString()
++                val remoteId = pair?.members?.get("remoteCandidateId")?.toString()
++                val localCandidate = localId?.let(stats::get)
++                val remoteCandidate = remoteId?.let(stats::get)
++                val relayInUse = localCandidate?.members?.get("candidateType")?.toString() == "relay" ||
++                    remoteCandidate?.members?.get("candidateType")?.toString() == "relay"
++
++                val rttMs = (pair?.members?.get("currentRoundTripTime") as? Number)?.toDouble()?.let { (it * 1000.0).toInt().coerceAtLeast(0) }
++                val availableKbps = (pair?.members?.get("availableOutgoingBitrate") as? Number)?.toDouble()?.let { (it / 1000.0).toInt().coerceAtLeast(0) }
++
++                var received = 0L
++                var lost = 0L
++                var totalBytes = 0L
++                values.forEach { stat ->
++                    val mediaKind = (stat.members["kind"] ?: stat.members["mediaType"])?.toString()
++                    if (mediaKind == "audio" && stat.type == "inbound-rtp") {
++                        received += (stat.members["packetsReceived"] as? Number)?.toLong() ?: 0L
++                        lost += ((stat.members["packetsLost"] as? Number)?.toLong() ?: 0L).coerceAtLeast(0L)
++                        totalBytes += (stat.members["bytesReceived"] as? Number)?.toLong() ?: 0L
++                    }
++                    if (mediaKind == "audio" && stat.type == "outbound-rtp") {
++                        totalBytes += (stat.members["bytesSent"] as? Number)?.toLong() ?: 0L
++                    }
++                }
++                val lossPct = if (received + lost > 0) (lost.toDouble() * 100.0 / (received + lost).toDouble()) else null
++                val now = System.currentTimeMillis()
++                val deltaKbps = if (lastStatsAtMs > 0L && now > lastStatsAtMs && totalBytes >= lastStatsBytes) {
++                    (((totalBytes - lastStatsBytes).toDouble() * 8.0) / (now - lastStatsAtMs).toDouble()).toInt().coerceAtLeast(0)
++                } else null
++                lastStatsAtMs = now
++                lastStatsBytes = totalBytes
++                val bitrateKbps = availableKbps?.takeIf { it > 0 } ?: deltaKbps
++                val quality = when {
++                    rttMs != null && rttMs >= 600 -> "Poor"
++                    lossPct != null && lossPct >= 8.0 -> "Poor"
++                    bitrateKbps != null && bitrateKbps in 1..23 -> "Poor"
++                    rttMs != null && rttMs >= 300 -> "Fair"
++                    lossPct != null && lossPct >= 3.0 -> "Fair"
++                    bitrateKbps != null && bitrateKbps in 1..39 -> "Fair"
++                    rttMs != null || lossPct != null || bitrateKbps != null -> "Good"
++                    else -> "Checking…"
++                }
++                onQuality(CallQualityStats(quality, rttMs, lossPct, bitrateKbps, relayInUse, relayCandidateAvailable))
++            }
++        }
++    }
++
+     fun close() {
+         if(closed)return
+         closed=true
+@@ -253,7 +345,12 @@
+         override fun onConnectionChange(newState:PeerConnection.PeerConnectionState?){ when(newState){ PeerConnection.PeerConnectionState.CONNECTED->onState(VoiceCallPhase.CONNECTED); PeerConnection.PeerConnectionState.DISCONNECTED->onState(VoiceCallPhase.RECONNECTING); PeerConnection.PeerConnectionState.FAILED->onError("Call connection failed"); PeerConnection.PeerConnectionState.CLOSED->onState(VoiceCallPhase.ENDED); else->Unit } }
+         override fun onIceConnectionReceivingChange(receiving:Boolean){}
+         override fun onIceGatheringChange(newState:PeerConnection.IceGatheringState?){}
+-        override fun onIceCandidate(candidate:IceCandidate?){ if(candidate!=null) onLocalSignal("ICE",JSONObject().put("sdp_mid",candidate.sdpMid).put("sdp_mline_index",candidate.sdpMLineIndex).put("candidate",candidate.sdp)) }
++        override fun onIceCandidate(candidate:IceCandidate?){
++            if(candidate!=null) {
++                if(candidate.sdp.contains(" typ relay ", ignoreCase=true)) relayCandidateAvailable=true
++                onLocalSignal("ICE",JSONObject().put("sdp_mid",candidate.sdpMid).put("sdp_mline_index",candidate.sdpMLineIndex).put("candidate",candidate.sdp))
++            }
++        }
+         override fun onIceCandidatesRemoved(candidates:Array<out IceCandidate>?){}
+         override fun onAddStream(stream:MediaStream?){}
+         override fun onRemoveStream(stream:MediaStream?){}

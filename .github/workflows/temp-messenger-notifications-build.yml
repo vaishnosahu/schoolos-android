@@ -541,17 +541,30 @@ jobs:
           grep -q 'finishActive(callId:String)' app/src/main/java/com/example/messengerui/IncomingCallActivity.kt
           grep -q 'android:noHistory="true"' app/src/main/AndroidManifest.xml
 
-      - name: Package resolved Messenger v2.26.2 source
+      - name: Apply ghost-call recovery 2.26.3 hardening
+        shell: bash
+        run: |
+          base64 -d tmp-messenger-build/video2263_ghost_fix.patch.gz.b64 | gzip -dc > /tmp/video2263_ghost_fix.patch
+          cd /tmp/messenger-build/messenger_live
+          patch -p1 < /tmp/video2263_ghost_fix.patch
+          grep -q 'versionName = "2.26.3"' app/build.gradle.kts
+          grep -q 'versionCode = 40' app/build.gradle.kts
+          grep -q 'cold_start_recovery_begin' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'outgoing_preflight_recovered_call' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'foreground_service_security_failure' app/src/main/java/com/example/messengerui/CallForegroundService.kt
+          grep -q 'object CallLifecycleLog' app/src/main/java/com/example/messengerui/CallLifecycleLog.kt
+
+      - name: Package resolved Messenger v2.26.3 source
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.2-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.3-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
-      - name: Upload resolved v2.26.2 source
+      - name: Upload resolved v2.26.3 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.2-Resolved-Source
-          path: Messenger-v2.26.2-Resolved-Source.zip
+          name: Messenger-v2.26.3-Resolved-Source
+          path: Messenger-v2.26.3-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -570,10 +583,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.2'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.3'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Video-v2.26.2-Debug.apk
-          sha256sum Messenger-Video-v2.26.2-Debug.apk | tee Messenger-Video-v2.26.2-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26.3-Debug.apk
+          sha256sum Messenger-Video-v2.26.3-Debug.apk | tee Messenger-Video-v2.26.3-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -588,20 +601,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.2-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.2-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.2-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.3-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.3-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.3-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.2'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.2-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.2-Stable.sha256"
+          grep -q "versionName='2.26.3'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.3-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.3-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.2-Stable
+          name: Messenger-Video-v2.26.3-Stable
           path: |
-            Messenger-Video-v2.26.2-Stable.apk
-            Messenger-Video-v2.26.2-Stable.sha256
+            Messenger-Video-v2.26.3-Stable.apk
+            Messenger-Video-v2.26.3-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -610,10 +623,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.2-Debug
+          name: Messenger-Video-v2.26.3-Debug
           path: |
-            Messenger-Video-v2.26.2-Debug.apk
-            Messenger-Video-v2.26.2-Debug.sha256
+            Messenger-Video-v2.26.3-Debug.apk
+            Messenger-Video-v2.26.3-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

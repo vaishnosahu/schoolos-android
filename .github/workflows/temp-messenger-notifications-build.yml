@@ -284,9 +284,10 @@ jobs:
       - name: Apply network reconnect TURN reliability
         shell: bash
         run: |
-          cat tmp-messenger-build/netturn213/part-*.patch > /tmp/netturn213.patch
+          cat tmp-messenger-build/netturn213/part-00.patch tmp-messenger-build/netturn213/part-01.patch tmp-messenger-build/netturn213/part-02.patch tmp-messenger-build/netturn213/part-03.patch > /tmp/netturn213.patch
           cd /tmp/messenger-build/messenger_live
           patch -p1 < /tmp/netturn213.patch
+          cp "$GITHUB_WORKSPACE/tmp-messenger-build/netturn213/WebRtcVoiceEngine.kt" app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           grep -q 'versionName = "2.13"' app/build.gradle.kts
           grep -q 'versionCode = 24' app/build.gradle.kts
           grep -q 'restartIceAndCreateOffer' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt

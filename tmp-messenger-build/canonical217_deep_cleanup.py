@@ -82,6 +82,8 @@ for name in ["SyncCoordinator.kt","SyncQueuePolicy.kt"]:
 # Sensitive Messenger local database/preferences must not be Android cloud-backup material.
 p=root/"app/src/main/AndroidManifest.xml"
 s=p.read_text().replace('android:allowBackup="true"','android:allowBackup="false"')
+if 'android.permission.VIBRATE' not in s:
+    s=s.replace('    <uses-permission android:name="android.permission.WAKE_LOCK" />\n','    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n')
 p.write_text(s)
 
 # Use a silent low-importance channel for the foreground-service ongoing call notification.

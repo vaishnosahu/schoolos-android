@@ -567,23 +567,46 @@ jobs:
           grep -q 'requestCallRecovery(reason,forceRebuild=false)' app/src/main/java/com/example/messengerui/AppViewModel.kt
           grep -q 'SCALE_ASPECT_FILL' app/src/main/java/com/example/messengerui/MessengerApp.kt
 
-      - name: Package resolved Messenger v2.26.4 source
+      - name: Apply full regression cleanup 2.26.5
+        shell: bash
+        run: |
+          base64 -d tmp-messenger-build/video2265_full_regression_cleanup.patch.gz.b64 | gzip -dc > /tmp/video2265_full_regression_cleanup.patch
+          cd /tmp/messenger-build/messenger_live
+          patch -p1 < /tmp/video2265_full_regression_cleanup.patch
+          find app/src/main/java -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -delete
+          grep -q 'versionName = "2.26.5"' app/build.gradle.kts
+          grep -q 'versionCode = 42' app/build.gradle.kts
+          grep -q 'darkTheme: Boolean = false' app/src/main/java/com/example/messengerui/ui/theme/Theme.kt
+          grep -q 'signal_ignored_non_current_call' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'single negotiation owner' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'Server CONNECTED is metadata' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'if(localVideoSink === sink) return' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'if(remoteVideoSink === sink)' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          ! grep -q 'weight(0.72f)' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          ! grep -R -q 'openVoiceCallFromNotification(callId); return' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          ! find app/src/main/java -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) | grep -q .
+
+      - name: Package resolved Messenger v2.26.5 source
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.4-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.5-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
-      - name: Upload resolved v2.26.4 source
+      - name: Upload resolved v2.26.5 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.4-Resolved-Source
-          path: Messenger-v2.26.4-Resolved-Source.zip
+          name: Messenger-v2.26.5-Resolved-Source
+          path: Messenger-v2.26.5-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
+
+      - name: Run Android lint regression audit
+        working-directory: /tmp/messenger-build/messenger_live
+        run: gradle --no-daemon :app:lintDebug
 
       - name: Verify Messenger APK
         shell: bash
@@ -596,10 +619,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.4'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.5'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Video-v2.26.4-Debug.apk
-          sha256sum Messenger-Video-v2.26.4-Debug.apk | tee Messenger-Video-v2.26.4-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26.5-Debug.apk
+          sha256sum Messenger-Video-v2.26.5-Debug.apk | tee Messenger-Video-v2.26.5-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -614,20 +637,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.4-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.4-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.4-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.5-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.5-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.5-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.4'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.4-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.4-Stable.sha256"
+          grep -q "versionName='2.26.5'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.5-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.5-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.4-Stable
+          name: Messenger-Video-v2.26.5-Stable
           path: |
-            Messenger-Video-v2.26.4-Stable.apk
-            Messenger-Video-v2.26.4-Stable.sha256
+            Messenger-Video-v2.26.5-Stable.apk
+            Messenger-Video-v2.26.5-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -636,10 +659,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.4-Debug
+          name: Messenger-Video-v2.26.5-Debug
           path: |
-            Messenger-Video-v2.26.4-Debug.apk
-            Messenger-Video-v2.26.4-Debug.sha256
+            Messenger-Video-v2.26.5-Debug.apk
+            Messenger-Video-v2.26.5-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

@@ -80,7 +80,7 @@ private fun CallDetailsScreen(vm: AppViewModel, callId:String) {
     } else "Not connected"
     Column(Modifier.fillMaxSize().systemBarsPadding()){
         Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically){
-            IconButton(onClick={vm.navigate(AppScreen.Home)}){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Back")}
+            IconButton(onClick={vm.navigate(AppScreen.Home)}){Icon(Icons.Filled.ArrowBack,"Back")}
             Text("Call details",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
         }
         Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally){

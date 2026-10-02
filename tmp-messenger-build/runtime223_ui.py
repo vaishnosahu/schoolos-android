@@ -61,18 +61,14 @@ p.write_text(s)
 # Firebase unknown caller silence
 p=root/'app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt'
 s=p.read_text()
-old='''                if(callId.isNotBlank() && !CallAlertStore.isTerminal(this,callId)) {
-                    NotificationHelper.showIncomingCall(this,callId,data["caller_name"].orEmpty().ifBlank { "Messenger User" },data["caller_phone"].orEmpty())
-                }'''
-new='''                if(callId.isNotBlank() && !CallAlertStore.isTerminal(this,callId)) {
-                    val callerId=data["caller_id"].orEmpty()
+old='NotificationHelper.showIncomingCall(this,callId,data["caller_name"].orEmpty().ifBlank { "Messenger User" },data["caller_phone"].orEmpty())'
+new='''val callerId=data["caller_id"].orEmpty()
                     val name=data["caller_name"].orEmpty().ifBlank { "Messenger User" }
                     val phone=data["caller_phone"].orEmpty()
                     val silenceUnknown=db.getBooleanSetting("silence_unknown_callers",false) && !db.hasContactId(callerId)
                     if(silenceUnknown) NotificationHelper.showSilentIncomingCall(this,callId,name,phone)
-                    else NotificationHelper.showIncomingCall(this,callId,name,phone)
-                }'''
-if old not in s: raise SystemExit('firebase incoming block missing')
+                    else NotificationHelper.showIncomingCall(this,callId,name,phone)'''
+if old not in s: raise SystemExit('firebase incoming line missing')
 s=s.replace(old,new,1)
 p.write_text(s)
 

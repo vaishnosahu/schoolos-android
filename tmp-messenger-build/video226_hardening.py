@@ -81,25 +81,27 @@ p.write_text(s)
 p=root/'app/src/main/java/com/example/messengerui/MessengerApp.kt'
 s=p.read_text()
 
-old='''    val notificationAnswerPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if(granted) vm.acceptVoiceCall() else vm.lastToast = "Microphone permission is required to answer calls"
-        onInitialDestinationConsumed()
-    }'''
-new='''    val notificationAnswerPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+# Replace notification-answer launcher and initial-answer block semantically.
+start=s.find('    val notificationAnswerPermissionLauncher = rememberLauncherForActivityResult')
+end=s.find('    LaunchedEffect(Unit) {',start)
+if start<0 or end<0: raise SystemExit('notification answer launcher block missing')
+launcher='''    val notificationAnswerPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         val call=vm.activeVoiceCall
         val mic=result[Manifest.permission.RECORD_AUDIO]==true || ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED
         val camera=call?.callType!=CallType.VIDEO || result[Manifest.permission.CAMERA]==true || ContextCompat.checkSelfPermission(context,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED
         if(mic && camera) vm.acceptVoiceCall() else vm.lastToast = if(call?.callType==CallType.VIDEO)"Camera and microphone permissions are required to answer video calls" else "Microphone permission is required to answer calls"
         onInitialDestinationConsumed()
-    }'''
-if old not in s: raise SystemExit('top answer permission launcher anchor missing')
-s=s.replace(old,new,1)
+    }
+'''
+s=s[:start]+launcher+s[end:]
 
-old='''            if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) {
-                vm.acceptVoiceCall()
-                onInitialDestinationConsumed()
-            } else notificationAnswerPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)'''
-new='''            val mic=ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED
+start=s.find('    LaunchedEffect(initialCallId, initialCallAction')
+end=s.find('    LaunchedEffect(initialOpenCalls',start)
+if start<0 or end<0: raise SystemExit('initial answer LaunchedEffect block missing')
+answer_block='''    LaunchedEffect(initialCallId, initialCallAction, vm.activeVoiceCall?.callId, vm.activeVoiceCall?.phase) {
+        val call=vm.activeVoiceCall
+        if(initialCallAction=="answer" && !initialCallId.isNullOrBlank() && call?.callId==initialCallId && call.phase==VoiceCallPhase.INCOMING_RINGING) {
+            val mic=ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED
             val camera=call.callType!=CallType.VIDEO || ContextCompat.checkSelfPermission(context,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED
             if(mic && camera) {
                 vm.acceptVoiceCall()
@@ -110,9 +112,11 @@ new='''            val mic=ContextCompat.checkSelfPermission(context,Manifest.pe
                     if(call.callType==CallType.VIDEO) add(Manifest.permission.CAMERA)
                 }.toTypedArray()
                 notificationAnswerPermissionLauncher.launch(needed)
-            }'''
-if old not in s: raise SystemExit('initial answer permission path missing')
-s=s.replace(old,new,1)
+            }
+        }
+    }
+'''
+s=s[:start]+answer_block+s[end:]
 
 # PiP on explicit minimize for video.
 old='''FilledTonalIconButton(onClick = { vm.back() }) { Icon(Icons.Filled.KeyboardArrowDown, "Minimize call") }'''

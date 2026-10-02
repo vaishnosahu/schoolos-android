@@ -58,6 +58,8 @@ p=root/'app/src/main/java/com/example/messengerui/MessengerApp.kt'
 s=p.read_text()
 if 'import androidx.compose.ui.viewinterop.AndroidView' not in s:
     s=s.replace('import androidx.compose.ui.platform.LocalFocusManager','import androidx.compose.ui.platform.LocalFocusManager\nimport androidx.compose.ui.viewinterop.AndroidView')
+if 'import androidx.compose.ui.draw.clip' not in s:
+    s=s.replace('import androidx.compose.ui.Modifier','import androidx.compose.ui.Modifier\nimport androidx.compose.ui.draw.clip')
 
 # Generic video call permission helper.
 voice_helper='''@Composable
@@ -211,26 +213,19 @@ s=s.replace('''val permissions=buildList { add(Manifest.permission.RECORD_AUDIO)
                             val camera=call.callType!=CallType.VIDEO || ContextCompat.checkSelfPermission(context,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED
                             if(mic && camera) vm.acceptVoiceCall() else permissionLauncher.launch(permissions)''',1)
 
-# Active call controls: semantic insertion after mute control.
-import re
-pattern=r'(^\s*CallControl\([^\n]*vm\.toggleVoiceCallMute\(\)\s*\}\s*$)'
-m=re.search(pattern,s,flags=re.MULTILINE)
-if not m:
-    print('VIDEO_MUTE_CANDIDATES_START')
-    lines=s.splitlines()
-    for i,line0 in enumerate(lines):
-        if 'toggleVoiceCallMute' in line0:
-            for row in lines[max(0,i-5):min(len(lines),i+8)]: print(row)
-    print('VIDEO_MUTE_CANDIDATES_END')
-else:
-    line=m.group(1)
-if m:
-    indent=line[:len(line)-len(line.lstrip())]
-    extra='''\n''' + indent + '''if(call.callType==CallType.VIDEO) {
-''' + indent + '''    CallControl(if(call.cameraEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if(call.cameraEnabled) "Camera" else "Camera off", !call.cameraEnabled) { vm.toggleCallCamera() }
-''' + indent + '''    CallControl(Icons.Filled.Cameraswitch, "Flip", false) { vm.switchCallCamera() }
-''' + indent + '''}'''
-    s=s[:m.end(1)] + extra + s[m.end(1):]
+# Active call controls from final v2.25 layout.
+mic='''                CallControl(
+                    if(call.muted) Icons.Filled.MicOff else Icons.Filled.Mic,
+                    if(call.muted) "Unmute" else "Mute",
+                    call.muted
+                ) { vm.toggleVoiceCallMute() }'''
+if mic not in s: raise SystemExit('final mute control anchor missing')
+video_controls=mic+'''
+                if(call.callType==CallType.VIDEO) {
+                    CallControl(if(call.cameraEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if(call.cameraEnabled) "Camera" else "Camera off", !call.cameraEnabled) { vm.toggleCallCamera() }
+                    CallControl(Icons.Filled.Cameraswitch, "Flip", false) { vm.switchCallCamera() }
+                }'''
+s=s.replace(mic,video_controls,1)
 
 p.write_text(s)
 

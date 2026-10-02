@@ -93,20 +93,21 @@ if 'ONGOING_CALLS_CHANNEL' not in s:
         '    private const val MISSED_CALLS_CHANNEL = "missed_calls"\n    private const val ONGOING_CALLS_CHANNEL = "ongoing_calls"\n',
         1
     )
-    anchor='''        manager.createNotificationChannel(NotificationChannel(MISSED_CALLS_CHANNEL, "Missed calls", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Missed Messenger calls"
-            lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-        })
-'''
-    if anchor not in s:
-        raise SystemExit("missed-call channel anchor missing")
-    s=s.replace(anchor,anchor+'''        manager.createNotificationChannel(NotificationChannel(ONGOING_CALLS_CHANNEL, "Ongoing calls", NotificationManager.IMPORTANCE_LOW).apply {
+    marker='manager.createNotificationChannel(NotificationChannel(MISSED_CALLS_CHANNEL'
+    start=s.find(marker)
+    if start < 0:
+        raise SystemExit("missed-call channel marker missing")
+    close=s.find('\n        })',start)
+    if close < 0:
+        raise SystemExit("missed-call channel close missing")
+    close += len('\n        })')
+    block='''\n        manager.createNotificationChannel(NotificationChannel(ONGOING_CALLS_CHANNEL, "Ongoing calls", NotificationManager.IMPORTANCE_LOW).apply {
             description = "Active Messenger call status"
             setSound(null, null)
             enableVibration(false)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-        })
-''',1)
+        })'''
+    s=s[:close]+block+s[close:]
 s=s.replace('NotificationCompat.Builder(context,CALLS_CHANNEL).setSmallIcon','NotificationCompat.Builder(context,ONGOING_CALLS_CHANNEL).setSmallIcon',1)
 p.write_text(s)
 

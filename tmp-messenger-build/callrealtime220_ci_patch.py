@@ -148,4 +148,21 @@ if old not in s: raise SystemExit('accepted event anchor missing')
 s=s.replace(old,new,1)
 p.write_text(s)
 
+p=root/'app/src/main/java/com/example/messengerui/MessengerApp.kt'
+ui=p.read_text()
+old='''                    d.bitrateKbps?.let { Text("Available audio path: ${it} kbps") }
+                    Text("Reconnects: ${d.reconnectCount}")'''
+new='''                    d.bitrateKbps?.let { Text("Available audio path: ${it} kbps") }
+                    d.inboundAudioKbps?.let { Text("Incoming audio: ${it} kbps") }
+                    d.outboundAudioKbps?.let { Text("Outgoing audio: ${it} kbps") }
+                    if(!d.localCandidateType.isNullOrBlank() || !d.remoteCandidateType.isNullOrBlank()) {
+                        Text("ICE path: ${d.localCandidateType ?: "?"} → ${d.remoteCandidateType ?: "?"}${d.selectedProtocol?.let { " · $it" } ?: ""}")
+                    }
+                    Text("Media receive: ${if(d.mediaStalled) "Recovering" else "Healthy"}")
+                    Text("Reconnects: ${d.reconnectCount}")
+                    d.lastRecoveryReason?.let { Text("Last recovery: ${it.replace('_',' ')}") }'''
+if old not in ui: raise SystemExit('diagnostics UI anchor missing')
+ui=ui.replace(old,new,1)
+p.write_text(ui)
+
 print('Messenger 2.20 hardening applied')

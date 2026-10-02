@@ -1,0 +1,67 @@
+diff -ruN messenger_v212_original/app/src/main/java/com/example/messengerui/MessengerApp.kt messenger_netturn_work/app/src/main/java/com/example/messengerui/MessengerApp.kt
+--- messenger_v212_original/app/src/main/java/com/example/messengerui/MessengerApp.kt	2026-10-01 18:10:29.000000000 +0000
++++ messenger_netturn_work/app/src/main/java/com/example/messengerui/MessengerApp.kt	2026-10-02 01:35:26.726341762 +0000
+@@ -1671,6 +1671,7 @@
+     val context = LocalContext.current
+     val call = vm.activeVoiceCall
+     var routeDialog by remember { mutableStateOf(false) }
++    var diagnosticsDialog by remember { mutableStateOf(false) }
+     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+         if (result[Manifest.permission.RECORD_AUDIO] == true) vm.acceptVoiceCall() else vm.lastToast = "Microphone permission is required for voice calls"
+     }
+@@ -1723,8 +1724,26 @@
+         Spacer(Modifier.height(8.dp))
+         if (call?.phase == VoiceCallPhase.CONNECTED) {
+             Text(call.routeLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
++            Spacer(Modifier.height(5.dp))
++            Row(verticalAlignment = Alignment.CenterVertically) {
++                Text(
++                    "${vm.callDiagnostics.networkLabel} · ${vm.callDiagnostics.qualityLabel}",
++                    color = when(vm.callDiagnostics.qualityLabel) {
++                        "Poor" -> MaterialTheme.colorScheme.error
++                        else -> MaterialTheme.colorScheme.onSurfaceVariant
++                    },
++                    style = MaterialTheme.typography.labelMedium
++                )
++                IconButton(onClick = { diagnosticsDialog=true }, modifier = Modifier.size(32.dp)) {
++                    Icon(Icons.Outlined.Info, "Call diagnostics", modifier = Modifier.size(18.dp))
++                }
++            }
+         } else {
+-            Text("Voice call", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
++            Text(
++                if(call?.phase==VoiceCallPhase.RECONNECTING) "${vm.callDiagnostics.networkLabel} · restoring connection" else "Voice call",
++                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                style = MaterialTheme.typography.bodyMedium
++            )
+         }
+ 
+         Spacer(Modifier.weight(1f))
+@@ -1795,6 +1814,27 @@
+             confirmButton = { TextButton(onClick = { routeDialog=false }) { Text("Close") } }
+         )
+     }
++
++    if (diagnosticsDialog && call != null) {
++        val d=vm.callDiagnostics
++        AlertDialog(
++            onDismissRequest = { diagnosticsDialog=false },
++            title = { Text("Call diagnostics") },
++            text = {
++                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Text("Network: ${d.networkLabel}")
++                    Text("Quality: ${d.qualityLabel}")
++                    Text("Connection: ${if(d.relayInUse) "TURN relay active" else "Direct path"}")
++                    Text("TURN: ${when { d.relayCandidateAvailable -> "Relay verified"; d.turnConfigured -> "Configured · waiting for relay candidate"; else -> "Not configured" }}")
++                    d.rttMs?.let { Text("Round-trip: ${it} ms") }
++                    d.packetLossPercent?.let { Text("Packet loss: %.1f%%".format(it)) }
++                    d.bitrateKbps?.let { Text("Available audio path: ${it} kbps") }
++                    Text("Reconnects: ${d.reconnectCount}")
++                }
++            },
++            confirmButton = { TextButton(onClick = { diagnosticsDialog=false }) { Text("Close") } }
++        )
++    }
+ }
+ 
+ @Composable

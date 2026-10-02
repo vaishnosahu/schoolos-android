@@ -1,8 +1,8 @@
-name: Messenger Calls UX 2.21 Build
+name: Messenger Core Parity 2.22 Build
 
 on:
   push:
-    branches: [ messenger-call-history221-20261002 ]
+    branches: [ messenger-core-parity222-20261002 ]
 
 permissions:
   contents: read
@@ -423,6 +423,24 @@ jobs:
           ! grep -q 'prepared for server-side persistence' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
           ! grep -q 'Forward flow selected' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
 
+      - name: Apply core parity 2.22 controls
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/core222_data.py
+          python3 tmp-messenger-build/core222_ui.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'versionName = "2.22"' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionCode = 33' "$ROOT/app/build.gradle.kts"
+          grep -q 'hideMessageForMe' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'clearConversation' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'deleteConversation' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'IncomingCallActivity' "$ROOT/app/src/main/AndroidManifest.xml"
+          grep -q 'deleteMessageForEveryone' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'deleteMessageForMe' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'clearChat' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'deleteChat' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'clearCallHistory' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -438,10 +456,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.21'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.22'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Calls-UX-v2.21-Debug.apk
-          sha256sum Messenger-Calls-UX-v2.21-Debug.apk | tee Messenger-Calls-UX-v2.21-Debug.sha256
+          cp "$APK" Messenger-Core-Parity-v2.22-Debug.apk
+          sha256sum Messenger-Core-Parity-v2.22-Debug.apk | tee Messenger-Core-Parity-v2.22-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -456,20 +474,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Core-Parity-v2.22-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Core-Parity-v2.22-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Core-Parity-v2.22-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.21'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.sha256"
+          grep -q "versionName='2.22'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Core-Parity-v2.22-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Core-Parity-v2.22-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Calls-UX-v2.21-Stable
+          name: Messenger-Core-Parity-v2.22-Stable
           path: |
-            Messenger-Calls-UX-v2.21-Stable.apk
-            Messenger-Calls-UX-v2.21-Stable.sha256
+            Messenger-Core-Parity-v2.22-Stable.apk
+            Messenger-Core-Parity-v2.22-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -478,10 +496,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Calls-UX-v2.21-Debug
+          name: Messenger-Core-Parity-v2.22-Debug
           path: |
-            Messenger-Calls-UX-v2.21-Debug.apk
-            Messenger-Calls-UX-v2.21-Debug.sha256
+            Messenger-Core-Parity-v2.22-Debug.apk
+            Messenger-Core-Parity-v2.22-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

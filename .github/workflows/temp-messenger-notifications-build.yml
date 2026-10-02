@@ -392,6 +392,22 @@ jobs:
           print(f'canonical audit OK: {len(kt)} Kotlin files')
           PY
 
+      - name: Apply deep canonical dead-code and lifecycle cleanup
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/canonical217_deep_cleanup.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'DB_VERSION = 11' "$ROOT/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt"
+          ! grep -R -q 'SyncCoordinator' "$ROOT/app/src/main/java"
+          ! grep -R -q 'SyncQueuePolicy' "$ROOT/app/src/main/java"
+          ! grep -R -q 'SyncQueueItem' "$ROOT/app/src/main/java"
+          ! grep -R -q 'pendingSyncCount' "$ROOT/app/src/main/java"
+          ! grep -R -q 'fun addMediaMessage' "$ROOT/app/src/main/java"
+          grep -q 'android:allowBackup="false"' "$ROOT/app/src/main/AndroidManifest.xml"
+          grep -q 'ONGOING_CALLS_CHANNEL' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+          grep -q 'NotificationManager.IMPORTANCE_LOW' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+          grep -q 'deleteNotificationChannel(oldId)' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug

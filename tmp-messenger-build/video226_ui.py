@@ -215,14 +215,22 @@ s=s.replace('''val permissions=buildList { add(Manifest.permission.RECORD_AUDIO)
 import re
 pattern=r'(^\s*CallControl\([^\n]*vm\.toggleVoiceCallMute\(\)\s*\}\s*$)'
 m=re.search(pattern,s,flags=re.MULTILINE)
-if not m: raise SystemExit('mute control semantic anchor missing')
-line=m.group(1)
-indent=line[:len(line)-len(line.lstrip())]
-extra='''\n''' + indent + '''if(call.callType==CallType.VIDEO) {
+if not m:
+    print('VIDEO_MUTE_CANDIDATES_START')
+    lines=s.splitlines()
+    for i,line0 in enumerate(lines):
+        if 'toggleVoiceCallMute' in line0:
+            for row in lines[max(0,i-5):min(len(lines),i+8)]: print(row)
+    print('VIDEO_MUTE_CANDIDATES_END')
+else:
+    line=m.group(1)
+if m:
+    indent=line[:len(line)-len(line.lstrip())]
+    extra='''\n''' + indent + '''if(call.callType==CallType.VIDEO) {
 ''' + indent + '''    CallControl(if(call.cameraEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if(call.cameraEnabled) "Camera" else "Camera off", !call.cameraEnabled) { vm.toggleCallCamera() }
 ''' + indent + '''    CallControl(Icons.Filled.Cameraswitch, "Flip", false) { vm.switchCallCamera() }
 ''' + indent + '''}'''
-s=s[:m.end(1)] + extra + s[m.end(1):]
+    s=s[:m.end(1)] + extra + s[m.end(1):]
 
 p.write_text(s)
 

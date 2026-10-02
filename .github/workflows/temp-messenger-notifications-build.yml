@@ -604,6 +604,14 @@ jobs:
           grep -q 'removeAt(history.lastIndex)' app/src/main/java/com/example/messengerui/AppViewModel.kt
           ! grep -q 'history.removeLast()' app/src/main/java/com/example/messengerui/AppViewModel.kt
 
+      - name: Apply v2.26.5 camera feature lint closure
+        shell: bash
+        run: |
+          base64 -d tmp-messenger-build/video2265_lint_camera_feature_fix.patch.gz.b64 | gzip -dc > /tmp/video2265_lint_camera_feature_fix.patch
+          cd /tmp/messenger-build/messenger_live
+          patch -p1 < /tmp/video2265_lint_camera_feature_fix.patch
+          grep -q 'android.hardware.camera.*android:required="false"' app/src/main/AndroidManifest.xml
+
       - name: Package resolved Messenger v2.26.5 source
         shell: bash
         run: |

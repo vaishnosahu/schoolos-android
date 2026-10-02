@@ -1,0 +1,14 @@
+diff -ruN messenger_v212_original/app/build.gradle.kts messenger_netturn_work/app/build.gradle.kts
+--- messenger_v212_original/app/build.gradle.kts	2026-10-01 18:10:29.000000000 +0000
++++ messenger_netturn_work/app/build.gradle.kts	2026-10-02 01:35:26.723516078 +0000
+@@ -12,8 +12,8 @@
+         applicationId = "com.example.messengerui"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 23
+-        versionName = "2.12"
++        versionCode = 24
++        versionName = "2.13"
+     }
+ 
+     buildFeatures {

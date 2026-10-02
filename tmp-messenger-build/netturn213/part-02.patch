@@ -1,0 +1,31 @@
+diff -ruN messenger_v212_original/app/src/main/java/com/example/messengerui/CallModels.kt messenger_netturn_work/app/src/main/java/com/example/messengerui/CallModels.kt
+--- messenger_v212_original/app/src/main/java/com/example/messengerui/CallModels.kt	2026-10-01 18:10:29.000000000 +0000
++++ messenger_netturn_work/app/src/main/java/com/example/messengerui/CallModels.kt	2026-10-02 01:35:26.723714338 +0000
+@@ -24,6 +24,27 @@
+ data class RemoteCallSignal(val id: Long, val type: String, val payload: JSONObject)
+ data class VoiceCallSync(val call: RemoteVoiceCall, val signals: List<RemoteCallSignal>, val signalCursor: Long)
+ 
++data class CallQualityStats(
++    val qualityLabel: String = "Checking…",
++    val rttMs: Int? = null,
++    val packetLossPercent: Double? = null,
++    val bitrateKbps: Int? = null,
++    val relayInUse: Boolean = false,
++    val relayCandidateAvailable: Boolean = false
++)
++
++data class CallDiagnostics(
++    val networkLabel: String = "Unknown network",
++    val qualityLabel: String = "Checking…",
++    val rttMs: Int? = null,
++    val packetLossPercent: Double? = null,
++    val bitrateKbps: Int? = null,
++    val turnConfigured: Boolean = false,
++    val relayCandidateAvailable: Boolean = false,
++    val relayInUse: Boolean = false,
++    val reconnectCount: Int = 0
++)
++
+ data class VoiceCallUi(
+     val callId: String,
+     val peerId: String,

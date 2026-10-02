@@ -139,6 +139,14 @@ video_ui='''        Spacer(Modifier.height(if(call?.callType==CallType.VIDEO) 14
             ) {
                 var remoteRenderer by remember(call.callId) { mutableStateOf<org.webrtc.SurfaceViewRenderer?>(null) }
                 var localRenderer by remember(call.callId) { mutableStateOf<org.webrtc.SurfaceViewRenderer?>(null) }
+                DisposableEffect(call.callId) {
+                    onDispose {
+                        vm.attachRemoteVideoSink(null)
+                        vm.attachLocalVideoSink(null)
+                        runCatching { remoteRenderer?.release() }
+                        runCatching { localRenderer?.release() }
+                    }
+                }
 
                 AndroidView(
                     modifier=Modifier.fillMaxSize(),

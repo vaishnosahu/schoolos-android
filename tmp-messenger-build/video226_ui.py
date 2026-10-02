@@ -211,25 +211,15 @@ s=s.replace('''val permissions=buildList { add(Manifest.permission.RECORD_AUDIO)
                             val camera=call.callType!=CallType.VIDEO || ContextCompat.checkSelfPermission(context,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED
                             if(mic && camera) vm.acceptVoiceCall() else permissionLauncher.launch(permissions)''',1)
 
-# Active call controls: add camera toggle + switch for video.
-controls='''                CallControl(if(call.muted) Icons.Filled.MicOff else Icons.Filled.Mic, if(call.muted) "Unmute" else "Mute", call.muted) { vm.toggleVoiceCallMute() }
-                CallControl(
-                    when(call.routeLabel) { "Bluetooth" -> Icons.Filled.BluetoothAudio; "Headset" -> Icons.Filled.Headset; "Speaker" -> Icons.Filled.VolumeUp; else -> Icons.Filled.PhoneInTalk },
-                    call.routeLabel,
-                    call.speaker
-                ) { routeDialog = true }'''
-controls_new='''                CallControl(if(call.muted) Icons.Filled.MicOff else Icons.Filled.Mic, if(call.muted) "Unmute" else "Mute", call.muted) { vm.toggleVoiceCallMute() }
+# Active call controls: inject camera controls immediately after microphone control.
+mic='''                CallControl(if(call.muted) Icons.Filled.MicOff else Icons.Filled.Mic, if(call.muted) "Unmute" else "Mute", call.muted) { vm.toggleVoiceCallMute() }'''
+if mic not in s: raise SystemExit('microphone control anchor missing')
+video_controls=mic+'''
                 if(call.callType==CallType.VIDEO) {
                     CallControl(if(call.cameraEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if(call.cameraEnabled) "Camera" else "Camera off", !call.cameraEnabled) { vm.toggleCallCamera() }
                     CallControl(Icons.Filled.Cameraswitch, "Flip", false) { vm.switchCallCamera() }
-                }
-                CallControl(
-                    when(call.routeLabel) { "Bluetooth" -> Icons.Filled.BluetoothAudio; "Headset" -> Icons.Filled.Headset; "Speaker" -> Icons.Filled.VolumeUp; else -> Icons.Filled.PhoneInTalk },
-                    call.routeLabel,
-                    call.speaker
-                ) { routeDialog = true }'''
-if controls not in s: raise SystemExit('active control anchor missing')
-s=s.replace(controls,controls_new,1)
+                }'''
+s=s.replace(mic,video_controls,1)
 
 p.write_text(s)
 

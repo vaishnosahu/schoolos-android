@@ -1,8 +1,8 @@
-name: Messenger Call Realtime 2.20 Build
+name: Messenger Calls UX 2.21 Build
 
 on:
   push:
-    branches: [ messenger-call-realtime220-20261002 ]
+    branches: [ messenger-call-history221-20261002 ]
 
 permissions:
   contents: read
@@ -406,6 +406,23 @@ jobs:
           grep -q 'reapplySelectedRoute' "$ROOT/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
           grep -q 'cleanupExpired' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApplication.kt"
 
+      - name: Apply calls UX 2.21 integrity
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/callhistory221_data.py
+          python3 tmp-messenger-build/callhistory221_ui.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'versionName = "2.21"' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionCode = 32' "$ROOT/app/build.gradle.kts"
+          grep -q 'DB_VERSION = 12' "$ROOT/app/src/main/java/com/example/messengerui/LocalMessengerDb.kt"
+          grep -q 'contactPhone' "$ROOT/app/src/main/java/com/example/messengerui/Models.kt"
+          grep -q 'durationSeconds' "$ROOT/app/src/main/java/com/example/messengerui/Models.kt"
+          grep -q 'CallDetails' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'Unknown caller' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'Coroutine' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          ! grep -q 'prepared for server-side persistence' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          ! grep -q 'Forward flow selected' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -421,10 +438,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.20'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.21'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Call-Realtime-v2.20-Debug.apk
-          sha256sum Messenger-Call-Realtime-v2.20-Debug.apk | tee Messenger-Call-Realtime-v2.20-Debug.sha256
+          cp "$APK" Messenger-Calls-UX-v2.21-Debug.apk
+          sha256sum Messenger-Calls-UX-v2.21-Debug.apk | tee Messenger-Calls-UX-v2.21-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -439,20 +456,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Call-Realtime-v2.20-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Call-Realtime-v2.20-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Call-Realtime-v2.20-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.20'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Call-Realtime-v2.20-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Call-Realtime-v2.20-Stable.sha256"
+          grep -q "versionName='2.21'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Calls-UX-v2.21-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Call-Realtime-v2.20-Stable
+          name: Messenger-Calls-UX-v2.21-Stable
           path: |
-            Messenger-Call-Realtime-v2.20-Stable.apk
-            Messenger-Call-Realtime-v2.20-Stable.sha256
+            Messenger-Calls-UX-v2.21-Stable.apk
+            Messenger-Calls-UX-v2.21-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -461,10 +478,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Call-Realtime-v2.20-Debug
+          name: Messenger-Calls-UX-v2.21-Debug
           path: |
-            Messenger-Call-Realtime-v2.20-Debug.apk
-            Messenger-Call-Realtime-v2.20-Debug.sha256
+            Messenger-Calls-UX-v2.21-Debug.apk
+            Messenger-Calls-UX-v2.21-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

@@ -33,6 +33,45 @@ if old not in s: raise SystemExit('incoming activity window anchor missing')
 s=s.replace(old,new,1)
 p.write_text(s)
 
+
+# Startup sync: keep local data visible, silently retry transient first failures.
+p=root/'app/src/main/java/com/example/messengerui/AppViewModel.kt'
+s=p.read_text()
+old='''                if(error is ApiException && error.statusCode==401){ db.clearServerSession(); db.setLoggedIn(false); screen=AppScreen.Login } else { connectionState=SyncConnectionState.RETRYING; lastToast=error.userMessage("Server sync unavailable; local data is still available") }'''
+new='''                if(error is ApiException && error.statusCode==401){
+                    db.clearServerSession(); db.setLoggedIn(false); screen=AppScreen.Login
+                } else {
+                    connectionState=SyncConnectionState.RETRYING
+                    scheduleStartupSyncRetry()
+                }'''
+if old not in s: raise SystemExit('exact server sync catch anchor missing')
+s=s.replace(old,new,1)
+anchor='''    private fun restartServerSync() {
+        realtimeJob?.cancel()
+        realtimeJob = null
+        startServerSync()
+    }
+'''
+retry='''    private var startupSyncRetryCount = 0
+    private var startupSyncRetryJob: kotlinx.coroutines.Job? = null
+
+    private fun scheduleStartupSyncRetry() {
+        if(!serverMode || !networkAvailable) return
+        if(startupSyncRetryJob?.isActive==true) return
+        if(startupSyncRetryCount>=2) return
+        startupSyncRetryCount++
+        startupSyncRetryJob=viewModelScope.launch {
+            delay(if(startupSyncRetryCount==1) 900L else 2_000L)
+            if(serverMode && networkAvailable) restartServerSync()
+        }
+    }
+
+'''
+if anchor not in s: raise SystemExit('restartServerSync anchor missing')
+s=s.replace(anchor,retry+anchor,1)
+s=s.replace('''                if (failures == 0) connectionState = SyncConnectionState.ONLINE''','''                if (failures == 0) { connectionState = SyncConnectionState.ONLINE; startupSyncRetryCount = 0 }''',1)
+p.write_text(s)
+
 print('SYNC_TEXT_CANDIDATES_START')
 for kt in (root/'app/src/main/java/com/example/messengerui').rglob('*.kt'):
     for no,line in enumerate(kt.read_text().splitlines(),1):

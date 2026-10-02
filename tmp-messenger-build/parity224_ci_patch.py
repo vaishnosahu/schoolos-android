@@ -175,12 +175,12 @@ insert='''        vm.waitingVoiceCall?.let { waiting ->
 if anchor not in s: raise SystemExit('voice screen anchor missing')
 s=s.replace(anchor,insert,1)
 
-diag='''                    Text("Reconnects: \${d.reconnectCount}")
-                    d.lastRecoveryReason?.let { Text("Last recovery: \${it.replace('_',' ')}") }'''
-diag_new='''                    Text("Reconnects: \${d.reconnectCount}")
-                    d.lastRecoveryReason?.let { Text("Last recovery: \${it.replace('_',' ')}") }
+diag='''                    Text("Reconnects: ${d.reconnectCount}")
+                    d.lastRecoveryReason?.let { Text("Last recovery: ${it.replace('_',' ')}") }'''
+diag_new='''                    Text("Reconnects: ${d.reconnectCount}")
+                    d.lastRecoveryReason?.let { Text("Last recovery: ${it.replace('_',' ')}") }
                     HorizontalDivider()
-                    Text("Relay validation: \${if(vm.relayValidationMode) "Relay only for calls" else "Normal routing"}")
+                    Text("Relay validation: ${if(vm.relayValidationMode) "Relay only for calls" else "Normal routing"}")
                     Text(
                         if(vm.relayValidationMode) "TURN-only validation is enabled. Disable after testing." else "Normal calls prefer direct media and use TURN when needed.",
                         style=MaterialTheme.typography.bodySmall,
@@ -190,10 +190,10 @@ diag_new='''                    Text("Reconnects: \${d.reconnectCount}")
                         Text(if(vm.relayValidationMode) "Use normal routing" else "Validate TURN on next call")
                     }'''
 if diag not in s:
-    diag='''                    Text("Reconnects: \${d.reconnectCount}")'''
-    diag_new='''                    Text("Reconnects: \${d.reconnectCount}")
+    diag='''                    Text("Reconnects: ${d.reconnectCount}")'''
+    diag_new='''                    Text("Reconnects: ${d.reconnectCount}")
                     HorizontalDivider()
-                    Text("Relay validation: \${if(vm.relayValidationMode) "Relay only for calls" else "Normal routing"}")
+                    Text("Relay validation: ${if(vm.relayValidationMode) "Relay only for calls" else "Normal routing"}")
                     TextButton(onClick={vm.updateRelayValidationMode(!vm.relayValidationMode)}) { Text(if(vm.relayValidationMode) "Use normal routing" else "Validate TURN on next call") }'''
 if diag not in s: raise SystemExit('diagnostics anchor missing')
 s=s.replace(diag,diag_new,1)

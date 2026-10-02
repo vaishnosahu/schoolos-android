@@ -108,7 +108,7 @@ old='''            item {
                     ListItem(
                         modifier = Modifier,
                         leadingContent = { Icon(Icons.Outlined.Block, null, tint = MaterialTheme.colorScheme.error) },
-                        headlineContent = { Text("Block \${chat.title}", color = MaterialTheme.colorScheme.error) }
+                        headlineContent = { Text("Block ${chat.title}", color = MaterialTheme.colorScheme.error) }
                     )
                 }
                 ListItem(

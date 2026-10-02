@@ -37,15 +37,14 @@ p.write_text(s)
 # Startup sync: keep local data visible, silently retry transient first failures.
 p=root/'app/src/main/java/com/example/messengerui/AppViewModel.kt'
 s=p.read_text()
-old='''                if(error is ApiException && error.statusCode==401){ db.clearServerSession(); db.setLoggedIn(false); screen=AppScreen.Login } else { connectionState=SyncConnectionState.RETRYING; lastToast=error.userMessage("Server sync unavailable; local data is still available") }'''
-new='''                if(error is ApiException && error.statusCode==401){
-                    db.clearServerSession(); db.setLoggedIn(false); screen=AppScreen.Login
-                } else {
-                    connectionState=SyncConnectionState.RETRYING
-                    scheduleStartupSyncRetry()
-                }'''
-if old not in s: raise SystemExit('exact server sync catch anchor missing')
-s=s.replace(old,new,1)
+import re
+s,count=re.subn(
+    r'lastToast=error\.userMessage\("Server sync unavailable; local data is still available"\)',
+    'scheduleStartupSyncRetry()',
+    s,
+    count=1
+)
+if count!=1: raise SystemExit('server sync fallback expression missing')
 anchor='''    private fun restartServerSync() {
         realtimeJob?.cancel()
         realtimeJob = null

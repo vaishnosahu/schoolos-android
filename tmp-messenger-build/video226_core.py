@@ -81,6 +81,7 @@ s=s.replace('import org.webrtc.AudioTrack',imports,1)
 s=s.replace('''    private val forceRelayOnly: Boolean = false,
     private val onLocalSignal:''','''    private val forceRelayOnly: Boolean = false,
     private val videoEnabled: Boolean = false,
+    private val onRemoteVideoAvailable: (Boolean) -> Unit = {},
     private val onLocalSignal:''',1)
 
 s=s.replace('''    private var audioTrack: AudioTrack? = null
@@ -163,6 +164,7 @@ s=s.replace('''        runCatching{audioTrack?.dispose()}; audioTrack=null
         runCatching{factory?.dispose()}; factory=null''','''        localVideoSink?.let { runCatching { videoTrack?.removeSink(it) } }; localVideoSink=null
         remoteVideoSink?.let { runCatching { remoteVideoTrack?.removeSink(it) } }; remoteVideoSink=null
         remoteVideoTrack=null
+        onRemoteVideoAvailable(false)
         runCatching { videoCapturer?.stopCapture() }; runCatching { videoCapturer?.dispose() }; videoCapturer=null
         runCatching { surfaceTextureHelper?.dispose() }; surfaceTextureHelper=null
         runCatching { videoTrack?.dispose() }; videoTrack=null
@@ -178,6 +180,7 @@ s=s.replace('''        override fun onAddTrack(receiver:RtpReceiver?,mediaStream
                 remoteVideoTrack?.let { old -> remoteVideoSink?.let { old.removeSink(it) } }
                 remoteVideoTrack=track
                 remoteVideoSink?.let { track.addSink(it) }
+                onRemoteVideoAvailable(true)
             }
         }''',1)
 p.write_text(s)
@@ -266,10 +269,12 @@ s=s.replace(anchor,controls+anchor,1)
 # engine constructor adds video mode
 s=s.replace('''voiceEngine=WebRtcVoiceEngine(getApplication(),config.iceServers,relayValidationMode,
             onLocalSignal=''', '''voiceEngine=WebRtcVoiceEngine(getApplication(),config.iceServers,relayValidationMode,activeVoiceCall?.callType==CallType.VIDEO,
+            onRemoteVideoAvailable={ available -> viewModelScope.launch { activeVoiceCall=activeVoiceCall?.copy(remoteVideoAvailable=available) } },
             onLocalSignal=''')
 # fallback old form
 s=s.replace('''voiceEngine=WebRtcVoiceEngine(getApplication(),config.iceServers,
             onLocalSignal=''', '''voiceEngine=WebRtcVoiceEngine(getApplication(),config.iceServers,false,activeVoiceCall?.callType==CallType.VIDEO,
+            onRemoteVideoAvailable={ available -> viewModelScope.launch { activeVoiceCall=activeVoiceCall?.copy(remoteVideoAvailable=available) } },
             onLocalSignal=''')
 
 # applyRemoteCall constructor include type.

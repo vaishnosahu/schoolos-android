@@ -33,9 +33,9 @@ p.write_text(s)
 # DB known contact
 p=root/'app/src/main/java/com/example/messengerui/LocalMessengerDb.kt'
 s=p.read_text()
-anchor='''    fun loadContacts(): List<Contact> = readableDatabase.rawQuery("SELECT id,name,phone,about,online,last_seen FROM contacts ORDER BY name COLLATE NOCASE", null).use { c ->
+anchor='''    fun loadChats(): List<Chat> {
 '''
-if anchor not in s: raise SystemExit('loadContacts anchor missing')
+if anchor not in s: raise SystemExit('loadChats anchor missing')
 s=s.replace(anchor,'''    fun hasContactId(id:String):Boolean = id.isNotBlank() && readableDatabase.rawQuery("SELECT 1 FROM contacts WHERE id=? LIMIT 1", arrayOf(id)).use { it.moveToFirst() }
 
 '''+anchor,1)

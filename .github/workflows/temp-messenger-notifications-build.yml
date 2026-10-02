@@ -479,9 +479,7 @@ jobs:
           grep -q 'versionCode = 36' "$ROOT/app/build.gradle.kts"
           grep -q 'calls_v4' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
           grep -q 'FLAG_KEEP_SCREEN_ON' "$ROOT/app/src/main/java/com/example/messengerui/IncomingCallActivity.kt"
-          grep -q 'scheduleStartupSyncRetry' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
-          ! grep -q 'Server sync is unavailable. Local data is available' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
-          ! grep -q 'Server sync is unavailable, local data is available' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'calls_v4' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
 
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live

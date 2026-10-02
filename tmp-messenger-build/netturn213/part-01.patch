@@ -1,0 +1,294 @@
+diff -ruN messenger_v212_original/app/src/main/java/com/example/messengerui/AppViewModel.kt messenger_netturn_work/app/src/main/java/com/example/messengerui/AppViewModel.kt
+--- messenger_v212_original/app/src/main/java/com/example/messengerui/AppViewModel.kt	2026-10-01 18:10:29.000000000 +0000
++++ messenger_netturn_work/app/src/main/java/com/example/messengerui/AppViewModel.kt	2026-10-02 01:36:03.820062609 +0000
+@@ -48,6 +48,13 @@
+     private var voiceCallConfig: VoiceCallConfig? = null
+     private var callSignalCursor: Long = 0L
+     private var callConnectedReported = false
++    private var callInitialOfferSent = false
++    private var voiceMediaConnected = false
++    private var callReconnectJob: Job? = null
++    private var callQualityJob: Job? = null
++    private var callNetworkHandle: Long? = null
++    private var lastIceRestartAtMs = 0L
++    private var callReconnectCount = 0
+     private var backgroundedAtMs: Long? = null
+     private val typingStopJobs = mutableMapOf<String, Job>()
+     private val typingActiveChats = mutableSetOf<String>()
+@@ -61,20 +68,41 @@
+                     db.makeReceiptAcksRetryableNow()
+                     connectionState = SyncConnectionState.CONNECTING
+                     restartServerSync()
+-                    if (activeVoiceCall != null) {
+-                        activeVoiceCall = activeVoiceCall?.copy(phase = VoiceCallPhase.RECONNECTING)
++                    activeVoiceCall?.let { call ->
++                        val newHandle = connectivityManager.activeNetwork?.networkHandle ?: network.networkHandle
++                        val changed = callNetworkHandle != null && newHandle != callNetworkHandle
++                        callNetworkHandle = newHandle
++                        updateCallNetworkLabel()
++                        activeVoiceCall = call.copy(phase = VoiceCallPhase.RECONNECTING, error = null)
+                         startCallStateLoop()
+-                        if (activeVoiceCall?.incoming == false) viewModelScope.launch { delay(700); voiceEngine?.createOffer() }
++                        scheduleCallReconnectDeadline()
++                        if (!call.incoming && (changed || call.phase == VoiceCallPhase.RECONNECTING || call.phase == VoiceCallPhase.FAILED)) {
++                            triggerCallIceRestart("network_change")
++                        }
+                     }
+                 }
+             }
+         }
++
++        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
++            viewModelScope.launch {
++                if (activeVoiceCall != null && connectivityManager.activeNetwork == network) updateCallNetworkLabel()
++            }
++        }
++
+         override fun onLost(network: Network) {
+             viewModelScope.launch {
+                 networkAvailable = isNetworkAvailable()
+                 if (!networkAvailable) {
+                     connectionState = SyncConnectionState.OFFLINE
+                     typingByChat.clear()
++                    activeVoiceCall?.let {
++                        activeVoiceCall = it.copy(phase = VoiceCallPhase.RECONNECTING, error = null)
++                        updateCallNetworkLabel()
++                        scheduleCallReconnectDeadline()
++                    }
++                } else if (activeVoiceCall != null) {
++                    updateCallNetworkLabel()
+                 }
+             }
+         }
+@@ -170,6 +198,8 @@
+     val voiceCallRoutes = mutableStateListOf<String>()
+     var callActionBusy by mutableStateOf(false)
+         private set
++    var callDiagnostics by mutableStateOf(CallDiagnostics())
++        private set
+     val starredMessageIds = mutableStateListOf<Long>().apply { addAll(db.loadStarredIds()) }
+ 
+     val pendingSyncCount: Int get() = db.pendingSyncCount()
+@@ -1225,6 +1255,11 @@
+                 voiceCallConfig=config
+                 callSignalCursor=0L
+                 callConnectedReported=false
++                callInitialOfferSent=false
++                callReconnectCount=0
++                lastIceRestartAtMs=0L
++                callNetworkHandle=connectivityManager.activeNetwork?.networkHandle
++                callDiagnostics=CallDiagnostics(networkLabel=currentCallNetworkLabel(),turnConfigured=config.turnConfigured)
+                 activeVoiceCall=VoiceCallUi(call.id,call.peerId,call.peerName,false,VoiceCallPhase.OUTGOING_RINGING)
+                 upsertServerCallLog(call)
+                 navigate(AppScreen.VoiceCall(call.id))
+@@ -1241,6 +1276,8 @@
+             runCatching { withContext(Dispatchers.IO){ api.voiceCallState(token,callId,0L) } }
+                 .onSuccess { sync ->
+                     voiceCallConfig=runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(token) } }.getOrNull()
++                    callDiagnostics=callDiagnostics.copy(networkLabel=currentCallNetworkLabel(),turnConfigured=voiceCallConfig?.turnConfigured==true)
++                    callNetworkHandle=connectivityManager.activeNetwork?.networkHandle
+                     callSignalCursor=sync.signalCursor
+                     applyRemoteCall(sync.call)
+                     sync.signals.forEach { processVoiceSignal(it) }
+@@ -1263,6 +1300,8 @@
+                 config to call
+             }.onSuccess { (config,call) ->
+                 voiceCallConfig=config
++                callDiagnostics=callDiagnostics.copy(networkLabel=currentCallNetworkLabel(),turnConfigured=config.turnConfigured)
++                callNetworkHandle=connectivityManager.activeNetwork?.networkHandle
+                 activeVoiceCall=current.copy(phase=VoiceCallPhase.CONNECTING)
+                 ensureVoiceEngine(config)
+                 NotificationHelper.cancelIncomingCall(getApplication(),current.callId)
+@@ -1325,9 +1364,11 @@
+             onRoute={ route -> activeVoiceCall=activeVoiceCall?.copy(routeLabel=route,speaker=route=="Speaker") },
+             onRoutes={ routes -> viewModelScope.launch { voiceCallRoutes.clear(); voiceCallRoutes.addAll(routes) } },
+             onAudioInterruption={ interrupted -> viewModelScope.launch { activeVoiceCall=activeVoiceCall?.copy(audioInterrupted=interrupted) } },
++            onQuality={ quality -> viewModelScope.launch { applyCallQuality(quality) } },
+             onError={ error -> viewModelScope.launch { onVoiceEngineError(error) } }
+         )
+         activeVoiceCall=activeVoiceCall?.copy(phase=VoiceCallPhase.CONNECTING)
++        startCallQualityLoop()
+     }
+ 
+     private fun sendVoiceSignal(type:String,payload:org.json.JSONObject) {
+@@ -1352,23 +1393,104 @@
+         val current=activeVoiceCall ?: return
+         when(phase){
+             VoiceCallPhase.CONNECTED -> {
++                voiceMediaConnected=true
+                 val first=current.connectedAtMs==null
+-                activeVoiceCall=current.copy(phase=VoiceCallPhase.CONNECTED,connectedAtMs=current.connectedAtMs ?: System.currentTimeMillis(),audioInterrupted=false)
++                callReconnectJob?.cancel(); callReconnectJob=null
++                activeVoiceCall=current.copy(phase=VoiceCallPhase.CONNECTED,connectedAtMs=current.connectedAtMs ?: System.currentTimeMillis(),audioInterrupted=false,error=null)
+                 if(first && !callConnectedReported){
+                     callConnectedReported=true
+                     CallForegroundService.start(getApplication(),current.callId,current.peerName)
+                     viewModelScope.launch(Dispatchers.IO){ runCatching { api.markVoiceCallConnected(db.serverToken(),current.callId) } }
+                 }
+             }
+-            VoiceCallPhase.RECONNECTING -> activeVoiceCall=current.copy(phase=VoiceCallPhase.RECONNECTING)
++            VoiceCallPhase.RECONNECTING -> {
++                voiceMediaConnected=false
++                activeVoiceCall=current.copy(phase=VoiceCallPhase.RECONNECTING,error=null)
++                scheduleCallReconnectDeadline()
++            }
+             VoiceCallPhase.ENDED -> Unit
+             else -> activeVoiceCall=current.copy(phase=phase)
+         }
+     }
+ 
+     private fun onVoiceEngineError(error:String) {
+-        activeVoiceCall=activeVoiceCall?.copy(phase=VoiceCallPhase.FAILED,error=error)
+-        viewModelScope.launch { delay(600); endVoiceCall("connection_failed") }
++        voiceMediaConnected=false
++        val current=activeVoiceCall ?: return
++        activeVoiceCall=current.copy(phase=VoiceCallPhase.RECONNECTING,error=null)
++        scheduleCallReconnectDeadline()
++        if(networkAvailable && !current.incoming){
++            viewModelScope.launch { delay(700); triggerCallIceRestart("engine_error") }
++        }
++    }
++
++    private fun triggerCallIceRestart(reason:String) {
++        val current=activeVoiceCall ?: return
++        if(current.incoming || !networkAvailable) return
++        val now=System.currentTimeMillis()
++        if(now-lastIceRestartAtMs < 3_000L) return
++        val restarted=voiceEngine?.restartIceAndCreateOffer() == true
++        if(restarted){
++            lastIceRestartAtMs=now
++            callReconnectCount++
++            callDiagnostics=callDiagnostics.copy(reconnectCount=callReconnectCount,networkLabel=currentCallNetworkLabel())
++            activeVoiceCall=current.copy(phase=VoiceCallPhase.RECONNECTING,error=null)
++            scheduleCallReconnectDeadline()
++        }
++    }
++
++    private fun scheduleCallReconnectDeadline() {
++        val callId=activeVoiceCall?.callId ?: return
++        callReconnectJob?.cancel()
++        callReconnectJob=viewModelScope.launch {
++            delay(20_000L)
++            val current=activeVoiceCall
++            if(current?.callId==callId && current.phase in setOf(VoiceCallPhase.RECONNECTING,VoiceCallPhase.FAILED,VoiceCallPhase.CONNECTING)){
++                activeVoiceCall=current.copy(phase=VoiceCallPhase.FAILED,error="Connection lost")
++                delay(900L)
++                if(activeVoiceCall?.callId==callId) endVoiceCall("network_lost")
++            }
++        }
++    }
++
++    private fun startCallQualityLoop() {
++        callQualityJob?.cancel()
++        callQualityJob=viewModelScope.launch {
++            while(isActive && activeVoiceCall!=null){
++                updateCallNetworkLabel()
++                voiceEngine?.requestQualitySnapshot()
++                delay(3_000L)
++            }
++        }
++    }
++
++    private fun applyCallQuality(quality:CallQualityStats) {
++        callDiagnostics=callDiagnostics.copy(
++            networkLabel=currentCallNetworkLabel(),
++            qualityLabel=quality.qualityLabel,
++            rttMs=quality.rttMs,
++            packetLossPercent=quality.packetLossPercent,
++            bitrateKbps=quality.bitrateKbps,
++            turnConfigured=voiceCallConfig?.turnConfigured==true,
++            relayCandidateAvailable=quality.relayCandidateAvailable,
++            relayInUse=quality.relayInUse,
++            reconnectCount=callReconnectCount
++        )
++    }
++
++    private fun updateCallNetworkLabel() {
++        callDiagnostics=callDiagnostics.copy(networkLabel=currentCallNetworkLabel())
++    }
++
++    private fun currentCallNetworkLabel():String {
++        val network=connectivityManager.activeNetwork ?: return "Offline"
++        val caps=connectivityManager.getNetworkCapabilities(network) ?: return "Unknown network"
++        return when {
++            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
++            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi‑Fi"
++            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile data"
++            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
++            else -> "Network"
++        }
+     }
+ 
+     private fun startCallStateLoop() {
+@@ -1395,16 +1517,27 @@
+         val terminal=remote.state in setOf("ENDED","DECLINED","CANCELLED","MISSED","FAILED")
+         if(terminal){ finishVoiceCall(remote,false); return }
+         val current=activeVoiceCall
+-        val phase=when(remote.state){
+-            "RINGING" -> if(remote.incoming) VoiceCallPhase.INCOMING_RINGING else VoiceCallPhase.OUTGOING_RINGING
+-            "ACCEPTED","CONNECTING" -> VoiceCallPhase.CONNECTING
+-            "CONNECTED" -> VoiceCallPhase.CONNECTED
++        val phase=when {
++            current?.phase==VoiceCallPhase.RECONNECTING -> VoiceCallPhase.RECONNECTING
++            remote.state=="RINGING" -> if(remote.incoming) VoiceCallPhase.INCOMING_RINGING else VoiceCallPhase.OUTGOING_RINGING
++            remote.state in setOf("ACCEPTED","CONNECTING") -> VoiceCallPhase.CONNECTING
++            remote.state=="CONNECTED" -> if(voiceMediaConnected) VoiceCallPhase.CONNECTED else VoiceCallPhase.CONNECTING
+             else -> current?.phase ?: VoiceCallPhase.CONNECTING
+         }
+-        activeVoiceCall=VoiceCallUi(remote.id,remote.peerId,remote.peerName,remote.incoming,phase,current?.muted?:false,current?.speaker?:false,current?.routeLabel?:"Phone",current?.connectedAtMs, current?.error)
++        activeVoiceCall=VoiceCallUi(
++            callId=remote.id,peerId=remote.peerId,peerName=remote.peerName,incoming=remote.incoming,phase=phase,
++            muted=current?.muted?:false,speaker=current?.speaker?:false,routeLabel=current?.routeLabel?:"Phone",
++            connectedAtMs=current?.connectedAtMs,error=current?.error,audioInterrupted=current?.audioInterrupted?:false
++        )
+         if(remote.state in setOf("ACCEPTED","CONNECTING","CONNECTED")){
+             val config=voiceCallConfig
+-            if(config!=null){ ensureVoiceEngine(config); if(!remote.incoming && remote.state=="ACCEPTED") voiceEngine?.createOffer() }
++            if(config!=null){
++                ensureVoiceEngine(config)
++                if(!remote.incoming && remote.state=="ACCEPTED" && !callInitialOfferSent){
++                    callInitialOfferSent=true
++                    voiceEngine?.createOffer()
++                }
++            }
+         }
+     }
+ 
+@@ -1414,6 +1547,10 @@
+         current?.let { NotificationHelper.cancelIncomingCall(getApplication(),it.callId) }
+         closeVoiceEngine()
+         callStateJob?.cancel(); callStateJob=null; callSignalCursor=0L; callConnectedReported=false
++        callReconnectJob?.cancel(); callReconnectJob=null
++        callQualityJob?.cancel(); callQualityJob=null
++        callInitialOfferSent=false; voiceMediaConnected=false; callNetworkHandle=null; lastIceRestartAtMs=0L; callReconnectCount=0
++        callDiagnostics=CallDiagnostics()
+         voiceCallRoutes.clear(); callActionBusy=false
+         activeVoiceCall=null
+         refreshServerCallsAsync()
+@@ -1430,6 +1567,8 @@
+             runCatching { withContext(Dispatchers.IO){ api.recoverVoiceCall(token) } }.onSuccess { remote ->
+                 if(remote==null){ if(activeVoiceCall!=null) finishVoiceCall(null,false); return@onSuccess }
+                 voiceCallConfig=runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(token) } }.getOrNull()
++                callDiagnostics=callDiagnostics.copy(networkLabel=currentCallNetworkLabel(),turnConfigured=voiceCallConfig?.turnConfigured==true)
++                callNetworkHandle=connectivityManager.activeNetwork?.networkHandle
+                 applyRemoteCall(remote)
+                 startCallStateLoop()
+             }
+@@ -1890,6 +2029,8 @@
+                 val obj=event.payload.optJSONObject("call") ?: return
+                 val remote=api.parseVoiceCallPayload(obj)
+                 voiceCallConfig=runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(db.serverToken()) } }.getOrNull()
++                callDiagnostics=callDiagnostics.copy(networkLabel=currentCallNetworkLabel(),turnConfigured=voiceCallConfig?.turnConfigured==true)
++                callNetworkHandle=connectivityManager.activeNetwork?.networkHandle
+                 applyRemoteCall(remote)
+                 if(NotificationRuntime.appVisible){ navigate(AppScreen.VoiceCall(remote.id)) }
+                 else NotificationHelper.showIncomingCall(getApplication(),remote.id,remote.peerName)
+@@ -1977,6 +2118,8 @@
+         typingStopJobs.values.forEach { it.cancel() }
+         closeVoiceEngine()
+         callStateJob?.cancel()
++        callReconnectJob?.cancel()
++        callQualityJob?.cancel()
+         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+         voiceRecordingJob?.cancel()
+         voiceRecorder.cancel()

@@ -511,6 +511,20 @@ jobs:
           grep -q 'callType:CallType=CallType.AUDIO' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
           grep -q 'remoteRendererInitialized' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
 
+      - name: Package resolved Messenger v2.26 source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload resolved v2.26 source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26-Resolved-Source
+          path: Messenger-v2.26-Resolved-Source.zip
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug

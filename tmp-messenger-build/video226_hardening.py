@@ -118,9 +118,10 @@ answer_block='''    LaunchedEffect(initialCallId, initialCallAction, vm.activeVo
 '''
 s=s[:start]+answer_block+s[end:]
 
-# PiP on explicit minimize for video.
-old='''FilledTonalIconButton(onClick = { vm.back() }) { Icon(Icons.Filled.KeyboardArrowDown, "Minimize call") }'''
-new='''FilledTonalIconButton(onClick = {
+# PiP on explicit minimize for video using the stable icon/button markers.
+import re
+pattern=r'FilledTonalIconButton\(onClick\s*=\s*\{\s*vm\.back\(\)\s*\}\)\s*\{\s*Icon\(Icons\.Filled\.KeyboardArrowDown,\s*"Minimize call"\)\s*\}'
+replacement='''FilledTonalIconButton(onClick = {
                     if(call.callType==CallType.VIDEO && Build.VERSION.SDK_INT>=26) {
                         val activity=context as? android.app.Activity
                         runCatching {
@@ -132,8 +133,26 @@ new='''FilledTonalIconButton(onClick = {
                         }.onFailure { vm.back() }
                     } else vm.back()
                 }) { Icon(Icons.Filled.KeyboardArrowDown, "Minimize call") }'''
-if old not in s: raise SystemExit('minimize call anchor missing')
-s=s.replace(old,new,1)
+s,count=re.subn(pattern,replacement,s,count=1,flags=re.MULTILINE)
+if count!=1:
+    # Fallback: patch the button line containing KeyboardArrowDown regardless of whitespace/extra args.
+    lines=s.splitlines()
+    idx=next((i for i,l in enumerate(lines) if 'KeyboardArrowDown' in l and 'Minimize call' in l),-1)
+    if idx<0: raise SystemExit('minimize call semantic marker missing')
+    indent=lines[idx][:len(lines[idx])-len(lines[idx].lstrip())]
+    lines[idx:idx+1]=[
+        indent+'FilledTonalIconButton(onClick = {',
+        indent+'    if(call.callType==CallType.VIDEO && Build.VERSION.SDK_INT>=26) {',
+        indent+'        val activity=context as? android.app.Activity',
+        indent+'        runCatching {',
+        indent+'            activity?.enterPictureInPictureMode(',
+        indent+'                android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(9,16)).build()',
+        indent+'            )',
+        indent+'        }.onFailure { vm.back() }',
+        indent+'    } else vm.back()',
+        indent+'}) { Icon(Icons.Filled.KeyboardArrowDown, "Minimize call") }'
+    ]
+    s='\n'.join(lines)+'\n'
 
 # Calls list uses correct permission for video redial.
 old='''            val requestRedial = rememberVoiceCallPermissionAction(vm) { vm.redialVoiceCall(call) }'''

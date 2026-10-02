@@ -24,6 +24,7 @@ p.write_text(s)
 # Attachment sheet has no fake Location item; unreachable fallback must not reference removed local-only API.
 p=pkg/"MessengerApp.kt"
 s=p.read_text().replace('                                    else -> vm.addMediaMessage(chatId, kind)','                                    else -> Unit')
+s=s.replace('                        IconButton(enabled = false, onClick = {}) { Icon(Icons.Outlined.Videocam, "Video call unavailable") }\n','')
 p.write_text(s)
 
 # Retire the unused generic sync_queue subsystem. Production sync is direct REST/realtime,

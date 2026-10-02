@@ -211,15 +211,18 @@ s=s.replace('''val permissions=buildList { add(Manifest.permission.RECORD_AUDIO)
                             val camera=call.callType!=CallType.VIDEO || ContextCompat.checkSelfPermission(context,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED
                             if(mic && camera) vm.acceptVoiceCall() else permissionLauncher.launch(permissions)''',1)
 
-# Active call controls: inject camera controls immediately after microphone control.
-mic='''                CallControl(if(call.muted) Icons.Filled.MicOff else Icons.Filled.Mic, if(call.muted) "Unmute" else "Mute", call.muted) { vm.toggleVoiceCallMute() }'''
-if mic not in s: raise SystemExit('microphone control anchor missing')
-video_controls=mic+'''
-                if(call.callType==CallType.VIDEO) {
-                    CallControl(if(call.cameraEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if(call.cameraEnabled) "Camera" else "Camera off", !call.cameraEnabled) { vm.toggleCallCamera() }
-                    CallControl(Icons.Filled.Cameraswitch, "Flip", false) { vm.switchCallCamera() }
-                }'''
-s=s.replace(mic,video_controls,1)
+# Active call controls: semantic insertion after mute control.
+import re
+pattern=r'(^\s*CallControl\([^\n]*vm\.toggleVoiceCallMute\(\)\s*\}\s*$)'
+m=re.search(pattern,s,flags=re.MULTILINE)
+if not m: raise SystemExit('mute control semantic anchor missing')
+line=m.group(1)
+indent=line[:len(line)-len(line.lstrip())]
+extra='''\n''' + indent + '''if(call.callType==CallType.VIDEO) {
+''' + indent + '''    CallControl(if(call.cameraEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if(call.cameraEnabled) "Camera" else "Camera off", !call.cameraEnabled) { vm.toggleCallCamera() }
+''' + indent + '''    CallControl(Icons.Filled.Cameraswitch, "Flip", false) { vm.switchCallCamera() }
+''' + indent + '''}'''
+s=s[:m.end(1)] + extra + s[m.end(1):]
 
 p.write_text(s)
 

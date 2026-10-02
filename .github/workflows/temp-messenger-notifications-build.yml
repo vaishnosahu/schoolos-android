@@ -556,10 +556,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.1'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Video-v2.26-Debug.apk
-          sha256sum Messenger-Video-v2.26-Debug.apk | tee Messenger-Video-v2.26-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26.1-Debug.apk
+          sha256sum Messenger-Video-v2.26.1-Debug.apk | tee Messenger-Video-v2.26.1-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -574,20 +574,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.1-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.1-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.1-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.sha256"
+          grep -q "versionName='2.26.1'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.1-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.1-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26-Stable
+          name: Messenger-Video-v2.26.1-Stable
           path: |
-            Messenger-Video-v2.26-Stable.apk
-            Messenger-Video-v2.26-Stable.sha256
+            Messenger-Video-v2.26.1-Stable.apk
+            Messenger-Video-v2.26.1-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -596,10 +596,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26-Debug
+          name: Messenger-Video-v2.26.1-Debug
           path: |
-            Messenger-Video-v2.26-Debug.apk
-            Messenger-Video-v2.26-Debug.sha256
+            Messenger-Video-v2.26.1-Debug.apk
+            Messenger-Video-v2.26.1-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

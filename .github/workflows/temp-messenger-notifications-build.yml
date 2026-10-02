@@ -1,8 +1,8 @@
-name: Messenger Runtime Parity 2.23 Build
+name: Messenger Parity Closure 2.24 Build
 
 on:
   push:
-    branches: [ messenger-runtime-parity223-20261002 ]
+    branches: [ messenger-parity-closure224-20261002 ]
 
 permissions:
   contents: read
@@ -456,6 +456,20 @@ jobs:
           grep -q 'ForwardMessageScreen' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
           grep -q 'MediaBrowserScreen' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
 
+      - name: Apply parity closure 2.24
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/parity224_ci_patch.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'versionName = "2.24"' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionCode = 35' "$ROOT/app/build.gradle.kts"
+          grep -q 'forceRelayOnly' "$ROOT/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
+          grep -q 'IceTransportsType.RELAY' "$ROOT/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
+          grep -q 'answerWaitingVoiceCall' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'declineWaitingVoiceCall' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'End & answer' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'Relay validation' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -471,10 +485,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.23'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.24'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Runtime-Parity-v2.23-Debug.apk
-          sha256sum Messenger-Runtime-Parity-v2.23-Debug.apk | tee Messenger-Runtime-Parity-v2.23-Debug.sha256
+          cp "$APK" Messenger-Parity-Closure-v2.24-Debug.apk
+          sha256sum Messenger-Parity-Closure-v2.24-Debug.apk | tee Messenger-Parity-Closure-v2.24-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -489,20 +503,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Runtime-Parity-v2.23-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Runtime-Parity-v2.23-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Runtime-Parity-v2.23-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Parity-Closure-v2.24-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Parity-Closure-v2.24-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Parity-Closure-v2.24-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.23'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Runtime-Parity-v2.23-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Runtime-Parity-v2.23-Stable.sha256"
+          grep -q "versionName='2.24'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Parity-Closure-v2.24-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Parity-Closure-v2.24-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Runtime-Parity-v2.23-Stable
+          name: Messenger-Parity-Closure-v2.24-Stable
           path: |
-            Messenger-Runtime-Parity-v2.23-Stable.apk
-            Messenger-Runtime-Parity-v2.23-Stable.sha256
+            Messenger-Parity-Closure-v2.24-Stable.apk
+            Messenger-Parity-Closure-v2.24-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -511,10 +525,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Runtime-Parity-v2.23-Debug
+          name: Messenger-Parity-Closure-v2.24-Debug
           path: |
-            Messenger-Runtime-Parity-v2.23-Debug.apk
-            Messenger-Runtime-Parity-v2.23-Debug.sha256
+            Messenger-Parity-Closure-v2.24-Debug.apk
+            Messenger-Parity-Closure-v2.24-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

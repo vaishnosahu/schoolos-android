@@ -59,7 +59,7 @@ s=s.replace('''    var activeVoiceCall by mutableStateOf<VoiceCallUi?>(null)
 anchor='''    fun updateNotificationsStatusEnabled(value: Boolean) {
         notificationsStatusEnabled = value
         db.setBooleanSetting("notifications_status", value)
-        syncNotificationPreferences()
+        syncNotificationSettings()
     }
 '''
 if anchor not in s: raise SystemExit('notification status setter missing')

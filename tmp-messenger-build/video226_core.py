@@ -188,6 +188,8 @@ p.write_text(s)
 # ViewModel: generic start, video controls, engine video mode.
 p=root/'app/src/main/java/com/example/messengerui/AppViewModel.kt'
 s=p.read_text()
+if 'import android.Manifest' not in s:
+    s=s.replace('package com.example.messengerui\n','package com.example.messengerui\n\nimport android.Manifest\nimport android.content.pm.PackageManager\nimport androidx.core.content.ContextCompat\n',1)
 
 start=s.index('    fun startVoiceCall(chatId: String) {')
 end=s.index('\n    fun openVoiceCallFromNotification',start)

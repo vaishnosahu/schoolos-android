@@ -106,4 +106,7 @@ if 'cleanupLegacyChannels(manager)' not in s:
     pos=s.index('    private fun canNotify')
     s=s[:pos]+'''    private fun cleanupLegacyChannels(manager: NotificationManager) {\n        listOf("calls", "calls_v2").forEach { legacy -> if (legacy != CALLS_CHANNEL) runCatching { manager.deleteNotificationChannel(legacy) }\n    }\n\n'''+s[pos:]
 p.write_text(s)
+# Replace notification handling with one canonical full-file authority rather than patching historical variants.
+notification_authority = Path("tmp-messenger-build/NotificationHelper217.kt")
+(root/"app/src/main/java/com/example/messengerui/NotificationHelper.kt").write_text(notification_authority.read_text())
 print('canonical 2.17 applied')

@@ -96,13 +96,13 @@ s=p.read_text()
 s=s.replace('    private var callReconnectCount = 0','    private var callReconnectCount = 0\n    private var lastMediaStallRecoveryAtMs = 0L\n    private var acceptedLocallyCallId: String? = null',1)
 accept='''    fun acceptVoiceCall() {
         val current=activeVoiceCall ?: return
-        if(callActionBusy) return
+        if(current.phase!=VoiceCallPhase.INCOMING_RINGING || callActionBusy) return
         callActionBusy=true
         val token=db.serverToken()'''
 if accept not in s: raise SystemExit('accept anchor missing')
 s=s.replace(accept,'''    fun acceptVoiceCall() {
         val current=activeVoiceCall ?: return
-        if(callActionBusy) return
+        if(current.phase!=VoiceCallPhase.INCOMING_RINGING || callActionBusy) return
         callActionBusy=true
         acceptedLocallyCallId=current.callId
         val token=db.serverToken()''',1)

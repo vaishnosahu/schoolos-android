@@ -511,16 +511,32 @@ jobs:
           grep -q 'callType:CallType=CallType.AUDIO' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
           grep -q 'remoteRendererInitialized' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
 
+      - name: Apply video calling 2.26.1 media pipeline fix
+        shell: bash
+        run: |
+          base64 -d tmp-messenger-build/video2261_media_fix.patch.gz.b64 | gzip -dc > /tmp/video2261_media_fix.patch
+          cd /tmp/messenger-build/messenger_live
+          patch -p1 < /tmp/video2261_media_fix.patch
+          grep -q 'versionName = "2.26.1"' app/build.gradle.kts
+          grep -q 'versionCode = 38' app/build.gradle.kts
+          grep -q 'callType=remote.type' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'DefaultVideoEncoderFactory' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'DefaultVideoDecoderFactory' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'addTransceiver' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'containsVideoMedia' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'onTrack(transceiver:RtpTransceiver' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'remoteFrameMonitor' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+
       - name: Package resolved Messenger v2.26 source
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.1-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
       - name: Upload resolved v2.26 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26-Resolved-Source
+          name: Messenger-v2.26.1-Resolved-Source
           path: Messenger-v2.26-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1

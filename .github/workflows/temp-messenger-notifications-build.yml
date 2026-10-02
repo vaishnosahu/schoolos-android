@@ -315,7 +315,8 @@ jobs:
           patch -p1 < /tmp/turnhandoff215.patch
           grep -q 'versionName = "2.15"' app/build.gradle.kts
           grep -q 'versionCode = 26' app/build.gradle.kts
-          grep -q 'ICE_RESTART_REQUEST' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'lastIncomingRecoveryAtMs' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          ! grep -q 'ICE_RESTART_REQUEST' app/src/main/java/com/example/messengerui/AppViewModel.kt
           grep -q 'iceGatheringComplete' app/src/main/java/com/example/messengerui/CallModels.kt
           grep -q 'Relay candidate ready' app/src/main/java/com/example/messengerui/MessengerApp.kt
 

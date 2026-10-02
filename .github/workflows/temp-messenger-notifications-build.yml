@@ -586,6 +586,15 @@ jobs:
           ! grep -R -q 'openVoiceCallFromNotification(callId); return' app/src/main/java/com/example/messengerui/AppViewModel.kt
           ! find app/src/main/java -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) | grep -q .
 
+      - name: Apply v2.26.5 lint permission closure
+        shell: bash
+        run: |
+          base64 -d tmp-messenger-build/video2265_lint_permission_fix.patch.gz.b64 | gzip -dc > /tmp/video2265_lint_permission_fix.patch
+          cd /tmp/messenger-build/messenger_live
+          patch -p1 < /tmp/video2265_lint_permission_fix.patch
+          grep -q 'private fun postNotification' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+          grep -q 'POST_NOTIFICATIONS' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+
       - name: Package resolved Messenger v2.26.5 source
         shell: bash
         run: |

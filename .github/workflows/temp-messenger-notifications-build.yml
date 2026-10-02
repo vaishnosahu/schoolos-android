@@ -499,6 +499,18 @@ jobs:
           grep -q 'switchCallCamera' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
           grep -q 'remoteVideoAvailable' "$ROOT/app/src/main/java/com/example/messengerui/CallModels.kt"
 
+      - name: Apply video calling 2.26 hardening
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/video226_hardening.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'Incoming video call' "$ROOT/app/src/main/java/com/example/messengerui/IncomingCallActivity.kt"
+          grep -q 'EXTRA_CALL_TYPE' "$ROOT/app/src/main/java/com/example/messengerui/IncomingCallActivity.kt"
+          grep -q 'enterPictureInPictureMode' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'rememberVideoCallPermissionAction' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'callType:CallType=CallType.AUDIO' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+          grep -q 'remoteRendererInitialized' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug

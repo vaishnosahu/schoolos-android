@@ -1,8 +1,8 @@
-name: Messenger Lockscreen Sync 2.25 Build
+name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-lockscreen-sync225-20261002 ]
+    branches: [ messenger-video226-20261002 ]
 
 permissions:
   contents: read
@@ -483,6 +483,22 @@ jobs:
           grep -q 'FLAG_KEEP_SCREEN_ON' "$ROOT/app/src/main/java/com/example/messengerui/IncomingCallActivity.kt"
           grep -q 'calls_v4' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
 
+      - name: Apply video calling 2.26 core
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/video226_core.py
+          python3 tmp-messenger-build/video226_ui.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'versionName = "2.26"' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionCode = 37' "$ROOT/app/build.gradle.kts"
+          grep -q 'android.permission.CAMERA' "$ROOT/app/src/main/AndroidManifest.xml"
+          grep -q 'FOREGROUND_SERVICE_CAMERA' "$ROOT/app/src/main/AndroidManifest.xml"
+          grep -q 'startVideoCall' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'Camera2Enumerator' "$ROOT/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
+          grep -q 'SurfaceViewRenderer' "$ROOT/app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'switchCallCamera' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'remoteVideoAvailable' "$ROOT/app/src/main/java/com/example/messengerui/CallModels.kt"
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -498,10 +514,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.25'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Lockscreen-Sync-v2.25-Debug.apk
-          sha256sum Messenger-Lockscreen-Sync-v2.25-Debug.apk | tee Messenger-Lockscreen-Sync-v2.25-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26-Debug.apk
+          sha256sum Messenger-Video-v2.26-Debug.apk | tee Messenger-Video-v2.26-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -516,20 +532,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Lockscreen-Sync-v2.25-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Lockscreen-Sync-v2.25-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Lockscreen-Sync-v2.25-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.25'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Lockscreen-Sync-v2.25-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Lockscreen-Sync-v2.25-Stable.sha256"
+          grep -q "versionName='2.26'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Lockscreen-Sync-v2.25-Stable
+          name: Messenger-Video-v2.26-Stable
           path: |
-            Messenger-Lockscreen-Sync-v2.25-Stable.apk
-            Messenger-Lockscreen-Sync-v2.25-Stable.sha256
+            Messenger-Video-v2.26-Stable.apk
+            Messenger-Video-v2.26-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -538,10 +554,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Lockscreen-Sync-v2.25-Debug
+          name: Messenger-Video-v2.26-Debug
           path: |
-            Messenger-Lockscreen-Sync-v2.25-Debug.apk
-            Messenger-Lockscreen-Sync-v2.25-Debug.sha256
+            Messenger-Video-v2.26-Debug.apk
+            Messenger-Video-v2.26-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

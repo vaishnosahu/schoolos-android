@@ -478,6 +478,8 @@ jobs:
           grep -q 'versionName = "2.25"' "$ROOT/app/build.gradle.kts"
           grep -q 'versionCode = 36' "$ROOT/app/build.gradle.kts"
           grep -q 'calls_v4' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+          grep -q 'scheduleStartupSyncRetry' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          ! grep -q 'Server sync unavailable; local data is still available' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
           grep -q 'FLAG_KEEP_SCREEN_ON' "$ROOT/app/src/main/java/com/example/messengerui/IncomingCallActivity.kt"
           grep -q 'calls_v4' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
 

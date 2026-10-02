@@ -1,8 +1,8 @@
-name: Messenger Call Foreground 2.18 Build
+name: Messenger Incoming Call 2.19 Build
 
 on:
   push:
-    branches: [ messenger-call-fgs218-20261002 ]
+    branches: [ messenger-incoming-call219-20261002 ]
 
 permissions:
   contents: read
@@ -379,6 +379,19 @@ jobs:
           grep -q 'ServiceCompat.startForeground' "$ROOT/app/src/main/java/com/example/messengerui/CallForegroundService.kt"
           grep -q 'FOREGROUND_SERVICE_TYPE_MICROPHONE' "$ROOT/app/src/main/java/com/example/messengerui/CallForegroundService.kt"
 
+      - name: Apply incoming call 2.19 hardening
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/incoming219_ci_patch.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'versionName = "2.19"' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionCode = 30' "$ROOT/app/build.gradle.kts"
+          grep -q 'skipCallRecovery' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          grep -q 'android:showWhenLocked="true"' "$ROOT/app/src/main/AndroidManifest.xml"
+          grep -q 'android:turnScreenOn="true"' "$ROOT/app/src/main/AndroidManifest.xml"
+          grep -q 'android:launchMode="singleTop"' "$ROOT/app/src/main/AndroidManifest.xml"
+          grep -q 'messenger://call/' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -394,10 +407,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.18'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.19'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Call-FGS-v2.18-Debug.apk
-          sha256sum Messenger-Call-FGS-v2.18-Debug.apk | tee Messenger-Call-FGS-v2.18-Debug.sha256
+          cp "$APK" Messenger-Incoming-Call-v2.19-Debug.apk
+          sha256sum Messenger-Incoming-Call-v2.19-Debug.apk | tee Messenger-Incoming-Call-v2.19-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -412,20 +425,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Call-FGS-v2.18-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Call-FGS-v2.18-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Call-FGS-v2.18-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Incoming-Call-v2.19-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Incoming-Call-v2.19-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Incoming-Call-v2.19-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.18'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Call-FGS-v2.18-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Call-FGS-v2.18-Stable.sha256"
+          grep -q "versionName='2.19'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Incoming-Call-v2.19-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Incoming-Call-v2.19-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Call-FGS-v2.18-Stable
+          name: Messenger-Incoming-Call-v2.19-Stable
           path: |
-            Messenger-Call-FGS-v2.18-Stable.apk
-            Messenger-Call-FGS-v2.18-Stable.sha256
+            Messenger-Incoming-Call-v2.19-Stable.apk
+            Messenger-Incoming-Call-v2.19-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -434,10 +447,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Call-FGS-v2.18-Debug
+          name: Messenger-Incoming-Call-v2.19-Debug
           path: |
-            Messenger-Call-FGS-v2.18-Debug.apk
-            Messenger-Call-FGS-v2.18-Debug.sha256
+            Messenger-Incoming-Call-v2.19-Debug.apk
+            Messenger-Incoming-Call-v2.19-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

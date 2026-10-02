@@ -1,8 +1,8 @@
-name: Temporary Messenger Screen-Off Calls + Status Stability APK Build
+name: Messenger Canonical Integrity APK Build
 
 on:
   push:
-    branches: [ temp-messenger-call-status216-20261002 ]
+    branches: [ temp-messenger-canonical217-20261002 ]
 
 permissions:
   contents: read
@@ -344,6 +344,54 @@ jobs:
           grep -q 'restartIceAndCreateOffer' "$ROOT/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
           ! grep -q 'ICE_RESTART_REQUEST' "$ROOT/app/src/main/java/com/example/messengerui/AppViewModel.kt"
 
+      - name: Apply canonical source consolidation
+        shell: bash
+        run: |
+          python3 tmp-messenger-build/canonical217_ci_patch.py
+          ROOT=/tmp/messenger-build/messenger_live
+          grep -q 'versionName = "2.17"' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionCode = 28' "$ROOT/app/build.gradle.kts"
+          ! grep -R -q 'DemoCall' "$ROOT/app/src/main/java"
+          ! grep -R -q 'ready for API integration' "$ROOT/app/src/main/java"
+          ! grep -R -q 'New contact form will write' "$ROOT/app/src/main/java"
+          ! grep -R -q 'Profile photo picker placeholder' "$ROOT/app/src/main/java"
+          ! grep -R -q 'Media gallery UI placeholder' "$ROOT/app/src/main/java"
+          ! grep -R -q 'Location placeholder saved locally' "$ROOT/app/src/main/java"
+          ! grep -R -q 'Forward flow selected' "$ROOT/app/src/main/java"
+          ! grep -R -q 'Block action prepared' "$ROOT/app/src/main/java"
+          ! grep -R -q 'Report action prepared' "$ROOT/app/src/main/java"
+          ! grep -R -q 'ICE_RESTART_REQUEST' "$ROOT/app/src/main/java"
+          grep -q 'deleteNotificationChannel(oldId)' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+          grep -q 'calls_v3' "$ROOT/app/src/main/java/com/example/messengerui/NotificationHelper.kt"
+          grep -q 'statuses/feed.php' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'groups/create.php' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'media/upload.php' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'calls/ice.php' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'sync/poll.php' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          grep -q 'notifications/bootstrap.php' "$ROOT/app/src/main/java/com/example/messengerui/ApiClient.kt"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, hashlib, collections
+          root=Path('/tmp/messenger-build/messenger_live')
+          kt=list((root/'app/src/main/java').rglob('*.kt'))
+          hashes=collections.defaultdict(list)
+          types=collections.defaultdict(list)
+          exact=[]
+          for p in kt:
+              hashes[hashlib.sha256(p.read_bytes()).hexdigest()].append(p)
+              text=p.read_text()
+              for m in re.finditer(r'(?m)^\s*(?:data\s+|sealed\s+|open\s+|private\s+|internal\s+|public\s+)*(?:class|object|interface)\s+([A-Za-z_][A-Za-z0-9_]*)',text):
+                  types[m.group(1)].append(p)
+              sigs=collections.Counter(re.findall(r'(?m)^\s*(?:private\s+|public\s+|internal\s+|override\s+|suspend\s+|operator\s+|inline\s+)*fun\s+[^\n{=]+',text))
+              if any(c>1 for c in sigs.values()): exact.append(p)
+          dup_files=[v for v in hashes.values() if len(v)>1]
+          dup_types={k:v for k,v in types.items() if len(v)>1}
+          if dup_files: raise SystemExit(f'identical duplicate Kotlin files: {dup_files}')
+          if dup_types: raise SystemExit(f'duplicate type names: {dup_types}')
+          if exact: raise SystemExit(f'duplicate exact function signatures: {exact}')
+          print(f'canonical audit OK: {len(kt)} Kotlin files')
+          PY
+
       - name: Build Messenger debug APK
         working-directory: /tmp/messenger-build/messenger_live
         run: gradle --no-daemon clean assembleDebug
@@ -357,12 +405,12 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           test -x "$AAPT"
           test -x "$APKSIGNER"
-          "$AAPT" dump badging "$APK" | tee messenger-callstatus216-apk-badging.txt
-          grep -q "package: name='com.example.messengerui'" messenger-callstatus216-apk-badging.txt
-          grep -q "versionName='2.16'" messenger-callstatus216-apk-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-callstatus216-apksigner.txt
-          cp "$APK" Messenger-Call-Status-Stability-Debug.apk
-          sha256sum Messenger-Call-Status-Stability-Debug.apk | tee Messenger-Call-Status-Stability-Debug.sha256
+          "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.17'" messenger-canonical217-apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
+          cp "$APK" Messenger-Canonical-Integrity-Debug.apk
+          sha256sum Messenger-Canonical-Integrity-Debug.apk | tee Messenger-Canonical-Integrity-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -377,33 +425,33 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Call-Status-Stability-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Call-Status-Stability-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-callstatus216-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Call-Status-Stability-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-callstatus216-stable-badging.txt"
-          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-callstatus216-stable-badging.txt"
-          grep -q "versionName='2.16'" "$GITHUB_WORKSPACE/messenger-callstatus216-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Call-Status-Stability-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Call-Status-Stability-Stable.sha256"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Canonical-Integrity-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Canonical-Integrity-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Canonical-Integrity-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          grep -q "versionName='2.17'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Canonical-Integrity-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Canonical-Integrity-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Call-Status-Stability-Stable
+          name: Messenger-Canonical-Integrity-Stable
           path: |
-            Messenger-Call-Status-Stability-Stable.apk
-            Messenger-Call-Status-Stability-Stable.sha256
-            messenger-callstatus216-stable-badging.txt
-            messenger-callstatus216-stable-apksigner.txt
+            Messenger-Canonical-Integrity-Stable.apk
+            Messenger-Canonical-Integrity-Stable.sha256
+            messenger-canonical217-stable-badging.txt
+            messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
           retention-days: 1
 
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Call-Status-Stability-Debug
+          name: Messenger-Canonical-Integrity-Debug
           path: |
-            Messenger-Call-Status-Stability-Debug.apk
-            Messenger-Call-Status-Stability-Debug.sha256
-            messenger-callstatus216-apk-badging.txt
-            messenger-callstatus216-apksigner.txt
+            Messenger-Canonical-Integrity-Debug.apk
+            Messenger-Canonical-Integrity-Debug.sha256
+            messenger-canonical217-apk-badging.txt
+            messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1

@@ -970,54 +970,14 @@ jobs:
 
           # v2.26.19 — camera attachment permission crash hotfix only.
           # Never launch IMAGE_CAPTURE until CAMERA permission has been granted.
-          old_camera = '''    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-        val path = pendingCameraPath
-        if (saved && path != null) vm.addCameraPhoto(chatId, path) else vm.lastToast = "Camera capture cancelled"
-        pendingCameraPath = null
-    }
-    val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-'''
-          new_camera = '''    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-        val path = pendingCameraPath
-        if (saved && path != null) vm.addCameraPhoto(chatId, path) else vm.lastToast = "Camera capture cancelled"
-        pendingCameraPath = null
-    }
-    val openCameraCapture: () -> Unit = {
-        runCatching { vm.createCameraTarget() }.onSuccess { (file, uri) ->
-            pendingCameraPath = file.absolutePath
-            runCatching { takePicture.launch(uri) }.onFailure {
-                pendingCameraPath = null
-                vm.lastToast = "Unable to open camera"
-            }
-        }.onFailure {
-            pendingCameraPath = null
-            vm.lastToast = "Unable to open camera"
-        }
-    }
-    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) openCameraCapture() else vm.lastToast = "Camera permission is required to take a photo"
-    }
-    val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-'''
+          old_camera = '    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->\n        val path = pendingCameraPath\n        if (saved && path != null) vm.addCameraPhoto(chatId, path) else vm.lastToast = "Camera capture cancelled"\n        pendingCameraPath = null\n    }\n    val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n'
+          new_camera = '    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->\n        val path = pendingCameraPath\n        if (saved && path != null) vm.addCameraPhoto(chatId, path) else vm.lastToast = "Camera capture cancelled"\n        pendingCameraPath = null\n    }\n    val openCameraCapture: () -> Unit = {\n        runCatching { vm.createCameraTarget() }.onSuccess { (file, uri) ->\n            pendingCameraPath = file.absolutePath\n            runCatching { takePicture.launch(uri) }.onFailure {\n                pendingCameraPath = null\n                vm.lastToast = "Unable to open camera"\n            }\n        }.onFailure {\n            pendingCameraPath = null\n            vm.lastToast = "Unable to open camera"\n        }\n    }\n    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n        if (granted) openCameraCapture() else vm.lastToast = "Camera permission is required to take a photo"\n    }\n    val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n'
           if old_camera not in s:
               raise SystemExit("camera launcher anchor not found")
           s = s.replace(old_camera, new_camera, 1)
 
-          old_launch = '''    val launchCamera: () -> Unit = {
-        runCatching { vm.createCameraTarget() }.onSuccess { (file, uri) ->
-            pendingCameraPath = file.absolutePath
-            takePicture.launch(uri)
-        }.onFailure { vm.lastToast = "Unable to open camera" }
-    }
-'''
-          new_launch = '''    val launchCamera: () -> Unit = {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            openCameraCapture()
-        } else {
-            cameraPermission.launch(Manifest.permission.CAMERA)
-        }
-    }
-'''
+          old_launch = '    val launchCamera: () -> Unit = {\n        runCatching { vm.createCameraTarget() }.onSuccess { (file, uri) ->\n            pendingCameraPath = file.absolutePath\n            takePicture.launch(uri)\n        }.onFailure { vm.lastToast = "Unable to open camera" }\n    }\n'
+          new_launch = '    val launchCamera: () -> Unit = {\n        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {\n            openCameraCapture()\n        } else {\n            cameraPermission.launch(Manifest.permission.CAMERA)\n        }\n    }\n'
           if old_launch not in s:
               raise SystemExit("launchCamera anchor not found")
           s = s.replace(old_launch, new_launch, 1)

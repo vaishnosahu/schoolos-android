@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-ui-ux-22618-20261003 ]
+    branches: [ messenger-profile-business-catalogue-22620-20261003 ]
 
 permissions:
   contents: read

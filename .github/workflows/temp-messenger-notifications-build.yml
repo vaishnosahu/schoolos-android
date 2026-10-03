@@ -987,6 +987,7 @@ jobs:
           profile_start=s.index("@Composable\nprivate fun ProfileScreen")
           profile_end=s.index("\n@Composable\nprivate fun PrivacyScreen",profile_start)
           s=s[:profile_start]+profile_code.rstrip()+"\n"+s[profile_end:]
+          s=s.replace("@Composable\nprivate fun ProfileScreen","@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nprivate fun ProfileScreen",1)
           s=s.replace('supportingContent = { Text(vm.profile.about) }','supportingContent = { Text("Personal, business profile & catalogue") }',1)
           app.write_text(s)
 

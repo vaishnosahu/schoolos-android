@@ -655,9 +655,8 @@ jobs:
       - name: Apply v2.26.9 lockscreen single-window and two-way video hardening
         shell: bash
         run: |
-          base64 -d tmp-messenger-build/video2269_lockscreen_singlewindow_twoway_video.patch.gz.b64 | gzip -dc > /tmp/video2269_lockscreen_singlewindow_twoway_video.patch
+          python3 tmp-messenger-build/video2269_apply.py /tmp/messenger-build/messenger_live
           cd /tmp/messenger-build/messenger_live
-          patch -p1 < /tmp/video2269_lockscreen_singlewindow_twoway_video.patch
           grep -q 'versionName = "2.26.9"' app/build.gradle.kts
           grep -q 'versionCode = 46' app/build.gradle.kts
           grep -q 'full_screen_prompted_v2' app/src/main/java/com/example/messengerui/MainActivity.kt

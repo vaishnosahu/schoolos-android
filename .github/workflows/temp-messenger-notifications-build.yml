@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-ui-ux-22617-20261003 ]
+    branches: [ messenger-ui-ux-22618-20261003 ]
 
 permissions:
   contents: read
@@ -697,7 +697,7 @@ jobs:
           ! grep -q 'routeDialog' app/src/main/java/com/example/messengerui/MessengerApp.kt
           ! grep -q 'fun setVoiceCallRoute' app/src/main/java/com/example/messengerui/AppViewModel.kt
 
-      - name: Apply v2.26.17 UI UX only polish from locked v2.26.11
+      - name: Apply v2.26.18 UI UX only polish from locked v2.26.11
         shell: bash
         run: |
           set -euo pipefail
@@ -831,25 +831,215 @@ jobs:
               if old in s:
                   s=s.replace(old,new,1)
 
+          # Batch 2 — chats/conversation/attachment presentation only.
+          # Keep all existing callbacks/state/actions exactly as-is.
+          chatrow_start=s.index("@Composable\\nprivate fun ChatRow")
+          chatrow_end=s.index("\\n@Composable\\nprivate fun UpdatesTab",chatrow_start)
+          if chatrow_start<0 or chatrow_end<0:
+              raise SystemExit("ChatRow boundary not found")
+          chatrow=r'''
+@Composable
+private fun ChatRow(chat: Chat, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 3.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = if (chat.unread > 0) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .22f) else Color.Transparent
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box {
+                Avatar(chat.title, 54.dp)
+                if (chat.isGroup) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomEnd).size(20.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface)
+                    ) {
+                        Icon(Icons.Filled.Group, null, Modifier.padding(3.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        chat.title,
+                        fontWeight = if (chat.unread > 0) FontWeight.Bold else FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        chat.lastTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (chat.unread > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (chat.muted) {
+                        Icon(Icons.Outlined.VolumeOff, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Text(
+                        chat.subtitle,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (chat.pinned) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Filled.PushPin, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (chat.unread > 0) {
+                        Spacer(Modifier.width(7.dp))
+                        Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                            Text(if (chat.unread > 99) "99+" else chat.unread.toString())
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+'''
+          s=s[:chatrow_start]+chatrow+s[chatrow_end:]
+
+          # Conversation header and composer visual polish only.
+          s=s.replace(
+              'Avatar(chat.title, 38.dp)\\n                            Spacer(Modifier.width(10.dp))',
+              'Avatar(chat.title, 40.dp)\\n                            Spacer(Modifier.width(11.dp))',
+              1
+          )
+          s=s.replace(
+              'Surface(tonalElevation = 3.dp, shadowElevation = 5.dp, shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)) {',
+              'Surface(tonalElevation = 1.dp, shadowElevation = 3.dp) {',
+              1
+          )
+          s=s.replace(
+              'Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {',
+              'Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.Bottom) {',
+              1
+          )
+          s=s.replace(
+              'FilledTonalIconButton(onClick = { emojiPanel = false; attachmentSheet = true }, modifier = Modifier.size(46.dp))',
+              'FilledTonalIconButton(onClick = { emojiPanel = false; attachmentSheet = true }, modifier = Modifier.size(44.dp))',
+              1
+          )
+          s=s.replace('modifier = Modifier.size(50.dp)\\n                        ) {','modifier = Modifier.size(48.dp)\\n                        ) {',1)
+          s=s.replace(
+              'Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .34f)).padding(horizontal = 8.dp)',
+              'Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .20f)).padding(horizontal = 8.dp)',
+              1
+          )
+          s=s.replace(
+              'Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .34f))',
+              'Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .20f))',
+              1
+          )
+
+          # Message bubble presentation only; message state/status behavior is unchanged.
+          s=s.replace('Modifier.fillMaxWidth().padding(vertical = 2.dp),','Modifier.fillMaxWidth().padding(vertical = 1.dp),',1)
+          s=s.replace('modifier = Modifier.widthIn(max = 326.dp).animateContentSize().clickable(onClick = onClick),','modifier = Modifier.widthIn(max = 338.dp).animateContentSize().clickable(onClick = onClick),',1)
+          s=s.replace('topStart = 18.dp,\\n                topEnd = 18.dp,\\n                bottomStart = if (msg.outgoing) 18.dp else 6.dp,\\n                bottomEnd = if (msg.outgoing) 6.dp else 18.dp','topStart = 16.dp,\\n                topEnd = 16.dp,\\n                bottomStart = if (msg.outgoing) 16.dp else 5.dp,\\n                bottomEnd = if (msg.outgoing) 5.dp else 16.dp',1)
+          s=s.replace('Column(Modifier.padding(horizontal = 11.dp, vertical = 7.dp)) {','Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {',1)
+
+          # Attachment sheet: same existing launchers/actions, only card/grid presentation changes.
+          attach_start=s.index("    if (attachmentSheet) {")
+          attach_end=s.index("\\n}\\n\\n@Composable\\nprivate fun SelectedMessageBar",attach_start)
+          if attach_start<0 or attach_end<0:
+              raise SystemExit("attachment sheet boundary not found")
+          attach=r'''    if (attachmentSheet) {
+        ModalBottomSheet(onDismissRequest = { attachmentSheet = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+                Text("Share", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "Choose what you want to send",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(14.dp))
+                val items = listOf(
+                    Triple(Icons.Filled.InsertDriveFile, "Document", MessageKind.DOCUMENT),
+                    Triple(Icons.Filled.CameraAlt, "Camera", MessageKind.IMAGE),
+                    Triple(Icons.Filled.Image, "Gallery", MessageKind.IMAGE),
+                    Triple(Icons.Filled.Videocam, "Video", MessageKind.VIDEO),
+                    Triple(Icons.Filled.Headphones, "Audio", MessageKind.AUDIO)
+                )
+                items.chunked(3).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        row.forEach { (icon, label, kind) ->
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        attachmentSheet = false
+                                        when (label) {
+                                            "Document" -> documentPicker.launch("*/*")
+                                            "Camera" -> launchCamera()
+                                            "Gallery" -> imagePicker.launch("image/*")
+                                            "Video" -> videoPicker.launch("video/*")
+                                            "Audio" -> audioPicker.launch("audio/*")
+                                            else -> vm.addMediaMessage(chatId, kind)
+                                        }
+                                    },
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(vertical = 15.dp, horizontal = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    RoundIcon(icon, 50.dp)
+                                    Spacer(Modifier.height(7.dp))
+                                    Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                }
+                            }
+                        }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+        }
+    }
+'''
+          s=s[:attach_start]+attach+s[attach_end:]
+
           app.write_text(s)
 
           build=root/"app/build.gradle.kts"
           b=build.read_text()
           if 'versionCode = 48' not in b or 'versionName = "2.26.11"' not in b:
               raise SystemExit("v2.26.11 version metadata not found")
-          b=b.replace('versionCode = 48','versionCode = 54',1)
-          b=b.replace('versionName = "2.26.11"','versionName = "2.26.17"',1)
+          b=b.replace('versionCode = 48','versionCode = 55',1)
+          b=b.replace('versionName = "2.26.11"','versionName = "2.26.18"',1)
           build.write_text(b)
           PY
 
-          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22617-runtime-after.sha256
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22618-runtime-after.sha256
           awk '{print $2}' /tmp/v22611-runtime-before.sha256 > /tmp/v22611-runtime-files.txt
-          awk '{print $2}' /tmp/v22617-runtime-after.sha256 > /tmp/v22617-runtime-files.txt
-          cmp /tmp/v22611-runtime-files.txt /tmp/v22617-runtime-files.txt
-          diff -u /tmp/v22611-runtime-before.sha256 /tmp/v22617-runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22617-changed-runtime.txt || true
-          test "$(cat /tmp/v22617-changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/MessengerApp.kt"
-          grep -q 'versionName = "2.26.17"' app/build.gradle.kts
-          grep -q 'versionCode = 54' app/build.gradle.kts
+          awk '{print $2}' /tmp/v22618-runtime-after.sha256 > /tmp/v22618-runtime-files.txt
+          cmp /tmp/v22611-runtime-files.txt /tmp/v22618-runtime-files.txt
+          diff -u /tmp/v22611-runtime-before.sha256 /tmp/v22618-runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22618-changed-runtime.txt || true
+          test "$(cat /tmp/v22618-changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'versionName = "2.26.18"' app/build.gradle.kts
+          grep -q 'versionCode = 55' app/build.gradle.kts
           grep -q 'Your voice and video calls will appear here' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'vm.toggleVoiceCallMute()' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'vm.toggleCallCamera()' app/src/main/java/com/example/messengerui/MessengerApp.kt
@@ -861,17 +1051,17 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.bak' -o -name '*.rej' \) -print)"
           echo "UI_ONLY_REGRESSION_BOUNDARY_PASS"
 
-      - name: Package resolved Messenger v2.26.17 source
+      - name: Package resolved Messenger v2.26.18 source
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.17-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.18-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
-      - name: Upload resolved v2.26.17 source
+      - name: Upload resolved v2.26.18 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.17-Resolved-Source
-          path: Messenger-v2.26.17-Resolved-Source.zip
+          name: Messenger-v2.26.18-Resolved-Source
+          path: Messenger-v2.26.18-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -894,10 +1084,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.17'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.18'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Video-v2.26.17-Debug.apk
-          sha256sum Messenger-Video-v2.26.17-Debug.apk | tee Messenger-Video-v2.26.17-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26.18-Debug.apk
+          sha256sum Messenger-Video-v2.26.18-Debug.apk | tee Messenger-Video-v2.26.18-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -912,20 +1102,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.17'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.sha256"
+          grep -q "versionName='2.26.18'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.17-Stable
+          name: Messenger-Video-v2.26.18-Stable
           path: |
-            Messenger-Video-v2.26.17-Stable.apk
-            Messenger-Video-v2.26.17-Stable.sha256
+            Messenger-Video-v2.26.18-Stable.apk
+            Messenger-Video-v2.26.18-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -934,12 +1124,12 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.17-Debug
+          name: Messenger-Video-v2.26.18-Debug
           path: |
-            Messenger-Video-v2.26.17-Debug.apk
-            Messenger-Video-v2.26.17-Debug.sha256
+            Messenger-Video-v2.26.18-Debug.apk
+            Messenger-Video-v2.26.18-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# ui22617 trigger
+# ui22618 trigger

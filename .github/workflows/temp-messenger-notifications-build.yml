@@ -1033,6 +1033,7 @@ jobs:
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22620-business-before.sha256
           cat "$GITHUB_WORKSPACE/tmp-messenger-build/v22621-patch/part-00.b64" "$GITHUB_WORKSPACE/tmp-messenger-build/v22621-patch/part-01.b64" | base64 --decode | gzip -dc > /tmp/v22621.patch
           patch -p1 < /tmp/v22621.patch
+          python3 "$GITHUB_WORKSPACE/tmp-messenger-build/v22621_compile_fix.py"
           grep -q 'versionName = "2.26.21"' app/build.gradle.kts
           grep -q 'versionCode = 58' app/build.gradle.kts
           grep -q 'business/profile.php' app/src/main/java/com/example/messengerui/ApiClient.kt

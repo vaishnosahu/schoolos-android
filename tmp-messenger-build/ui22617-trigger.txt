@@ -1,0 +1,1 @@
+Messenger v2.26.17 UI-only build trigger. Runtime source changes are restricted to MessengerApp.kt; calling engine and services are frozen.

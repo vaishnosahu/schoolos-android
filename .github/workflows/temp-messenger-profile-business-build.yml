@@ -1,0 +1,113 @@
+name: Messenger Profile Business 2.26.20
+
+on:
+  push:
+    branches: [ messenger-profile-22620-20261003 ]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Download exact v2.26.19 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Messenger-v2.26.19-Resolved-Source
+          path: /tmp/profile-source
+          github-token: ${{ github.token }}
+          repository: vaishnosahu/schoolos-android
+          run-id: 37127150784
+
+      - name: Apply profile business catalogue UI only
+        shell: bash
+        run: |
+          rm -rf /tmp/messenger-build
+          mkdir -p /tmp/messenger-build
+          unzip -q /tmp/profile-source/Messenger-v2.26.19-Resolved-Source.zip -d /tmp/messenger-build
+          cd /tmp/messenger-build
+          grep -q 'versionName = "2.26.19"' app/build.gradle.kts
+          grep -q 'cameraPermission.launch(Manifest.permission.CAMERA)' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/runtime-before.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          app=Path("/tmp/messenger-build/app/src/main/java/com/example/messengerui/MessengerApp.kt")
+          payload=Path("$GITHUB_WORKSPACE/tmp-messenger-build/profile-business-22620.kt").read_text()
+          s=app.read_text()
+          start=s.index("@Composable\nprivate fun ProfileScreen")
+          end=s.index("\n@Composable\nprivate fun PrivacyScreen",start)
+          s=s[:start]+payload.rstrip()+"\n"+s[end:]
+          s=s.replace('supportingContent = { Text(vm.profile.about) }','supportingContent = { Text("Personal, business profile & catalogue") }',1)
+          app.write_text(s)
+          build=Path("/tmp/messenger-build/app/build.gradle.kts")
+          b=build.read_text().replace('versionCode = 56','versionCode = 57',1).replace('versionName = "2.26.19"','versionName = "2.26.20"',1)
+          build.write_text(b)
+          PY
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/runtime-after.sha256
+          diff -u /tmp/runtime-before.sha256 /tmp/runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/changed-runtime.txt || true
+          test "$(cat /tmp/changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'messenger_business_profile_v1' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Business catalogue' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Business profile completeness' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'vm.sendMessage(chat.id,msg)' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          echo PROFILE_UI_ONLY_GATE_PASS
+
+      - name: Use stable Messenger signing certificate
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          cp "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" "$HOME/.android/debug.keystore"
+
+      - name: Build and lint
+        working-directory: /tmp/messenger-build
+        run: |
+          gradle --no-daemon clean assembleDebug
+          gradle --no-daemon :app:lintDebug
+
+      - name: Verify and package
+        shell: bash
+        run: |
+          APK=/tmp/messenger-build/app/build/outputs/apk/debug/app-debug.apk
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee profile-badging.txt
+          grep -q "package: name='com.example.messengerui'" profile-badging.txt
+          grep -q "versionName='2.26.20'" profile-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee profile-apksigner.txt
+          cp "$APK" Messenger-v2.26.20-Profile-Business-Catalogue-Signed.apk
+          sha256sum Messenger-v2.26.20-Profile-Business-Catalogue-Signed.apk | tee Messenger-v2.26.20-Profile-Business-Catalogue-Signed.sha256
+          cd /tmp/messenger-build
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.20-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.20-Profile-Business-Catalogue
+          path: |
+            Messenger-v2.26.20-Profile-Business-Catalogue-Signed.apk
+            Messenger-v2.26.20-Profile-Business-Catalogue-Signed.sha256
+            Messenger-v2.26.20-Resolved-Source.zip
+            profile-badging.txt
+            profile-apksigner.txt
+          if-no-files-found: error
+          retention-days: 2

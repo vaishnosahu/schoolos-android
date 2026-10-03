@@ -1088,7 +1088,7 @@ jobs:
           cd /tmp/messenger-build/messenger_live
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22623-before.sha256
           base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22623-rich-catalogue.b64" | gzip -dc > /tmp/v22623.patch
-          patch -p1 < /tmp/v22623.patch
+          patch -p3 < /tmp/v22623.patch
           grep -q 'versionName = "2.26.23"' app/build.gradle.kts
           grep -q 'versionCode = 60' app/build.gradle.kts
           grep -q 'CatalogueChatCard' app/src/main/java/com/example/messengerui/MessengerApp.kt

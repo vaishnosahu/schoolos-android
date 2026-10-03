@@ -52,8 +52,9 @@ jobs:
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/runtime-before.sha256
           python3 - <<'PY'
           from pathlib import Path
+          import os
           app=Path("/tmp/messenger-build/app/src/main/java/com/example/messengerui/MessengerApp.kt")
-          payload=Path("$GITHUB_WORKSPACE/tmp-messenger-build/profile-business-22620.kt").read_text()
+          payload=(Path(os.environ["GITHUB_WORKSPACE"])/"tmp-messenger-build/profile-business-22620.kt").read_text()
           s=app.read_text()
           start=s.index("@Composable\nprivate fun ProfileScreen")
           end=s.index("\n@Composable\nprivate fun PrivacyScreen",start)

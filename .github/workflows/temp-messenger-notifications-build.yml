@@ -968,25 +968,79 @@ jobs:
           s=s.replace('"Camera photo" -> launchCamera()','"Camera" -> launchCamera()',1)
           s=s.replace('"Gallery photo" -> imagePicker.launch("image/*")','"Gallery" -> imagePicker.launch("image/*")',1)
 
+          # v2.26.19 — camera attachment permission crash hotfix only.
+          # Never launch IMAGE_CAPTURE until CAMERA permission has been granted.
+          old_camera = '''    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val path = pendingCameraPath
+        if (saved && path != null) vm.addCameraPhoto(chatId, path) else vm.lastToast = "Camera capture cancelled"
+        pendingCameraPath = null
+    }
+    val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+'''
+          new_camera = '''    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val path = pendingCameraPath
+        if (saved && path != null) vm.addCameraPhoto(chatId, path) else vm.lastToast = "Camera capture cancelled"
+        pendingCameraPath = null
+    }
+    val openCameraCapture: () -> Unit = {
+        runCatching { vm.createCameraTarget() }.onSuccess { (file, uri) ->
+            pendingCameraPath = file.absolutePath
+            runCatching { takePicture.launch(uri) }.onFailure {
+                pendingCameraPath = null
+                vm.lastToast = "Unable to open camera"
+            }
+        }.onFailure {
+            pendingCameraPath = null
+            vm.lastToast = "Unable to open camera"
+        }
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) openCameraCapture() else vm.lastToast = "Camera permission is required to take a photo"
+    }
+    val recordPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+'''
+          if old_camera not in s:
+              raise SystemExit("camera launcher anchor not found")
+          s = s.replace(old_camera, new_camera, 1)
+
+          old_launch = '''    val launchCamera: () -> Unit = {
+        runCatching { vm.createCameraTarget() }.onSuccess { (file, uri) ->
+            pendingCameraPath = file.absolutePath
+            takePicture.launch(uri)
+        }.onFailure { vm.lastToast = "Unable to open camera" }
+    }
+'''
+          new_launch = '''    val launchCamera: () -> Unit = {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            openCameraCapture()
+        } else {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+'''
+          if old_launch not in s:
+              raise SystemExit("launchCamera anchor not found")
+          s = s.replace(old_launch, new_launch, 1)
+
           app.write_text(s)
 
           build=root/"app/build.gradle.kts"
           b=build.read_text()
           if 'versionCode = 48' not in b or 'versionName = "2.26.11"' not in b:
               raise SystemExit("v2.26.11 version metadata not found")
-          b=b.replace('versionCode = 48','versionCode = 55',1)
-          b=b.replace('versionName = "2.26.11"','versionName = "2.26.18"',1)
+          b=b.replace('versionCode = 48','versionCode = 56',1)
+          b=b.replace('versionName = "2.26.11"','versionName = "2.26.19"',1)
           build.write_text(b)
           PY
 
-          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22618-runtime-after.sha256
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22619-runtime-after.sha256
           awk '{print $2}' /tmp/v22611-runtime-before.sha256 > /tmp/v22611-runtime-files.txt
-          awk '{print $2}' /tmp/v22618-runtime-after.sha256 > /tmp/v22618-runtime-files.txt
-          cmp /tmp/v22611-runtime-files.txt /tmp/v22618-runtime-files.txt
-          diff -u /tmp/v22611-runtime-before.sha256 /tmp/v22618-runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22618-changed-runtime.txt || true
-          test "$(cat /tmp/v22618-changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/MessengerApp.kt"
-          grep -q 'versionName = "2.26.18"' app/build.gradle.kts
-          grep -q 'versionCode = 55' app/build.gradle.kts
+          awk '{print $2}' /tmp/v22619-runtime-after.sha256 > /tmp/v22619-runtime-files.txt
+          cmp /tmp/v22611-runtime-files.txt /tmp/v22619-runtime-files.txt
+          diff -u /tmp/v22611-runtime-before.sha256 /tmp/v22619-runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22619-changed-runtime.txt || true
+          test "$(cat /tmp/v22619-changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'versionName = "2.26.19"' app/build.gradle.kts
+          grep -q 'versionCode = 56' app/build.gradle.kts
           grep -q 'Your voice and video calls will appear here' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'vm.toggleVoiceCallMute()' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'vm.toggleCallCamera()' app/src/main/java/com/example/messengerui/MessengerApp.kt
@@ -995,20 +1049,23 @@ jobs:
           grep -q 'vm.endVoiceCall()' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
           grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission())' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'cameraPermission.launch(Manifest.permission.CAMERA)' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Camera permission is required to take a photo' app/src/main/java/com/example/messengerui/MessengerApp.kt
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.bak' -o -name '*.rej' \) -print)"
-          echo "UI_ONLY_REGRESSION_BOUNDARY_PASS"
+          echo "UI_ONLY_CAMERA_HOTFIX_BOUNDARY_PASS"
 
-      - name: Package resolved Messenger v2.26.18 source
+      - name: Package resolved Messenger v2.26.19 source
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.18-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.19-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
-      - name: Upload resolved v2.26.18 source
+      - name: Upload resolved v2.26.19 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.18-Resolved-Source
-          path: Messenger-v2.26.18-Resolved-Source.zip
+          name: Messenger-v2.26.19-Resolved-Source
+          path: Messenger-v2.26.19-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -1031,7 +1088,7 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.18'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.19'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
           cp "$APK" Messenger-Video-v2.26.18-Debug.apk
           sha256sum Messenger-Video-v2.26.18-Debug.apk | tee Messenger-Video-v2.26.18-Debug.sha256
@@ -1053,7 +1110,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
           "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.18'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          grep -q "versionName='2.26.19'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.18-Stable.sha256"
 
       - name: Upload stable Messenger APK
@@ -1079,4 +1136,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# ui22618 trigger
+# ui22619 camera permission hotfix trigger

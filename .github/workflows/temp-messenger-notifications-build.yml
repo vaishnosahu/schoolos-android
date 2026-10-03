@@ -954,72 +954,19 @@ jobs:
           s=s.replace('topStart = 18.dp,\\n                topEnd = 18.dp,\\n                bottomStart = if (msg.outgoing) 18.dp else 6.dp,\\n                bottomEnd = if (msg.outgoing) 6.dp else 18.dp','topStart = 16.dp,\\n                topEnd = 16.dp,\\n                bottomStart = if (msg.outgoing) 16.dp else 5.dp,\\n                bottomEnd = if (msg.outgoing) 5.dp else 16.dp',1)
           s=s.replace('Column(Modifier.padding(horizontal = 11.dp, vertical = 7.dp)) {','Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {',1)
 
-          # Attachment sheet: same existing launchers/actions, only card/grid presentation changes.
-          attach_start=s.index("    if (attachmentSheet) {")
-          attach_end=s.index("\\n}\\n\\n@Composable\\nprivate fun SelectedMessageBar",attach_start)
-          if attach_start<0 or attach_end<0:
-              raise SystemExit("attachment sheet boundary not found")
-          attach=r'''    if (attachmentSheet) {
-                  ModalBottomSheet(onDismissRequest = { attachmentSheet = false }) {
-                      Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
-                          Text("Share", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                          Spacer(Modifier.height(3.dp))
-                          Text(
-                              "Choose what you want to send",
-                              style = MaterialTheme.typography.bodySmall,
-                              color = MaterialTheme.colorScheme.onSurfaceVariant
-                          )
-                          Spacer(Modifier.height(14.dp))
-                          val items = listOf(
-                              Triple(Icons.Filled.InsertDriveFile, "Document", MessageKind.DOCUMENT),
-                              Triple(Icons.Filled.CameraAlt, "Camera", MessageKind.IMAGE),
-                              Triple(Icons.Filled.Image, "Gallery", MessageKind.IMAGE),
-                              Triple(Icons.Filled.Videocam, "Video", MessageKind.VIDEO),
-                              Triple(Icons.Filled.Headphones, "Audio", MessageKind.AUDIO)
-                          )
-                          items.chunked(3).forEach { row ->
-                              Row(
-                                  Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                                  horizontalArrangement = Arrangement.spacedBy(10.dp)
-                              ) {
-                                  row.forEach { (icon, label, kind) ->
-                                      Surface(
-                                          modifier = Modifier
-                                              .weight(1f)
-                                              .clickable {
-                                                  attachmentSheet = false
-                                                  when (label) {
-                                                      "Document" -> documentPicker.launch("*/*")
-                                                      "Camera" -> launchCamera()
-                                                      "Gallery" -> imagePicker.launch("image/*")
-                                                      "Video" -> videoPicker.launch("video/*")
-                                                      "Audio" -> audioPicker.launch("audio/*")
-                                                      else -> vm.addMediaMessage(chatId, kind)
-                                                  }
-                                              },
-                                          shape = RoundedCornerShape(18.dp),
-                                          color = MaterialTheme.colorScheme.surfaceContainerLow,
-                                          border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                                      ) {
-                                          Column(
-                                              Modifier.fillMaxWidth().padding(vertical = 15.dp, horizontal = 8.dp),
-                                              horizontalAlignment = Alignment.CenterHorizontally
-                                          ) {
-                                              RoundIcon(icon, 50.dp)
-                                              Spacer(Modifier.height(7.dp))
-                                              Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                                          }
-                                      }
-                                  }
-                                  repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                              }
-                          }
-                          Spacer(Modifier.height(14.dp))
-                      }
-                  }
-              }
-          '''
-          s=s[:attach_start]+attach+s[attach_end:]
+          # Attachment sheet presentation only — same existing launchers/actions.
+          s=s.replace('Text("Share", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))',
+                      'Text("Share", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))',1)
+          s=s.replace('Triple(Icons.Filled.CameraAlt, "Camera photo", MessageKind.IMAGE)',
+                      'Triple(Icons.Filled.CameraAlt, "Camera", MessageKind.IMAGE)',1)
+          s=s.replace('Triple(Icons.Filled.Image, "Gallery photo", MessageKind.IMAGE)',
+                      'Triple(Icons.Filled.Image, "Gallery", MessageKind.IMAGE)',1)
+          s=s.replace('Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly)',
+                      'Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly)',1)
+          s=s.replace('}.padding(vertical = 14.dp),','}.padding(vertical = 12.dp),',1)
+          s=s.replace('RoundIcon(icon, 54.dp)','RoundIcon(icon, 50.dp)',1)
+          s=s.replace('"Camera photo" -> launchCamera()','"Camera" -> launchCamera()',1)
+          s=s.replace('"Gallery photo" -> imagePicker.launch("image/*")','"Gallery" -> imagePicker.launch("image/*")',1)
 
           app.write_text(s)
 

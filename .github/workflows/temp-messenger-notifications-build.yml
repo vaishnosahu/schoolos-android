@@ -1090,6 +1090,22 @@ jobs:
           base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22623-rich-catalogue.b64" | gzip -dc > /tmp/v22623.patch
           sed -i 's#/mnt/data/m22622_orig/#a/#g; s#/mnt/data/m22623_src/#b/#g' /tmp/v22623.patch
           patch -p1 < /tmp/v22623.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt")
+          s=p.read_text()
+          old='    var selectedItem by remember(publicId) { mutableStateOf<org.json.JSONObject?>(null) }\n'
+          new=old+'    val businessContext = LocalContext.current\n'
+          if old not in s: raise SystemExit("public business context anchor missing")
+          s=s.replace(old,new,1)
+          s=s.replace('onShare={sharePublicLink(LocalContext.current,payload.publicUrl, payload.title)}','onShare={sharePublicLink(businessContext,payload.publicUrl, payload.title)}',1)
+          old='@Composable private fun CatalogueItemDetailDialog(card:CatalogueCardPayload,onDismiss:()->Unit,onShare:(()->Unit)?=null,onAsk:(()->Unit)?=null){\n'
+          new='@OptIn(ExperimentalMaterial3Api::class)\n@Composable private fun CatalogueItemDetailDialog(card:CatalogueCardPayload,onDismiss:()->Unit,onShare:(()->Unit)?=null,onAsk:(()->Unit)?=null){\n    val detailContext = LocalContext.current\n'
+          if old not in s: raise SystemExit("catalogue detail anchor missing")
+          s=s.replace(old,new,1)
+          s=s.replace('sharePublicLink(LocalContext.current,card.publicUrl,card.title)','sharePublicLink(detailContext,card.publicUrl,card.title)',1)
+          p.write_text(s)
+          PY
           grep -q 'versionName = "2.26.23"' app/build.gradle.kts
           grep -q 'versionCode = 60' app/build.gradle.kts
           grep -q 'CatalogueChatCard' app/src/main/java/com/example/messengerui/MessengerApp.kt

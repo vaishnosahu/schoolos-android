@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-video226-20261002 ]
+    branches: [ messenger-v22611-video-only-hardening-20261003 ]
 
 permissions:
   contents: read
@@ -697,17 +697,195 @@ jobs:
           ! grep -q 'routeDialog' app/src/main/java/com/example/messengerui/MessengerApp.kt
           ! grep -q 'fun setVoiceCallRoute' app/src/main/java/com/example/messengerui/AppViewModel.kt
 
-      - name: Package resolved Messenger v2.26.11 source
+      - name: Apply v2.26.15 video-only hardening from locked v2.26.11
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.11-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
 
-      - name: Upload resolved v2.26.11 source
+          root=Path("/tmp/messenger-build/messenger_live")
+          main=root/"app/src/main"
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          before={str(p.relative_to(main)):digest(p) for p in main.rglob("*") if p.is_file()}
+
+          p=root/"app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
+          s=p.read_text()
+
+          old="""    private var remoteVideoSink: VideoSink? = null
+    private var usingFrontCamera = true
+"""
+          new="""    private var remoteVideoSink: VideoSink? = null
+    private var remoteFrameMonitorTrack: VideoTrack? = null
+    private var remoteRendererTrack: VideoTrack? = null
+    private var remoteRendererSink: VideoSink? = null
+    private var usingFrontCamera = true
+"""
+          assert old in s
+          s=s.replace(old,new,1)
+
+          start=s.index("    @Synchronized\n    fun attachRemoteVideoSink(sink:VideoSink?) {")
+          end=s.index("\n    fun videoEglContext()",start)
+          s=s[:start]+"""    @Synchronized
+    fun attachRemoteVideoSink(sink:VideoSink?) {
+        if(closed && sink!=null) return
+        val previousSink=remoteVideoSink
+        if(previousSink === sink) {
+            if(sink!=null) syncRemoteVideoTrackFromTransceivers()
+            return
+        }
+        if(previousSink!=null && remoteRendererTrack!=null && remoteRendererSink===previousSink) {
+            runCatching { remoteRendererTrack?.removeSink(previousSink) }
+            remoteRendererTrack=null
+            remoteRendererSink=null
+        }
+        remoteVideoSink=sink
+        if(sink!=null) syncRemoteVideoTrackFromTransceivers()
+    }
+"""+s[end:]
+
+          old="""        remoteVideoSink=null
+        remoteVideoTrack=null
+"""
+          new="""        remoteVideoSink=null
+        remoteVideoTrack=null
+        remoteFrameMonitorTrack=null
+        remoteRendererTrack=null
+        remoteRendererSink=null
+"""
+          assert old in s
+          s=s.replace(old,new,1)
+
+          start=s.index("    private fun detachRemoteVideoTrack(track:VideoTrack?) {")
+          end=s.index("\n    @Synchronized\n    private fun normalizeVideoTransceiverForTwoWayMedia()",start)
+          s=s[:start]+"""    private fun detachRemoteVideoTrack(track:VideoTrack?) {
+        if(track==null) return
+        if(remoteRendererTrack===track) {
+            remoteRendererSink?.let { sink -> runCatching { track.removeSink(sink) } }
+            remoteRendererTrack=null
+            remoteRendererSink=null
+        }
+        if(remoteFrameMonitorTrack===track) {
+            runCatching { track.removeSink(remoteFrameMonitor) }
+            remoteFrameMonitorTrack=null
+        }
+    }
+
+    private fun clearRemoteVideoTrack(expected:VideoTrack?=null) {
+        val current=remoteVideoTrack
+        if(expected!=null && current!==expected) return
+        detachRemoteVideoTrack(current)
+        remoteVideoTrack=null
+        lastRemoteVideoFrameAtMs=0L
+        reportRemoteVideoAvailable(false)
+    }
+
+    private fun attachRemoteTrackSinks(track:VideoTrack):Boolean {
+        if(!isRemoteVideoTrackUsable(track)) return false
+        if(remoteFrameMonitorTrack!==track) {
+            remoteFrameMonitorTrack?.let { old -> runCatching { old.removeSink(remoteFrameMonitor) } }
+            if(runCatching { track.addSink(remoteFrameMonitor) }.isFailure) return false
+            remoteFrameMonitorTrack=track
+        }
+        val sink=remoteVideoSink
+        if(sink==null) {
+            if(remoteRendererTrack!=null && remoteRendererSink!=null) {
+                runCatching { remoteRendererTrack?.removeSink(remoteRendererSink) }
+            }
+            remoteRendererTrack=null
+            remoteRendererSink=null
+            return true
+        }
+        if(remoteRendererTrack===track && remoteRendererSink===sink) return true
+        if(remoteRendererTrack!=null && remoteRendererSink!=null) {
+            runCatching { remoteRendererTrack?.removeSink(remoteRendererSink) }
+        }
+        if(runCatching { track.addSink(sink) }.isFailure) {
+            remoteRendererTrack=null
+            remoteRendererSink=null
+            return false
+        }
+        remoteRendererTrack=track
+        remoteRendererSink=sink
+        return true
+    }
+"""+s[end:]
+
+          start=s.index("    @Synchronized\n    private fun syncRemoteVideoTrackFromTransceivers() {")
+          end=s.index("\n    @Synchronized\n    private fun bindRemoteVideoTrack",start)
+          s=s[:start]+"""    @Synchronized
+    private fun syncRemoteVideoTrackFromTransceivers() {
+        if(!videoEnabled || closed) return
+        val current=remoteVideoTrack
+        val preferred=runCatching { videoTransceiver?.receiver?.track() as? VideoTrack }.getOrNull()
+            ?.takeIf(::isRemoteVideoTrackUsable)
+        val candidates=runCatching {
+            peer?.transceivers
+                ?.asSequence()
+                ?.mapNotNull { transceiver -> runCatching { transceiver.receiver.track() as? VideoTrack }.getOrNull() }
+                ?.filter(::isRemoteVideoTrackUsable)
+                ?.distinctBy { System.identityHashCode(it) }
+                ?.toList()
+                .orEmpty()
+        }.getOrDefault(emptyList())
+        when {
+            preferred!=null && preferred!==current -> bindRemoteVideoTrack(preferred)
+            isRemoteVideoTrackUsable(current) -> bindRemoteVideoTrack(current)
+            preferred!=null -> bindRemoteVideoTrack(preferred)
+            else -> {
+                if(current!=null) clearRemoteVideoTrack(current)
+                candidates.firstOrNull()?.let(::bindRemoteVideoTrack)
+            }
+        }
+    }
+"""+s[end:]
+
+          p.write_text(s)
+
+          b=root/"app/build.gradle.kts"
+          bs=b.read_text()
+          assert 'versionCode = 48' in bs and 'versionName = "2.26.11"' in bs
+          bs=bs.replace('versionCode = 48','versionCode = 52',1).replace('versionName = "2.26.11"','versionName = "2.26.15"',1)
+          b.write_text(bs)
+
+          after={str(p.relative_to(main)):digest(p) for p in main.rglob("*") if p.is_file()}
+          assert set(before)==set(after), "No app runtime files may be added or removed"
+          changed=sorted(k for k in before if before[k]!=after[k])
+          expected=["java/com/example/messengerui/WebRtcVoiceEngine.kt"]
+          assert changed==expected, f"Unexpected runtime changes: {changed}"
+          assert s.count("class WebRtcVoiceEngine")==1
+          assert s.count("fun attachRemoteVideoSink")==1
+          assert s.count("private fun syncRemoteVideoTrackFromTransceivers")==1
+          assert s.count("private fun bindRemoteVideoTrack")==1
+          assert "currentFresh" not in s
+          assert "replacement=candidates.firstOrNull" not in s
+          assert "remoteRendererTrack===track && remoteRendererSink===sink" in s
+          assert "preferred=runCatching { videoTransceiver?.receiver?.track() as? VideoTrack }" in s
+          print("video-only regression boundary PASS:",changed)
+          PY
+          grep -q 'versionName = "2.26.15"' app/build.gradle.kts
+          grep -q 'versionCode = 52' app/build.gradle.kts
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.bak' -o -name '*.rej' \) -print)"
+          grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+          grep -q 'FLAG_INSISTENT' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+          grep -q 'android:launchMode="singleTop"' app/src/main/AndroidManifest.xml
+          grep -q 'isPictureInPicture = pictureInPictureMode' app/src/main/java/com/example/messengerui/MainActivity.kt
+          grep -q 'SCALE_ASPECT_FIT' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+
+      - name: Package resolved Messenger v2.26.15 source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.15-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload resolved v2.26.15 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.11-Resolved-Source
-          path: Messenger-v2.26.11-Resolved-Source.zip
+          name: Messenger-v2.26.15-Resolved-Source
+          path: Messenger-v2.26.15-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -730,10 +908,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.11'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.15'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Video-v2.26.11-Debug.apk
-          sha256sum Messenger-Video-v2.26.11-Debug.apk | tee Messenger-Video-v2.26.11-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26.15-Debug.apk
+          sha256sum Messenger-Video-v2.26.15-Debug.apk | tee Messenger-Video-v2.26.15-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -748,20 +926,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.11-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.11-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.11-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.11'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.11-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.11-Stable.sha256"
+          grep -q "versionName='2.26.15'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.11-Stable
+          name: Messenger-Video-v2.26.15-Stable
           path: |
-            Messenger-Video-v2.26.11-Stable.apk
-            Messenger-Video-v2.26.11-Stable.sha256
+            Messenger-Video-v2.26.15-Stable.apk
+            Messenger-Video-v2.26.15-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -770,10 +948,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.11-Debug
+          name: Messenger-Video-v2.26.15-Debug
           path: |
-            Messenger-Video-v2.26.11-Debug.apk
-            Messenger-Video-v2.26.11-Debug.sha256
+            Messenger-Video-v2.26.15-Debug.apk
+            Messenger-Video-v2.26.15-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

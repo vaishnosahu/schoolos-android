@@ -838,81 +838,81 @@ jobs:
           if chatrow_start<0 or chatrow_end<0:
               raise SystemExit("ChatRow boundary not found")
           chatrow=r'''
-@Composable
-private fun ChatRow(chat: Chat, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 3.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = if (chat.unread > 0) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .22f) else Color.Transparent
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box {
-                Avatar(chat.title, 54.dp)
-                if (chat.isGroup) {
-                    Surface(
-                        modifier = Modifier.align(Alignment.BottomEnd).size(20.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface)
-                    ) {
-                        Icon(Icons.Filled.Group, null, Modifier.padding(3.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        chat.title,
-                        fontWeight = if (chat.unread > 0) FontWeight.Bold else FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        chat.lastTime,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (chat.unread > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (chat.muted) {
-                        Icon(Icons.Outlined.VolumeOff, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    Text(
-                        chat.subtitle,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (chat.pinned) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(Icons.Filled.PushPin, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (chat.unread > 0) {
-                        Spacer(Modifier.width(7.dp))
-                        Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                            Text(if (chat.unread > 99) "99+" else chat.unread.toString())
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-'''
+          @Composable
+          private fun ChatRow(chat: Chat, onClick: () -> Unit) {
+              Surface(
+                  modifier = Modifier
+                      .fillMaxWidth()
+                      .padding(horizontal = 10.dp, vertical = 3.dp)
+                      .clickable(onClick = onClick),
+                  shape = RoundedCornerShape(20.dp),
+                  color = if (chat.unread > 0) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .22f) else Color.Transparent
+              ) {
+                  Row(
+                      Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 11.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                  ) {
+                      Box {
+                          Avatar(chat.title, 54.dp)
+                          if (chat.isGroup) {
+                              Surface(
+                                  modifier = Modifier.align(Alignment.BottomEnd).size(20.dp),
+                                  shape = CircleShape,
+                                  color = MaterialTheme.colorScheme.secondaryContainer,
+                                  border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface)
+                              ) {
+                                  Icon(Icons.Filled.Group, null, Modifier.padding(3.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                              }
+                          }
+                      }
+                      Spacer(Modifier.width(12.dp))
+                      Column(Modifier.weight(1f)) {
+                          Row(verticalAlignment = Alignment.CenterVertically) {
+                              Text(
+                                  chat.title,
+                                  fontWeight = if (chat.unread > 0) FontWeight.Bold else FontWeight.SemiBold,
+                                  modifier = Modifier.weight(1f),
+                                  maxLines = 1,
+                                  overflow = TextOverflow.Ellipsis,
+                                  style = MaterialTheme.typography.titleMedium
+                              )
+                              Spacer(Modifier.width(8.dp))
+                              Text(
+                                  chat.lastTime,
+                                  style = MaterialTheme.typography.labelSmall,
+                                  color = if (chat.unread > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                              )
+                          }
+                          Spacer(Modifier.height(4.dp))
+                          Row(verticalAlignment = Alignment.CenterVertically) {
+                              if (chat.muted) {
+                                  Icon(Icons.Outlined.VolumeOff, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                  Spacer(Modifier.width(4.dp))
+                              }
+                              Text(
+                                  chat.subtitle,
+                                  modifier = Modifier.weight(1f),
+                                  maxLines = 1,
+                                  overflow = TextOverflow.Ellipsis,
+                                  style = MaterialTheme.typography.bodyMedium,
+                                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                              )
+                              if (chat.pinned) {
+                                  Spacer(Modifier.width(6.dp))
+                                  Icon(Icons.Filled.PushPin, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                              }
+                              if (chat.unread > 0) {
+                                  Spacer(Modifier.width(7.dp))
+                                  Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                                      Text(if (chat.unread > 99) "99+" else chat.unread.toString())
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          '''
           s=s[:chatrow_start]+chatrow+s[chatrow_end:]
 
           # Conversation header and composer visual polish only.
@@ -960,65 +960,65 @@ private fun ChatRow(chat: Chat, onClick: () -> Unit) {
           if attach_start<0 or attach_end<0:
               raise SystemExit("attachment sheet boundary not found")
           attach=r'''    if (attachmentSheet) {
-        ModalBottomSheet(onDismissRequest = { attachmentSheet = false }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
-                Text("Share", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    "Choose what you want to send",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(14.dp))
-                val items = listOf(
-                    Triple(Icons.Filled.InsertDriveFile, "Document", MessageKind.DOCUMENT),
-                    Triple(Icons.Filled.CameraAlt, "Camera", MessageKind.IMAGE),
-                    Triple(Icons.Filled.Image, "Gallery", MessageKind.IMAGE),
-                    Triple(Icons.Filled.Videocam, "Video", MessageKind.VIDEO),
-                    Triple(Icons.Filled.Headphones, "Audio", MessageKind.AUDIO)
-                )
-                items.chunked(3).forEach { row ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        row.forEach { (icon, label, kind) ->
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        attachmentSheet = false
-                                        when (label) {
-                                            "Document" -> documentPicker.launch("*/*")
-                                            "Camera" -> launchCamera()
-                                            "Gallery" -> imagePicker.launch("image/*")
-                                            "Video" -> videoPicker.launch("video/*")
-                                            "Audio" -> audioPicker.launch("audio/*")
-                                            else -> vm.addMediaMessage(chatId, kind)
-                                        }
-                                    },
-                                shape = RoundedCornerShape(18.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                            ) {
-                                Column(
-                                    Modifier.fillMaxWidth().padding(vertical = 15.dp, horizontal = 8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    RoundIcon(icon, 50.dp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                                }
-                            }
-                        }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-            }
-        }
-    }
-'''
+                  ModalBottomSheet(onDismissRequest = { attachmentSheet = false }) {
+                      Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+                          Text("Share", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                          Spacer(Modifier.height(3.dp))
+                          Text(
+                              "Choose what you want to send",
+                              style = MaterialTheme.typography.bodySmall,
+                              color = MaterialTheme.colorScheme.onSurfaceVariant
+                          )
+                          Spacer(Modifier.height(14.dp))
+                          val items = listOf(
+                              Triple(Icons.Filled.InsertDriveFile, "Document", MessageKind.DOCUMENT),
+                              Triple(Icons.Filled.CameraAlt, "Camera", MessageKind.IMAGE),
+                              Triple(Icons.Filled.Image, "Gallery", MessageKind.IMAGE),
+                              Triple(Icons.Filled.Videocam, "Video", MessageKind.VIDEO),
+                              Triple(Icons.Filled.Headphones, "Audio", MessageKind.AUDIO)
+                          )
+                          items.chunked(3).forEach { row ->
+                              Row(
+                                  Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                                  horizontalArrangement = Arrangement.spacedBy(10.dp)
+                              ) {
+                                  row.forEach { (icon, label, kind) ->
+                                      Surface(
+                                          modifier = Modifier
+                                              .weight(1f)
+                                              .clickable {
+                                                  attachmentSheet = false
+                                                  when (label) {
+                                                      "Document" -> documentPicker.launch("*/*")
+                                                      "Camera" -> launchCamera()
+                                                      "Gallery" -> imagePicker.launch("image/*")
+                                                      "Video" -> videoPicker.launch("video/*")
+                                                      "Audio" -> audioPicker.launch("audio/*")
+                                                      else -> vm.addMediaMessage(chatId, kind)
+                                                  }
+                                              },
+                                          shape = RoundedCornerShape(18.dp),
+                                          color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                          border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                      ) {
+                                          Column(
+                                              Modifier.fillMaxWidth().padding(vertical = 15.dp, horizontal = 8.dp),
+                                              horizontalAlignment = Alignment.CenterHorizontally
+                                          ) {
+                                              RoundIcon(icon, 50.dp)
+                                              Spacer(Modifier.height(7.dp))
+                                              Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                          }
+                                      }
+                                  }
+                                  repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                              }
+                          }
+                          Spacer(Modifier.height(14.dp))
+                      }
+                  }
+              }
+          '''
           s=s[:attach_start]+attach+s[attach_end:]
 
           app.write_text(s)

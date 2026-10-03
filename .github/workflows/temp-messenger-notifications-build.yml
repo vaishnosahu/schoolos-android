@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-v22611-video-only-hardening-20261003 ]
+    branches: [ messenger-ui-ux-22617-20261003 ]
 
 permissions:
   contents: read
@@ -697,49 +697,240 @@ jobs:
           ! grep -q 'routeDialog' app/src/main/java/com/example/messengerui/MessengerApp.kt
           ! grep -q 'fun setVoiceCallRoute' app/src/main/java/com/example/messengerui/AppViewModel.kt
 
-      - name: Apply v2.26.15 video-only hardening from locked v2.26.11
+      - name: Apply v2.26.17 UI UX only polish from locked v2.26.11
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/messenger-build/messenger_live
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22611-runtime-before.sha256
-          echo 'H4sICEjPwGoCA1dlYlJ0Y1ZvaWNlRW5naW5lLmt0AOw90XLbOJLv/gqaD1vkjsxxMrt3c87QXkWWE21kySc5yeWuplw0CdvcUKSWpJx4HFfd19yH3ZdcNwCSAAFQtMfZqq06PyQx0d1oNBrdjUYDWQfh5+CaWGG28sjXYLVOiLciRUHSa5Jv4p2deLXO8tIK0ijP4sg7DdL4ihRl+3uYpSVJS2+Ef381Nq9X3hnrEQjBn3kbcEWiOPCGmyjOhmWZx5ebkhQdQMfkNg7JKEiSS6C7FXCSXmUdQCdZuCkW5O8bzQgFMAPvWeG93sRJpPl+ln0huRntLfw70bZMs2ytNHwFeeakLfNRtloHNdtZfu39rchS76/L+Wx++TcSSk1fyGVehmw4y2yTh8TUep4LghUaR8GK5MHLcbrBv8ssN8J8iCOSjYJ1ucmJDmp8nbwOCh0Dy01+FYTkHEYHuG9JstYSoB2c5NCZqXEZp5+Nbabh01bT8I+DMhjdBGlKEl0ruQo2SUkpHJMwi0h+EoQgpLstwON0C/AEtT2N4igodTyfopaCQhRlHsRpWZhAlmVOglV3q2noZ4Tk0EUKKhVn6VYA81gW5XpBQhLfamcVWoGDtDACLKP1/LIguaEVrBj0fkyKMI/XlNOdnXUe34LgrIwuCOu0snQfyeWiDEERrfsdC35ug8S6BJ08sLhyWpd3VhL8dudM4Y/zGxBPtAyuSHl3CtPlLT/NRm8X89nkP8fHrnVfIXkhwJXEca2HmmrIFmtNuFq91jUpAdCn3XqENVbW9GFnJ0yCorAYnx8yMGXj9DpOiUMJ10Q5woB+BaAllU5xYE3jovxlUn0AsKv4+pCBVTJB7q4yWAoLkgR38zS5O7BeZ1lCghTYugqSgqgIt0xpg8uERD3AY1DvVZxeo8HuAZ6l0ywMEroyhrdBnGA/B5bDEV1r79B6n8YlULh/0KEvyCorydPxaffL+DoNgF0HlgXwPrAak1pT0CEvS/g3oNHpwhGf3cCcdqIssg1FYT1tB4WZdejUMoTDTgxqziegIHm+oQtCIwkd3r9vgiQuQRscHAT/DQdXdKKN8zzL1bHsuHyNidDBel2tA7/SZg8+JnEYIKfVQlDwBHcMmA0ZD5bT8q4oyQo1HuTvVA3D98eT+cVyvPgwGY1dKygsyae3e1gLnrtnD2fzj+OF1IPk/rVLaHmXhjwKgF74vxzm/bGnU7Dm7DfHdVskciYGMXg5sJR45gjoppskUZCvmH0+sLRm24gWNKED74390o1AfQqHp/82gt82vvnAEhx1NwKn37huCfwvH7IE9CkhEmLeGIludKW3KqgBw6tGOkbUQhPVHFi6WMdIIqnNIkY2lXzgn0YMYZCPQ6Fx1WkGKzfL+4uH4S5ICsEMeTJeX043BViYkxzWH5sHgCvzDek35wuCoQOJKjfUgQU+uBRcChXNsDwtAHV/qixsVX4AxyMPYVTcHOJPBr45h+/W1SYFC0pRnSv8k8PTL66AQf38lRMmWUEiF7oE5Uml1g6emfnywk2ewz7iPAY+4ySJC8eVKORUQDpX6qCUG2AW5Two07MmqOCyedm6jKvA78CSA8EeC5pJQ5pPaf2RBHggEfWgAGWf3WQpsRW47OqK5JP0JImvb0ojtRyjpTokr0VjhAdP8SYobwg6RdyyJaQ0A+PkUU/7+o46+2mWXuuUTYDEud0GOEkvs00a9SI635T9gTlhqiWPot4fg3cxjG6DNCR9Rlv10RMlZDpKIlicIemCheggz77GKwiHPgafCQSLYK1EX+9Vn1Fp8006CsrwBuZdWMDxleWIMYYXFxXSlNySZLlZM/PkSITPFvP/mJxOzj9dLEeL8Xh2MT85ufg4fDe+mM5H79y2iZB6SMmXqovHEB1Ydr1fOmhi2koCtksDtjvY/hQErAWsHQLyG4HkkXuq39VGiJoJi8CXZik/YJgzz2fwO9gffaRH4xmMd0lK4yQxcvPmaRPz4M78mtSQ91ZIP0AMWvf/5YaklsO+t8Ul0aUB48l89H558WY4mWEce6+LpvkQX4FFoIJYimbGEYfe1cV0vlwOekNenC+Gs+VkPDtHtnRMyRYaf6jYq2C8bboVuUdSgk10YJr8m+OanZkAXgyjCFQiwD/5FyCX58HdLyArq5WvOzxqT09OrnJS3LAdUMtZsVWJ2peTiPbji/14WT5ercs7B7Q1RV3Nkcg0uCSJE5eu79uvkw0ps6y8sa1v39Tmt7DzB/22W9MJPlh2K7txagWVM1jUVIBdJCsDA1nmgqw//KHFPKxkBvoaQnieKKoUik6kXtla87plOtC138KE5Ozv556SR8jmWUbLtTjGjX3Dpd784o923+Mhegxb3d+IoweYVAB0hzqny63wLjEDDLu0ZqPo8jSQFr7azYnqyzdkrxklWHL6/que2sK2HDEp056oqhNynTQ7bjUP5oXCjlv8kZlTmvHHg/WhSWY65jyn03AzoJE7+7MlG4W+nFl1zElXgX6LpryK+eBoOCYOk8+gdh5UZRfFjytays974Q0JP4MCX52RfBXTHKWgLAOrOmHx1nW7NxqejhdDMD/y4Yl3Nl6cTpbLyXx28QYcwfn42FVn26z4kj7UeXxfyeyLymwkkAJW4TdkPOY5ZvjZKzP0xY4ZO6R9IrBPCXlXcV7wcACstEA2LuhGD6QPA0KjDJHE0YGlYBk6w81S3deuj+GHq5cK/rQ3lr6RkYaoa6TWDHR8Cxuuwme+VJs94GcnDLDKDJkZ1Vh4TgCzcA7BP4VU+AFLyqEZ1ydZ1Xitd4/HcVGH0M736OAkJ+Q3oP2PHNR8TVJ5mpvefDmU6kHzBNWU7cRr3sxcU1P4FKZHdB/sbOXQTFrKconKzwxi1SKIZSAqOCY/j3TabeywMp8V4NYVij+6hJqvy6dVBzLNRkbkyh6Y/aDbyYCQq/S559jd5Z0JqUuuf9tJ1aPfFcMQ3TAHgusQuMDeOY3qiOxx3RZlkJf8d+dfX+4PXrz8eX/w8k89qNAEn14MtMmx6wKDPYpgi5xLu0juRLeuAL6X7Fr0O8+F9+Ch648TEMzj7AzvrBUg6OKz3vw8KLEj3SYL5780uJOPhJ1axGrH1I4GiQdbJqeN570jdx8C2B2dBXHu2NdZdj0Ob0BpYJefJDSotQeWjXNlayK3x9KeZXFBMPuRs4Pc56Q93JTZG2jElZNnyXOSfhtf36yDojiJE9iFmyjLEyccpTShZ71yhLMVpz29rkqHrjETGWUBUhTgUmCh9wqkOe4ynFCum8Nm7wqU4TRYUwL4BZMN7F/eJk8Kb0Xb4J9iOka/GfPqI+t6uwN4Lu4A3gNJDPqcijT/nTaewQx8yfKoagQRROCQwJDWu7GKcCtOfNAMMqTH5cpGzFucj9hJ+ian6u8waZjXVxGtl2QVACNhoZJbCq3e+9nkZDI+vjibDmcKHXRKcboJkjqTfJYlcXin0hwZIL03w/O348XFaD47n8zeD6fTTzuqL7YcuSDAxWmmuXjMSRbnd2uidjlpg3iL8XT4qUP/8XxAo7EyXYfNwsDKuEPDbAEE/jQKdOz3VFGtMrMYMiMa1ui2q3QJHcGiZkuiWToDK4GtyvxKXCUFrYdpL+L2Vhv3ertihYNp783ITaLCN3elRWyO/fzG1e6YvHB1YoKr88ppcHlMZdhNSJKpSDhG19uQHRhh5AOcVmEPpkWcTojjOK9WyHh2fLEYjz4MahHqHbvGbTPv+yxjbtdIsaIpquqn4+PJ8OL809n44sPkeDz/BwgF5XExn00/PUEo25xSlWjIyTXm0nNdzlfOEA9oRr+VccaE9ChbrTYpr+fAqinllNGcQTQlBXdMQRnb9cYlrWXF+lYwFIKJaIJq2I8nPGqyXTl/iDspZkvmeBBIt1HC7zTLDoFBdViB4DAAjJvBAg7TaCTiNsVOjQbSVHUIVKmpAg7Z6a1wFFhZGX6g+e2bfCbp6jGkhA/04DVs4TGEJCqRgKAA+nE2U0WR6iP21rFBS3ANgR5jr6bORn0CxcEaN2uT1tliwTD2EEyT/G4d5das40+a5SuqDB9ahvMky8+/ZB+DO7q+BQGATEXN4Gkc8N/DCLZMON+ynWnvzinuchOGoJ2wforwwFLLFY90FhoMOcL7fFssD8yn0/iqkuXDjml3LTosjCUglizo4NlAsQcvajhxDftvTed6uGpSaR8WraQG17xJIpB9aV0SKyXXGazIkkS23nZpChv0mQuYGoj/6P5JkOX2KTJM1ZKU1Ty5Hem3vpIQdnesqtCx5ycn44UtFhXCBm29KR0bokV7oM7FTv8UjjoYvvJZ7kxImD3TyIRsY8vkspCYRgvM5lLCdt/RPFBBdG2itGus93D7DLNreDzoNI5MOPceaHbkbtvxBKBz65KZF9CDg6qIsm1B/d9jP3sZA+jddRXyrBqIhZp8QceFoaOmFspXrZyjfvJoJEXXxQB735HXNuv6UYv7cYv68f6gjlPu0nDRqiY8ybOVQKPQoYU3JNokREDFetDXm1x7ZlJ7n2FafOnjfp7fDendkcFI/37v80gP0uEBn8tN9NCs+7alH86WH9HU97b0j8v5G637/eMMc0C1yu7Mt2qs8aM8Ubd17m1pO1h9GJisbC/30eEqe0hTdAOS6Wdm0GDt+XL+Zzf3/2+lv7tqafT+YfAI38osEXWurlCzS1UxitgAcbe4Du6SLIgOxAsvskqu4sjnUF62LtlQqEG7gCbb9crgM5lc3cNWPC5mWfk6CdLPjvsgEYnTiHwVycCWkdNIQKEvaLs92JdDirCqudUxUDfKK6D+LHGjFlRbAmS1SBzbKu/WrN7XgoAdrHqWkxFeDvN5uUpHMbC046xyTkeYchJv9DnSLyDBAR37oObGNRQ74dTBqjvd4KH7Cv88qK723O9sLxSXUwZNMvTIE84AdildV9sxLzbgkIRfCKtYOFCTHwovrSQGznBJTxKbTKcxR8I/yqOg2CL/nCsID3AyqoJTnlESj9fEoX2JgSAbnQMrKUvJQX1pau+wvjzWXhfV6asvHaw2A2gyLVW9h9zT1sKQJQXXF4ZoiwEYAg7A4ZUr7HudmdIZWaX+RULV7JBU+o/ZswmMGupWLMFYCsZP9ahlGYQ3U+majFPgdZLmNokrq6N8p8byfd9CBGWtyHBHXkJKtNwQiu4dtlSwUd0jjxVXUj4A1pUOmmSSPnZbtxVCJyn5Qnnr7AhMCu2FAzc9cfH8Bb3WDUwQ+M6oJbCFfEtoi8R49g0iCYSrjhVa4uIFubdxtino6Fo3kUSCIpwwAcp1F7G7J3jzFocPJhZYFzg+zXUmUyMdo++LdJRiWWnuNLQlbZEpPbRGouD6dUW9HojyJ8E87MiQBkV8utyFdclC0LoaExPjrYvQR+y4So1Vubcw1+i0LhRgdzdB0dgAMQvvC0vG2uU3ikSHtlwTiFwgGmd/164MMDG6pecPGCfwdteyOYbN2KjLuGcQ8bEWfmjhSv2wjzm796sP+wMhjNCXTcteM8jBsdEmvHWCcDwKA2UDdyUWX7PaSTOvO/IJTHNnSuhESsjTglnvw3iBRane8vjdxWR2bh361k8v2qug4VUcl3RMxCvRYZssl4PKVflgKaRBPyjBHO+Gz7OrC3eqky6MZVQWOIX28mtLReBLIhqqFN0tc6ITsPYM8y9VjYxjH4/PFuPR8BxE30o/sssuAk2ds280GK+4aLfxsqjKbF3flliGmaHiVsKJCxFjnko337ZgcvbWeFWCYioxtT7/IF7p6DcyTV9mLlHBwM7UnQh13W5X7qwlyyAvewizj0C1YjGk1ZUv1e2gf4b512OaDrWbf23WuJWqb64JfPNnFeT7KuLBp3pG/SAe/9Kb9tULCWmwLm6y0mlFTVL1nyzmp+U0aPV99sXveZ0XWNDdfgYfa7oqfLg/xWboY88I8qeLP+/vT92uy8KaAkbgZVfHzLdvRmZ8H7iB9k5uXnJuHhkcPmw7n9YcPnfvpXdaSWd8NAJv6dK4jz5Zo6mBYzVCAa3eZFAe/fU0WGthb7EEEYEplMd+1UKugxjLgRhEy6kiso4b6uigzStpuZdvNcmVPaSHt9aMtooirsjqEgT9Xzb+Ruxfj7wy44ka6rztAvN8JCJRJy3HkamlWGhFM/6/0jrzJkRjNpBdtJMZ4OvagKErG4K57xLXVtE8XgTcomiLvyZ4rR1JH1Ukj1CnHJu21qmjSWS7YhdagmzhGSmy5seRlLkAwpxpuoGlc1EcHGAg1cGQiF6x2Bc/Ce4m6fui7rmm1R5cPU+YD5UHRqeDksIboIZqBInRpxHXz3JesrcZHN2UcNO+wNvs53m8Rhtvs0sWsw0C0r6Osw29UFJlDSBGtv5ovdjf3/f2IezE+8EQUYcZyfEy/JSAEXX2dWco0ubj3eXayFcNNN+U1xkM9HVc5jT52oe3H/vwpmEO316gNjzy+dX8djsY6NLUFgtvIJhgMvHtgy2EmhcMtlHbDimSpE6tH80uUGbBsnwchDdbjD3N62Oc8S5OI79lQT/DN7CeYBXl76uqBNL+tdtMcLffdODbrPyutpVoTOErF8JeXq7tjlPYSgesH/y2tV+Dtydlwd+Yq4y+oI34sINDq4g1MmuSc0VJieupT6G5m7Kiz1NzbC9qpWZEl/j9d4zn4enTUWkamw95aZg4XYKxegKXLX7YJaFO9egqUWgvz+8g1nY/bCHqlIY+5lOw28nadcQAGl7c7zPHepm25rijKkwxZc+sAkon20TKLpR3iJQx8hzi1DvKMiuDhFl1cRH/IC0UQ9BUFGdh6dONGZv3H9DoHILjw78Ft/nHF+gof5ThXAGglQP9HdvECiUiSRnAtgtPSMQ3hmBT6DrVJqz+2rZ1L6acJb1TYtQxtNDRR/VsxHroy68huY7jNK17rUZRaD9DbPEjH0dHkNEtOj6pXbyK8864FR9aQn5FiD0F4Nl5rnSvi2lJPxnX0pNPyLYEs6eCfC9h05XfQ+KNGZLE3nwWZN983NODfrdZ2Doa1arK8yGPR4XeMwA/64iAd0nPFS02vNLlg63QEZP1T9Ut0xNeJnqG3n3NEsUM0eOYNfHi69ZSRb4v85JKIMSr1vtvfmPuXinvuEle55X6dJvf7Yi0a8FX1swrw6ttvqqNO8Z9BYwoSWDX1n5pTcgzKk3+yz9fwC5xWuUpNUJtpSk1EL/4P9dEuhRFSC+qEDUren95yba+dJ1Lm+cj8cTncJ+llmr/p6X1d5ZJhm03PcDRx2MsY8DPtuh5NP1w6Fv/sr+PGSr7LMtye8ewt8HQQ8SuPgE+2Iot+MJgRRri5zi1Xnjey5+2UDKP4ic+ihNMqD1hFD952/B7j+Knf9tCSR4FZrFbrMEnXW9I9U2WRXqq1ZmMPcK3g2Bb/b///T92z7CUpsFwX+4/OSHWkaujhJ+eDdPnqPOszMIs8Z1ujis422X5+U4mGuDtDETV1UpfX2RTv0RaxdD1XcwjD2+g05SxAhu1gOT3DtVKKn6KpLy57XCjMKC6NuAKNhC0atDkQQeGgsSB7hXSgRDiDsTQcVAr0aCZ9kEl0oFo0wftyG2gRD8Ddac80Gz1BrXAjHXbPcqa6BmNo61bal9XYF996fS0/TY3r8upLrsWwzQ6ZTdMC0e+9wqCh1hKe8jYUX2wSfvftHWNBWRVcrVXMRp7QevhVbsITQr+2k9kVz3QGst2HrFVRaTnhlVnqnx0FEopKOoDy672vLdd1tQ5NF2r8ga2DqijCmtbBVb/Q1PNlNbvjdMD+erNHhentBM6ios1WxwAKT/0JDMnEdE9QtSipX2OyUTyntVB83Uq88zbauLQil8orVeKie3iWtR9ddy6GVPR+fPzGnz+8pNxiGI9tTiY5vsWXKXrCnlbz/xJDRmTf5SxwCxqa7cOfazcUjiqK5vAyuW6gimhxJ+GL6Yypc7SyC3lJl0vFrQLTTR3OjvLS1rwTU8S1iqLiC890Hs6Px5fzOaL0+FURpH+LwatSZQoB5fgcbJU+W8cFDtpfonYeDdfe+ununN00JRIwlcPL2AssesUJ5U/mhuXrGCp+BiXN469YlXulu3quuswbvX+6EBTgy4VGNeQrlqJoStn8X0zhg68hhZLgTpZNoq37VAm+HoS/v8Hgvt0q0s/ll93WIqOVdYMvD0T0bcbhJhR13dctKtd3hf8DUGFg3qeZQ6auubdRvzmmhbmlJE7zWda7MAOvZU3U+j/juNNJx/GwiseuhsZyiAj0ipVZ0/4qEOUlYndJtEXqddKJDtx36dI6mPHbXdeTVuhrc5XApdCqsv/TsXc9ZjU6MU0rt8TbvWOlh6Mdgl9iTKt5OuaJoLEmVUeMKJXbthmzG+vP1EgFbFGyTnWru9XbYpyGPSNY7o9I0ljPZtwMtIvDtSITry9QfvGCSuUJWG4iLXbbTZc1/QyjUnBdjsXjgLeeYcGPm5VQvUxdp0qVxdjtCTwOV92K9Mw2i79LiU9k6sIiy13Xmi79kUuvVHqundiftnrcVdOVMpu51tRz2K5dC8LGSya1kobr+KIt7hk0s8l4eeUrjzcDjXmTkRU3Pv/6+7Kehu3gfB7foWTJwnwGu0WLQoniuvY7FpYH0Fsp30zvLHTdZHGSaRdIEj838vhfQwp2Ulf+pJDIodDcsRjjm/+01kJnYixduwvAmnECi0KAEr5Kh1zzavtLO0sdlZk0etrI+DGiwbcH3mqVQyIz4pOLjKGXAn4524AjKcj5MsgII1uvFiTh5tWaXgtG75cxmPMpYsffdQtOcvcdmXXfxMkcYssvy5k1WjyRmMt4afw1GLyQKdiUxhZwGD0zdIFExC8LILDGwrfda2VnPOUjavRXFoZJ6AjlDI9nY4bcGTwvY+37rDEu8bsRjg/SYqIanjGZNBreNsA2WED4M4N3eG5/KcNu0CxLvnxiL1tBqZF1NGa9n0BII9qYTse2oyCVIyhLbvqJ95YAJIQlLbDze365pmecofbv1qb+9ttwt2wFoZoLNSqtrillderkyY7f27uMnoJ/JvePnuQCLZVbEBnz9INhA/UccSKw5ZFgVj6w7D540f646ef6Y9fwRhqLEgrMDqMCvd78JTpD1sAdKRl16vkhTEhG60Xt8FwaFhTaV2bgDU89Ro5ePeovJBYuYoqjU1y0eiojxBc2fxlA7EoSdNz0m6HjvppaPeKhLOsBTNqtLwPsNNaFlp7hLz+Z/kw3pboWrrP+hkbCcQw2qGLJsBz1xoPXWlFZX9zf1NegA5MuNFtGK50+TxYFl97gGrq79xiBkIpUHRKqpAiZA2vee3Uzl/mTIiUJX2CNR5lQh5haL9s7lfehVaVdWK0QpdDeQEOEvRuyBiTe3ITjk8EfaG8zPP9DFcooFxxKA58T+XBJ+02xuaBpklzGUJ7v4cyK7IK1bnbv0SCAx1tET6epT8OQYCFCoQWF2Weec/draIqHVAaZCx+C1E4wADEdCPpe3SKMyGFLqAtAsyPsKbIvi69n6rovcYAOVyEQJ1f9rKU5ONFbzIazcc5NwjZwAdl+VTwSl365+YLhN22LmTeM54FgNJK3CLzafcTWVxP8h6xyac8vp+yfl+CE4NXE/DwyXjGEbynl4T0BilPPZCkNWxlH39JfZCDp/Vj5tlxVDdiuSZ1escF+bM3nE/za4JsILRPTj8SNnR40XCezMRPshlojeHVFeLsxipAOo3QJcwbQNQoRr/yxxgCOSukWafr1GPqQiPUtDJWUPaHoWnN0nR2RbojKV/d4bBZbxLTah14BQ5GuwEcnbnpGBlkSm3wjZjVMdZ85bHEu4dFWqKUZK+swftEZos+uaYjO11M5rPL+WyaqrNTNQeREbUQU8RAcivcuWNJuGOFaqCS0NMrPRdo1I9UnCs5qMdx1jiZgI/VCeVbnh0T6M3oWwlUnQMhTKFMBAopMjkbqfjNEtCI104dhdsRqiULeBDuMv8EJ9s0kDKaKtNpU1e3uqfaCkuzg5fAAA7FP6H8nwiVMDyNRMxx5o9NiOF9i2PliCFAztE6ySvtIyfG3C/l46MQuohdXL9AT7Bm2vHomhBMifqiAYQicENOQnY+L2iG4hpOcvvkcn0Jco4A9Eb9T5zV+w1YQVlms79TnmwcIgjXn1aB+XToNfBYKIDon+8HMOSly1YTHkAo8aBNTmOYJoiwhZBsTOgsfJ85o9sM3EXenu70Yjgns8lkNoD0RGPSmzEPgsrcp35nvNFwEq87+E1Zw8jDrHRR7h3byfguBQjoHTOY08H6zhMB+mJ58/htwz3z/HkNuIuia6pbEpJ8xLiKMSWocabQ5vTns2o75w7lxiICFJJVh0WSGt+rU6PFztV6fqe9STNQhCwGpNufklm4AD2fdz+Tq9Bii9eb58MZPZSZdeX+Fq/5R35F+nGmdJHLwWRMpnip+fRCksG3lSjjpHt1mZMewbYQtbXwY0dIhHQGLZmB1knhJXNGBpO5c0hz8B1nFwiGNQn+PC4hVY697aQvwXzkAHyr6lVQtcpKyt6edcplUhKhJSrJtMR6Q/rNOmVHl0NCy3445407IUsQSZR6D8PRt6c+OFRNFfVplaZ/B7sA4zq53goX8suvDHRRdpgVqu50P5+qKh/OA0TpvYuXycef0jpUf+/mQ07PhDPXydsawhZCiYGIC9zdXTi7fW1Rsv89XJYQOi1joP6nAoL1+h0kBCO7h4jUmZrhZBphj4z7tMN1hc0SaI7coFfGJ/m/xuOOEdJBOZVLoCoqpRZBfFQCi+jLqyiKFJF0hmBLwQKGghB8laTl2hmhjKIYyg3OS2eNme+RaVLQ6krX3zYfd3xtOH4NcuHkoxZ0DSUPDtXVcPJZHEw+Q0fGyTWS90gg0QjD5W9aPI3olcV4b2Lu2+WG9E0OL0RxjbJvF0zTt0wOM1h8X6/0wBXt7tPT8vmMnkUbZsnz2Imiu1pxf+OE50VsGy7IsXq89YOq9pflEj7ce3pavuG/28azeKsygw39YsYMCS6Jd44r6aUptH1VPlxJC7EMyQN+zbEzunG+l6y7Dm77WKLrmc+CPVW2CLmftW2vjTf0ozzcvP7GTnEZi8zgPp2S4bjfPSeCN7gMxBwYECcjh4/ct9nlq0S8DDaE10LttcJOCV3Whu3X18ZxtbUaUCEVm54juPlIdyZTb1FI3z0NzQdA1u/iasLtwxr855dF0dD5dSDVTuVNDkkChuUAC69EVsqrXbyZQH6qGO1old3R7uhfpR0ynMKgAAA=' | base64 -d | gzip -dc > /tmp/WebRtcVoiceEngine.kt
-          test "$(grep -c 'class WebRtcVoiceEngine' /tmp/WebRtcVoiceEngine.kt)" -eq 1
-          cp /tmp/WebRtcVoiceEngine.kt app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
-          sed -i '0,/versionCode = 48/s//versionCode = 52/' app/build.gradle.kts
-          sed -i '0,/versionName = "2.26.11"/s//versionName = "2.26.15"/' app/build.gradle.kts
-          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22615-runtime-after.sha256
-          awk '{print $2}' /tmp/v22611-runtime-before.sha256 > /tmp/v22611-runtime-files.txt
-          awk '{print $2}' /tmp/v22615-runtime-after.sha256 > /tmp/v22615-runtime-files.txt
-          cmp /tmp/v22611-runtime-files.txt /tmp/v22615-runtime-files.txt
-          diff -u /tmp/v22611-runtime-before.sha256 /tmp/v22615-runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22615-changed-runtime.txt || true
-          test "$(cat /tmp/v22615-changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
-          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.bak' -o -name '*.rej' \) -print)"
-          test "$(grep -c 'class WebRtcVoiceEngine' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt)" -eq 1
-          test "$(grep -c 'fun attachRemoteVideoSink' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt)" -eq 1
-          test "$(grep -c 'private fun syncRemoteVideoTrackFromTransceivers' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt)" -eq 1
-          ! grep -q 'currentFresh' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
-          ! grep -q 'replacement=candidates.firstOrNull' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
-          grep -q 'remoteRendererTrack===track && remoteRendererSink===sink' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
-          grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
-          grep -q 'FLAG_INSISTENT' app/src/main/java/com/example/messengerui/NotificationHelper.kt
-          grep -q 'android:launchMode="singleTop"' app/src/main/AndroidManifest.xml
-          grep -q 'isPictureInPicture = pictureInPictureMode' app/src/main/java/com/example/messengerui/MainActivity.kt
-          grep -q 'SCALE_ASPECT_FIT' app/src/main/java/com/example/messengerui/MessengerApp.kt
-          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
-          echo "VIDEO_ONLY_REGRESSION_BOUNDARY_PASS"
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Package resolved Messenger v2.26.15 source
+          root=Path("/tmp/messenger-build/messenger_live")
+          app=root/"app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          s=app.read_text()
+
+          old_calls=r'''@Composable
+          private fun CallsTab(vm: AppViewModel) {
+              LazyColumn(Modifier.fillMaxSize()) {
+                  item {
+                      Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
+                          Text("Recent calls", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier=Modifier.weight(1f))
+                          if(vm.calls.isNotEmpty()) TextButton(onClick={vm.clearCallHistory()}){Text("Clear")}
+                      }
+                  }
+                  if(vm.calls.isEmpty()) {
+                      item { Text("No calls yet", modifier=Modifier.padding(horizontal=16.dp, vertical=24.dp), color=MaterialTheme.colorScheme.onSurfaceVariant) }
+                  }
+                  items(vm.calls, key = { it.id }) { call ->
+                      val requestAudioRedial = rememberVoiceCallPermissionAction(vm) { vm.redialVoiceCall(call) }
+                      val requestVideoRedial = rememberVideoCallPermissionAction(vm) { vm.redialVoiceCall(call) }
+                      val requestRedial = if(call.type==CallType.VIDEO) requestVideoRedial else requestAudioRedial
+                      val stateLabel=when(call.state.uppercase()){
+                          "MISSED" -> "Missed"
+                          "DECLINED" -> "Declined"
+                          "CANCELLED" -> "Cancelled"
+                          "FAILED" -> "Failed"
+                          "CONNECTED","ENDED" -> if(call.direction==CallDirection.INCOMING) "Incoming" else "Outgoing"
+                          else -> if(call.direction==CallDirection.INCOMING) "Incoming" else "Outgoing"
+                      }
+                      val duration=if(call.durationSeconds>0) {
+                          val m=call.durationSeconds/60
+                          val sec=call.durationSeconds%60
+                          if(m>0) m.toString()+"m "+sec.toString()+"s" else sec.toString()+"s"
+                      } else null
+                      ListItem(
+                          modifier=Modifier.clickable { vm.navigate(AppScreen.CallDetails(call.id)) },
+                          leadingContent = { Avatar(call.contactName.ifBlank { call.contactPhone }) },
+                          headlineContent = { Text(call.contactName.ifBlank { call.contactPhone.ifBlank { "Unknown caller" } }, fontWeight = FontWeight.Medium) },
+                          supportingContent = {
+                              Column {
+                                  if(call.contactPhone.isNotBlank()) Text(call.contactPhone, style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                  Row(verticalAlignment = Alignment.CenterVertically) {
+                                      val missed=call.state.equals("MISSED",true) || call.direction==CallDirection.MISSED
+                                      val icon = if (call.direction == CallDirection.OUTGOING) Icons.Filled.CallMade else Icons.Filled.CallReceived
+                                      Icon(icon, null, modifier = Modifier.size(15.dp), tint = if (missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                      Spacer(Modifier.width(4.dp))
+                                      Text(buildString {
+                                          append(stateLabel); append(" · "); append(call.time)
+                                          duration?.let { append(" · "); append(it) }
+                                      }, color = if (missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                                  }
+                              }
+                          },
+                          trailingContent = {
+                              IconButton(onClick = { requestRedial() }) {
+                                  Icon(if(call.type==CallType.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Call, if(call.type==CallType.VIDEO)"Video call" else "Call")
+                              }
+                          }
+                      )
+                  }
+              }
+          }
+          '''
+          new_calls=r'''@Composable
+          private fun CallsTab(vm: AppViewModel) {
+              LazyColumn(
+                  Modifier.fillMaxSize(),
+                  contentPadding = PaddingValues(start=12.dp,end=12.dp,bottom=96.dp)
+              ) {
+                  item {
+                      Row(
+                          Modifier.fillMaxWidth().padding(horizontal=4.dp,vertical=10.dp),
+                          verticalAlignment=Alignment.CenterVertically
+                      ) {
+                          Column(Modifier.weight(1f)) {
+                              Text("Recent calls", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
+                              Text(
+                                  if(vm.calls.isEmpty()) "Your voice and video calls will appear here" else "${vm.calls.size} recent ${if(vm.calls.size==1) "call" else "calls"}",
+                                  style=MaterialTheme.typography.bodySmall,
+                                  color=MaterialTheme.colorScheme.onSurfaceVariant
+                              )
+                          }
+                          if(vm.calls.isNotEmpty()) TextButton(onClick={vm.clearCallHistory()}){Text("Clear")}
+                      }
+                  }
+                  if(vm.calls.isEmpty()) {
+                      item { Box(Modifier.fillParentMaxHeight(.68f)) { EmptyState(Icons.Outlined.Call, "No calls yet", "Start a voice or video call from a conversation.") } }
+                  }
+                  items(vm.calls, key = { it.id }) { call ->
+                      val requestAudioRedial = rememberVoiceCallPermissionAction(vm) { vm.redialVoiceCall(call) }
+                      val requestVideoRedial = rememberVideoCallPermissionAction(vm) { vm.redialVoiceCall(call) }
+                      val requestRedial = if(call.type==CallType.VIDEO) requestVideoRedial else requestAudioRedial
+                      val stateLabel=when(call.state.uppercase()){
+                          "MISSED" -> "Missed"
+                          "DECLINED" -> "Declined"
+                          "CANCELLED" -> "Cancelled"
+                          "FAILED" -> "Failed"
+                          "CONNECTED","ENDED" -> if(call.direction==CallDirection.INCOMING) "Incoming" else "Outgoing"
+                          else -> if(call.direction==CallDirection.INCOMING) "Incoming" else "Outgoing"
+                      }
+                      val duration=if(call.durationSeconds>0) {
+                          val m=call.durationSeconds/60
+                          val sec=call.durationSeconds%60
+                          if(m>0) m.toString()+"m "+sec.toString()+"s" else sec.toString()+"s"
+                      } else null
+                      val missed=call.state.equals("MISSED",true) || call.direction==CallDirection.MISSED
+                      Surface(
+                          modifier=Modifier.fillMaxWidth().padding(vertical=3.dp).clickable { vm.navigate(AppScreen.CallDetails(call.id)) },
+                          shape=RoundedCornerShape(18.dp),
+                          color=MaterialTheme.colorScheme.surfaceContainerLow
+                      ) {
+                          Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=11.dp),verticalAlignment=Alignment.CenterVertically) {
+                              Avatar(call.contactName.ifBlank { call.contactPhone },50.dp)
+                              Spacer(Modifier.width(12.dp))
+                              Column(Modifier.weight(1f)) {
+                                  Text(
+                                      call.contactName.ifBlank { call.contactPhone.ifBlank { "Unknown caller" } },
+                                      fontWeight=FontWeight.SemiBold,
+                                      maxLines=1,
+                                      overflow=TextOverflow.Ellipsis
+                                  )
+                                  if(call.contactPhone.isNotBlank()) Text(call.contactPhone,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
+                                  Spacer(Modifier.height(3.dp))
+                                  Row(verticalAlignment=Alignment.CenterVertically) {
+                                      val directionIcon=if(call.direction==CallDirection.OUTGOING) Icons.Filled.CallMade else Icons.Filled.CallReceived
+                                      Icon(directionIcon,null,modifier=Modifier.size(14.dp),tint=if(missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                      Spacer(Modifier.width(5.dp))
+                                      Text(
+                                          buildString {
+                                              append(stateLabel); append(" · "); append(call.time)
+                                              duration?.let { append(" · "); append(it) }
+                                          },
+                                          style=MaterialTheme.typography.bodySmall,
+                                          color=if(missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                          maxLines=1,
+                                          overflow=TextOverflow.Ellipsis
+                                      )
+                                  }
+                              }
+                              FilledTonalIconButton(onClick={requestRedial},modifier=Modifier.size(44.dp)) {
+                                  Icon(
+                                      if(call.type==CallType.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Call,
+                                      if(call.type==CallType.VIDEO) "Video call" else "Call",
+                                      modifier=Modifier.size(21.dp)
+                                  )
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          '''
+          old_calls=old_calls.replace("\n          ","\n").lstrip()
+          new_calls=new_calls.replace("\n          ","\n").lstrip()
+          if old_calls not in s:
+              raise SystemExit("CallsTab UI block not found")
+          s=s.replace(old_calls,new_calls)
+
+          replacements=[
+              ('Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp).clickable(onClick = onClick)',
+               'Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp).clickable(onClick = onClick)'),
+              ('Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically)',
+               'Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically)'),
+              ('.padding(top=76.dp,end=16.dp).size(width=112.dp,height=158.dp)',
+               '.padding(top=78.dp,end=14.dp).size(width=106.dp,height=150.dp)'),
+              ('shape=RoundedCornerShape(if(isSystemPip) 0.dp else 18.dp)',
+               'shape=RoundedCornerShape(if(isSystemPip) 0.dp else 16.dp)'),
+              ('Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(horizontal=16.dp,vertical=12.dp)',
+               'Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(horizontal=14.dp,vertical=10.dp)'),
+              ('Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha=0.34f)).padding(horizontal=12.dp,vertical=18.dp)',
+               'Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha=0.52f)).padding(horizontal=14.dp,vertical=16.dp)'),
+              ('modifier=Modifier.size(52.dp),','modifier=Modifier.size(56.dp),'),
+              ('Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = 22.dp, vertical = 18.dp)',
+               'Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(horizontal = 20.dp, vertical = 16.dp)'),
+              ('Spacer(Modifier.height(54.dp))\n        Avatar(call?.peerName ?: "Messenger", 124.dp)',
+               'Spacer(Modifier.height(44.dp))\n        Avatar(call?.peerName ?: "Messenger", 116.dp)'),
+              ('Spacer(Modifier.height(22.dp))\n        Text(call?.peerName ?: "Messenger call", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)',
+               'Spacer(Modifier.height(18.dp))\n        Text(call?.peerName ?: "Messenger call", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)')
+          ]
+          for old,new in replacements:
+              if old not in s:
+                  raise SystemExit("UI replacement anchor missing: "+old[:80])
+              s=s.replace(old,new,1)
+
+          app.write_text(s)
+
+          build=root/"app/build.gradle.kts"
+          b=build.read_text()
+          if 'versionCode = 48' not in b or 'versionName = "2.26.11"' not in b:
+              raise SystemExit("v2.26.11 version metadata not found")
+          b=b.replace('versionCode = 48','versionCode = 54',1)
+          b=b.replace('versionName = "2.26.11"','versionName = "2.26.17"',1)
+          build.write_text(b)
+          PY
+
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22617-runtime-after.sha256
+          awk '{print $2}' /tmp/v22611-runtime-before.sha256 > /tmp/v22611-runtime-files.txt
+          awk '{print $2}' /tmp/v22617-runtime-after.sha256 > /tmp/v22617-runtime-files.txt
+          cmp /tmp/v22611-runtime-files.txt /tmp/v22617-runtime-files.txt
+          diff -u /tmp/v22611-runtime-before.sha256 /tmp/v22617-runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22617-changed-runtime.txt || true
+          test "$(cat /tmp/v22617-changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/MessengerApp.kt"
+          grep -q 'versionName = "2.26.17"' app/build.gradle.kts
+          grep -q 'versionCode = 54' app/build.gradle.kts
+          grep -q 'Your voice and video calls will appear here' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'surfaceContainerLow' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'vm.toggleVoiceCallMute()' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'vm.toggleCallCamera()' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'vm.switchCallCamera()' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'vm.toggleVoiceCallSpeaker()' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'vm.endVoiceCall()' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.bak' -o -name '*.rej' \) -print)"
+          echo "UI_ONLY_REGRESSION_BOUNDARY_PASS"
+
+      - name: Package resolved Messenger v2.26.17 source
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.15-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.17-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
-      - name: Upload resolved v2.26.15 source
+      - name: Upload resolved v2.26.17 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.15-Resolved-Source
-          path: Messenger-v2.26.15-Resolved-Source.zip
+          name: Messenger-v2.26.17-Resolved-Source
+          path: Messenger-v2.26.17-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -762,10 +953,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.15'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.17'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Video-v2.26.15-Debug.apk
-          sha256sum Messenger-Video-v2.26.15-Debug.apk | tee Messenger-Video-v2.26.15-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26.17-Debug.apk
+          sha256sum Messenger-Video-v2.26.17-Debug.apk | tee Messenger-Video-v2.26.17-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -780,20 +971,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.15'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.15-Stable.sha256"
+          grep -q "versionName='2.26.17'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.17-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.15-Stable
+          name: Messenger-Video-v2.26.17-Stable
           path: |
-            Messenger-Video-v2.26.15-Stable.apk
-            Messenger-Video-v2.26.15-Stable.sha256
+            Messenger-Video-v2.26.17-Stable.apk
+            Messenger-Video-v2.26.17-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -802,10 +993,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.15-Debug
+          name: Messenger-Video-v2.26.17-Debug
           path: |
-            Messenger-Video-v2.26.15-Debug.apk
-            Messenger-Video-v2.26.15-Debug.sha256
+            Messenger-Video-v2.26.17-Debug.apk
+            Messenger-Video-v2.26.17-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

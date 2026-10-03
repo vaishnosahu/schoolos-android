@@ -833,8 +833,8 @@ jobs:
 
           # Batch 2 — chats/conversation/attachment presentation only.
           # Keep all existing callbacks/state/actions exactly as-is.
-          chatrow_start=s.index("@Composable\\nprivate fun ChatRow")
-          chatrow_end=s.index("\\n@Composable\\nprivate fun UpdatesTab",chatrow_start)
+          chatrow_start=s.index("@Composable\nprivate fun ChatRow")
+          chatrow_end=s.index("\n@Composable\nprivate fun UpdatesTab",chatrow_start)
           if chatrow_start<0 or chatrow_end<0:
               raise SystemExit("ChatRow boundary not found")
           chatrow=r'''
@@ -917,8 +917,8 @@ jobs:
 
           # Conversation header and composer visual polish only.
           s=s.replace(
-              'Avatar(chat.title, 38.dp)\\n                            Spacer(Modifier.width(10.dp))',
-              'Avatar(chat.title, 40.dp)\\n                            Spacer(Modifier.width(11.dp))',
+              'Avatar(chat.title, 38.dp)\n                            Spacer(Modifier.width(10.dp))',
+              'Avatar(chat.title, 40.dp)\n                            Spacer(Modifier.width(11.dp))',
               1
           )
           s=s.replace(
@@ -936,7 +936,7 @@ jobs:
               'FilledTonalIconButton(onClick = { emojiPanel = false; attachmentSheet = true }, modifier = Modifier.size(44.dp))',
               1
           )
-          s=s.replace('modifier = Modifier.size(50.dp)\\n                        ) {','modifier = Modifier.size(48.dp)\\n                        ) {',1)
+          s=s.replace('modifier = Modifier.size(50.dp)\n                        ) {','modifier = Modifier.size(48.dp)\n                        ) {',1)
           s=s.replace(
               'Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .34f)).padding(horizontal = 8.dp)',
               'Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .20f)).padding(horizontal = 8.dp)',
@@ -951,7 +951,7 @@ jobs:
           # Message bubble presentation only; message state/status behavior is unchanged.
           s=s.replace('Modifier.fillMaxWidth().padding(vertical = 2.dp),','Modifier.fillMaxWidth().padding(vertical = 1.dp),',1)
           s=s.replace('modifier = Modifier.widthIn(max = 326.dp).animateContentSize().clickable(onClick = onClick),','modifier = Modifier.widthIn(max = 338.dp).animateContentSize().clickable(onClick = onClick),',1)
-          s=s.replace('topStart = 18.dp,\\n                topEnd = 18.dp,\\n                bottomStart = if (msg.outgoing) 18.dp else 6.dp,\\n                bottomEnd = if (msg.outgoing) 6.dp else 18.dp','topStart = 16.dp,\\n                topEnd = 16.dp,\\n                bottomStart = if (msg.outgoing) 16.dp else 5.dp,\\n                bottomEnd = if (msg.outgoing) 5.dp else 16.dp',1)
+          s=s.replace('topStart = 18.dp,\n                topEnd = 18.dp,\n                bottomStart = if (msg.outgoing) 18.dp else 6.dp,\n                bottomEnd = if (msg.outgoing) 6.dp else 18.dp','topStart = 16.dp,\n                topEnd = 16.dp,\n                bottomStart = if (msg.outgoing) 16.dp else 5.dp,\n                bottomEnd = if (msg.outgoing) 5.dp else 16.dp',1)
           s=s.replace('Column(Modifier.padding(horizontal = 11.dp, vertical = 7.dp)) {','Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {',1)
 
           # Attachment sheet presentation only — same existing launchers/actions.

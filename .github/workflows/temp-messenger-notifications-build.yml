@@ -1051,8 +1051,8 @@ jobs:
           manifest.write_text(s.replace(old,new,1))
           build=root/"app/build.gradle.kts"
           s=build.read_text()
-          s=s.replace('versionCode = 59','versionCode = 59',1)
-          s=s.replace('versionName = "2.26.22"','versionName = "2.26.22"',1)
+          s=s.replace('versionCode = 58','versionCode = 59',1)
+          s=s.replace('versionName = "2.26.21"','versionName = "2.26.22"',1)
           build.write_text(s)
           PY
           grep -q 'versionName = "2.26.22"' app/build.gradle.kts

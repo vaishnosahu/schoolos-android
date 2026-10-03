@@ -700,180 +700,34 @@ jobs:
       - name: Apply v2.26.15 video-only hardening from locked v2.26.11
         shell: bash
         run: |
+          set -euo pipefail
           cd /tmp/messenger-build/messenger_live
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib
-
-          root=Path("/tmp/messenger-build/messenger_live")
-          main=root/"app/src/main"
-          def digest(path):
-              return hashlib.sha256(path.read_bytes()).hexdigest()
-          before={str(p.relative_to(main)):digest(p) for p in main.rglob("*") if p.is_file()}
-
-          p=root/"app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
-          s=p.read_text()
-
-          old="""    private var remoteVideoSink: VideoSink? = null
-    private var usingFrontCamera = true
-"""
-          new="""    private var remoteVideoSink: VideoSink? = null
-    private var remoteFrameMonitorTrack: VideoTrack? = null
-    private var remoteRendererTrack: VideoTrack? = null
-    private var remoteRendererSink: VideoSink? = null
-    private var usingFrontCamera = true
-"""
-          assert old in s
-          s=s.replace(old,new,1)
-
-          start=s.index("    @Synchronized\n    fun attachRemoteVideoSink(sink:VideoSink?) {")
-          end=s.index("\n    fun videoEglContext()",start)
-          s=s[:start]+"""    @Synchronized
-    fun attachRemoteVideoSink(sink:VideoSink?) {
-        if(closed && sink!=null) return
-        val previousSink=remoteVideoSink
-        if(previousSink === sink) {
-            if(sink!=null) syncRemoteVideoTrackFromTransceivers()
-            return
-        }
-        if(previousSink!=null && remoteRendererTrack!=null && remoteRendererSink===previousSink) {
-            runCatching { remoteRendererTrack?.removeSink(previousSink) }
-            remoteRendererTrack=null
-            remoteRendererSink=null
-        }
-        remoteVideoSink=sink
-        if(sink!=null) syncRemoteVideoTrackFromTransceivers()
-    }
-"""+s[end:]
-
-          old="""        remoteVideoSink=null
-        remoteVideoTrack=null
-"""
-          new="""        remoteVideoSink=null
-        remoteVideoTrack=null
-        remoteFrameMonitorTrack=null
-        remoteRendererTrack=null
-        remoteRendererSink=null
-"""
-          assert old in s
-          s=s.replace(old,new,1)
-
-          start=s.index("    private fun detachRemoteVideoTrack(track:VideoTrack?) {")
-          end=s.index("\n    @Synchronized\n    private fun normalizeVideoTransceiverForTwoWayMedia()",start)
-          s=s[:start]+"""    private fun detachRemoteVideoTrack(track:VideoTrack?) {
-        if(track==null) return
-        if(remoteRendererTrack===track) {
-            remoteRendererSink?.let { sink -> runCatching { track.removeSink(sink) } }
-            remoteRendererTrack=null
-            remoteRendererSink=null
-        }
-        if(remoteFrameMonitorTrack===track) {
-            runCatching { track.removeSink(remoteFrameMonitor) }
-            remoteFrameMonitorTrack=null
-        }
-    }
-
-    private fun clearRemoteVideoTrack(expected:VideoTrack?=null) {
-        val current=remoteVideoTrack
-        if(expected!=null && current!==expected) return
-        detachRemoteVideoTrack(current)
-        remoteVideoTrack=null
-        lastRemoteVideoFrameAtMs=0L
-        reportRemoteVideoAvailable(false)
-    }
-
-    private fun attachRemoteTrackSinks(track:VideoTrack):Boolean {
-        if(!isRemoteVideoTrackUsable(track)) return false
-        if(remoteFrameMonitorTrack!==track) {
-            remoteFrameMonitorTrack?.let { old -> runCatching { old.removeSink(remoteFrameMonitor) } }
-            if(runCatching { track.addSink(remoteFrameMonitor) }.isFailure) return false
-            remoteFrameMonitorTrack=track
-        }
-        val sink=remoteVideoSink
-        if(sink==null) {
-            if(remoteRendererTrack!=null && remoteRendererSink!=null) {
-                runCatching { remoteRendererTrack?.removeSink(remoteRendererSink) }
-            }
-            remoteRendererTrack=null
-            remoteRendererSink=null
-            return true
-        }
-        if(remoteRendererTrack===track && remoteRendererSink===sink) return true
-        if(remoteRendererTrack!=null && remoteRendererSink!=null) {
-            runCatching { remoteRendererTrack?.removeSink(remoteRendererSink) }
-        }
-        if(runCatching { track.addSink(sink) }.isFailure) {
-            remoteRendererTrack=null
-            remoteRendererSink=null
-            return false
-        }
-        remoteRendererTrack=track
-        remoteRendererSink=sink
-        return true
-    }
-"""+s[end:]
-
-          start=s.index("    @Synchronized\n    private fun syncRemoteVideoTrackFromTransceivers() {")
-          end=s.index("\n    @Synchronized\n    private fun bindRemoteVideoTrack",start)
-          s=s[:start]+"""    @Synchronized
-    private fun syncRemoteVideoTrackFromTransceivers() {
-        if(!videoEnabled || closed) return
-        val current=remoteVideoTrack
-        val preferred=runCatching { videoTransceiver?.receiver?.track() as? VideoTrack }.getOrNull()
-            ?.takeIf(::isRemoteVideoTrackUsable)
-        val candidates=runCatching {
-            peer?.transceivers
-                ?.asSequence()
-                ?.mapNotNull { transceiver -> runCatching { transceiver.receiver.track() as? VideoTrack }.getOrNull() }
-                ?.filter(::isRemoteVideoTrackUsable)
-                ?.distinctBy { System.identityHashCode(it) }
-                ?.toList()
-                .orEmpty()
-        }.getOrDefault(emptyList())
-        when {
-            preferred!=null && preferred!==current -> bindRemoteVideoTrack(preferred)
-            isRemoteVideoTrackUsable(current) -> bindRemoteVideoTrack(current)
-            preferred!=null -> bindRemoteVideoTrack(preferred)
-            else -> {
-                if(current!=null) clearRemoteVideoTrack(current)
-                candidates.firstOrNull()?.let(::bindRemoteVideoTrack)
-            }
-        }
-    }
-"""+s[end:]
-
-          p.write_text(s)
-
-          b=root/"app/build.gradle.kts"
-          bs=b.read_text()
-          assert 'versionCode = 48' in bs and 'versionName = "2.26.11"' in bs
-          bs=bs.replace('versionCode = 48','versionCode = 52',1).replace('versionName = "2.26.11"','versionName = "2.26.15"',1)
-          b.write_text(bs)
-
-          after={str(p.relative_to(main)):digest(p) for p in main.rglob("*") if p.is_file()}
-          assert set(before)==set(after), "No app runtime files may be added or removed"
-          changed=sorted(k for k in before if before[k]!=after[k])
-          expected=["java/com/example/messengerui/WebRtcVoiceEngine.kt"]
-          assert changed==expected, f"Unexpected runtime changes: {changed}"
-          assert s.count("class WebRtcVoiceEngine")==1
-          assert s.count("fun attachRemoteVideoSink")==1
-          assert s.count("private fun syncRemoteVideoTrackFromTransceivers")==1
-          assert s.count("private fun bindRemoteVideoTrack")==1
-          assert "currentFresh" not in s
-          assert "replacement=candidates.firstOrNull" not in s
-          assert "remoteRendererTrack===track && remoteRendererSink===sink" in s
-          assert "preferred=runCatching { videoTransceiver?.receiver?.track() as? VideoTrack }" in s
-          print("video-only regression boundary PASS:",changed)
-          PY
-          grep -q 'versionName = "2.26.15"' app/build.gradle.kts
-          grep -q 'versionCode = 52' app/build.gradle.kts
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22611-runtime-before.sha256
+          echo 'LS0tIGFwcC9zcmMvbWFpbi9qYXZhL2NvbS9leGFtcGxlL21lc3NlbmdlcnVpL1dlYlJ0Y1ZvaWNlRW5naW5lLmt0CisrKyBhcHAvc3JjL21haW4vamF2YS9jb20vZXhhbXBsZS9tZXNzZW5nZXJ1aS9XZWJSdGNWb2ljZUVuZ2luZS5rdApAQCAtNzUsNiArNzUsOSBAQAogICAgIHByaXZhdGUgdmFyIHN1cmZhY2VUZXh0dXJlSGVscGVyOiBTdXJmYWNlVGV4dHVyZUhlbHBlcj8gPSBudWxsCiAgICAgcHJpdmF0ZSB2YXIgbG9jYWxWaWRlb1Npbms6IFZpZGVvU2luaz8gPSBudWxsCiAgICAgcHJpdmF0ZSB2YXIgcmVtb3RlVmlkZW9TaW5rOiBWaWRlb1Npbms/ID0gbnVsbAorICAgIHByaXZhdGUgdmFyIHJlbW90ZUZyYW1lTW9uaXRvclRyYWNrOiBWaWRlb1RyYWNrPyA9IG51bGwKKyAgICBwcml2YXRlIHZhciByZW1vdGVSZW5kZXJlclRyYWNrOiBWaWRlb1RyYWNrPyA9IG51bGwKKyAgICBwcml2YXRlIHZhciByZW1vdGVSZW5kZXJlclNpbms6IFZpZGVvU2luaz8gPSBudWxsCiAgICAgcHJpdmF0ZSB2YXIgdXNpbmdGcm9udENhbWVyYSA9IHRydWUKICAgICBAVm9sYXRpbGUgcHJpdmF0ZSB2YXIgcmVtb3RlVmlkZW9SZXBvcnRlZCA9IGZhbHNlCiAgICAgQFZvbGF0aWxlIHByaXZhdGUgdmFyIGxhc3RSZW1vdGVWaWRlb0ZyYW1lQXRNcyA9IDBMCkBAIC0zMjcsMjIgKzMzMCwxOCBAQAogICAgIEBTeW5jaHJvbml6ZWQKICAgICBmdW4gYXR0YWNoUmVtb3RlVmlkZW9TaW5rKHNpbms6VmlkZW9TaW5rPykgewogICAgICAgICBpZihjbG9zZWQgJiYgc2luayE9bnVsbCkgcmV0dXJuCi0gICAgICAgIHJ1bkNhdGNoaW5nIHsKLSAgICAgICAgICAgIHZhbCBwcmV2aW91c1Npbms9cmVtb3RlVmlkZW9TaW5rCi0gICAgICAgICAgICB2YWwgY3VycmVudFRyYWNrPXJlbW90ZVZpZGVvVHJhY2sKLSAgICAgICAgICAgIGlmKHByZXZpb3VzU2luayAhPT0gc2luayl7Ci0gICAgICAgICAgICAgICAgaWYocHJldmlvdXNTaW5rIT1udWxsICYmIGlzUmVtb3RlVmlkZW9UcmFja1VzYWJsZShjdXJyZW50VHJhY2spKSB7Ci0gICAgICAgICAgICAgICAgICAgIHJ1bkNhdGNoaW5nIHsgY3VycmVudFRyYWNrPy5yZW1vdmVTaW5rKHByZXZpb3VzU2luaykgfQotICAgICAgICAgICAgICAgIH0KLSAgICAgICAgICAgICAgICByZW1vdGVWaWRlb1Npbms9c2luawotICAgICAgICAgICAgfQotICAgICAgICAgICAgaWYoc2luaz09bnVsbCkgcmV0dXJuQHJ1bkNhdGNoaW5nCi0gICAgICAgICAgICBzeW5jUmVtb3RlVmlkZW9UcmFja0Zyb21UcmFuc2NlaXZlcnMoKQotICAgICAgICB9Lm9uRmFpbHVyZSB7Ci0gICAgICAgICAgICByZW1vdGVWaWRlb1RyYWNrPW51bGwKLSAgICAgICAgICAgIGxhc3RSZW1vdGVWaWRlb0ZyYW1lQXRNcz0wTAotICAgICAgICAgICAgcmVwb3J0UmVtb3RlVmlkZW9BdmFpbGFibGUoZmFsc2UpCisgICAgICAgIHZhbCBwcmV2aW91c1Npbms9cmVtb3RlVmlkZW9TaW5rCisgICAgICAgIGlmKHByZXZpb3VzU2luayA9PT0gc2luaykgeworICAgICAgICAgICAgaWYoc2luayE9bnVsbCkgc3luY1JlbW90ZVZpZGVvVHJhY2tGcm9tVHJhbnNjZWl2ZXJzKCkKKyAgICAgICAgICAgIHJldHVybgorICAgICAgICB9CisgICAgICAgIGlmKHByZXZpb3VzU2luayE9bnVsbCAmJiByZW1vdGVSZW5kZXJlclRyYWNrIT1udWxsICYmIHJlbW90ZVJlbmRlcmVyU2luaz09PXByZXZpb3VzU2luaykgeworICAgICAgICAgICAgcnVuQ2F0Y2hpbmcgeyByZW1vdGVSZW5kZXJlclRyYWNrPy5yZW1vdmVTaW5rKHByZXZpb3VzU2luaykgfQorICAgICAgICAgICAgcmVtb3RlUmVuZGVyZXJUcmFjaz1udWxsCisgICAgICAgICAgICByZW1vdGVSZW5kZXJlclNpbms9bnVsbAogICAgICAgICB9CisgICAgICAgIHJlbW90ZVZpZGVvU2luaz1zaW5rCisgICAgICAgIGlmKHNpbmshPW51bGwpIHN5bmNSZW1vdGVWaWRlb1RyYWNrRnJvbVRyYW5zY2VpdmVycygpCiAgICAgfQogCiAgICAgZnVuIHZpZGVvRWdsQ29udGV4dCgpOiBFZ2xCYXNlLkNvbnRleHQ/ID0gaWYodmlkZW9FbmFibGVkICYmICFjbG9zZWQpIE1lc3NlbmdlcldlYlJ0Y0VnbC5jb250ZXh0IGVsc2UgbnVsbApAQCAtNDg5LDYgKzQ4OCw5IEBACiAgICAgICAgIH0KICAgICAgICAgcmVtb3RlVmlkZW9TaW5rPW51bGwKICAgICAgICAgcmVtb3RlVmlkZW9UcmFjaz1udWxsCisgICAgICAgIHJlbW90ZUZyYW1lTW9uaXRvclRyYWNrPW51bGwKKyAgICAgICAgcmVtb3RlUmVuZGVyZXJUcmFjaz1udWxsCisgICAgICAgIHJlbW90ZVJlbmRlcmVyU2luaz1udWxsCiAgICAgICAgIHJlcG9ydFJlbW90ZVZpZGVvQXZhaWxhYmxlKGZhbHNlKQogICAgICAgICBydW5DYXRjaGluZyB7IHZpZGVvQ2FwdHVyZXI/LnN0b3BDYXB0dXJlKCkgfTsgcnVuQ2F0Y2hpbmcgeyB2aWRlb0NhcHR1cmVyPy5kaXNwb3NlKCkgfTsgdmlkZW9DYXB0dXJlcj1udWxsCiAgICAgICAgIHJ1bkNhdGNoaW5nIHsgc3VyZmFjZVRleHR1cmVIZWxwZXI/LmRpc3Bvc2UoKSB9OyBzdXJmYWNlVGV4dHVyZUhlbHBlcj1udWxsCkBAIC01MjksOCArNTMxLDE1IEBACiAKICAgICBwcml2YXRlIGZ1biBkZXRhY2hSZW1vdGVWaWRlb1RyYWNrKHRyYWNrOlZpZGVvVHJhY2s/KSB7CiAgICAgICAgIGlmKHRyYWNrPT1udWxsKSByZXR1cm4KLSAgICAgICAgcmVtb3RlVmlkZW9TaW5rPy5sZXQgeyBzaW5rIC0+IHJ1bkNhdGNoaW5nIHsgdHJhY2sucmVtb3ZlU2luayhzaW5rKSB9IH0KLSAgICAgICAgcnVuQ2F0Y2hpbmcgeyB0cmFjay5yZW1vdmVTaW5rKHJlbW90ZUZyYW1lTW9uaXRvcikgfQorICAgICAgICBpZihyZW1vdGVSZW5kZXJlclRyYWNrPT09dHJhY2spIHsKKyAgICAgICAgICAgIHJlbW90ZVJlbmRlcmVyU2luaz8ubGV0IHsgc2luayAtPiBydW5DYXRjaGluZyB7IHRyYWNrLnJlbW92ZVNpbmsoc2luaykgfSB9CisgICAgICAgICAgICByZW1vdGVSZW5kZXJUcmFjaz1udWxsCisgICAgICAgICAgICByZW1vdGVSZW5kZXJlclNpbms9bnVsbAorICAgICAgICB9CisgICAgICAgaWYocmVtb3RlRnJhbWVNb25pdG9yVHJhY2s9PT10cmFjaykgeworICAgICAgICAgICAgcnVuQ2F0Y2hpbmcgeyB0cmFjay5yZW1vdmVTaW5rKHJlbW90ZUZyYW1lTW9uaXRvcikgfQorICAgICAgICAgICAgcmVtb3RlRnJhbWVNb25pdG9yVHJhY2s9bnVsbAorICAgICAgICB9CiAgICAgfQogCiAgICAgcHJpdmF0ZSBmdW4gY2xlYXJSZW1vdGVWaWRlb1RyYWNrKGV4cGVjdGVkOlZpZGVvVHJhY2s/PW51bGwpIHsKQEAgLTU0NCwxNSArNTUzLDMxIEBACiAKICAgICBwcml2YXRlIGZ1biBhdHRhY2hSZW1vdGVUcmFja1NpbmtzKHRyYWNrOlZpZGVvVHJhY2spOkJvb2xlYW4gewogICAgICAgICBpZighaXNSZW1vdGVWaWRlb1RyYWNrVXNhYmxlKHRyYWNrKSkgcmV0dXJuIGZhbHNlCi0gICAgICAgIHJ1bkNhdGNoaW5nIHsgdHJhY2sucmVtb3ZlU2luayhyZW1vdGVGcmFtZU1vbml0b3IpIH0KLSAgICAgICAgaWYocnVuQ2F0Y2hpbmcgeyB0cmFjay5hZGRTaW5rKHJlbW90ZUZyYW1lTW9uaXRvcikgfS5pc0ZhaWx1cmUpIHJldHVybiBmYWxzZQotICAgICAgICByZW1vdGVWaWRlb1Npbms/LmxldCB7IHNpbmsgLT4KLSAgICAgICAgICAgIHJ1bkNhdGNoaW5nIHsgdHJhY2sucmVtb3ZlU2luayhzaW5rKSB9Ci0gICAgICAgICAgICBpZihydW5DYXRjaGluZyB7IHRyYWNrLmFkZFNpbmsoc2luaykgfS5pc0ZhaWx1cmUpewotICAgICAgICAgICAgICAgIHJ1bkNhdGNoaW5nIHsgdHJhY2sucmVtb3ZlU2luayhyZW1vdGVGcmFtZU1vbml0b3IpIH0KLSAgICAgICAgICAgICAgICByZXR1cm4gZmFsc2UKLSAgICAgICAgICAgIH0KKyAgICAgICAgaWYocmVtb3RlRnJhbWVNb25pdG9yVHJhY2shPT10cmFjaykgeworICAgICAgICAgICAgcmVtb3RlRnJhbWVNb25pdG9yVHJhY2s/LmxldCB7IG9sZCAtPiBydW5DYXRjaGluZyB7IG9sZC5yZW1vdmVTaW5rKHJlbW90ZUZyYW1lTW9uaXRvcikgfSB9CisgICAgICAgICAgICBpZihydW5DYXRjaGluZyB7IHRyYWNrLmFkZFNpbmsocmVtb3RlRnJhbWVNb25pdG9yKSB9LmlzRmFpbHVyZSkgcmV0dXJuIGZhbHNlCisgICAgICAgICAgICByZW1vdGVGcmFtZU1vbml0b3JUcmFjaz10cmFjaworICAgICAgICB9CisgICAgICAgIHZhbCBzaW5rPXJlbW90ZVZpZGVvU2luaworICAgICAgICBpZihzaW5rPT1udWxsKSB7CisgICAgICAgICAgICBpZihyZW1vdGVSZW5kZXJlclRyYWNrIT1udWxsICYmIHJlbW90ZVJlbmRlcmVyU2luayE9bnVsbCkgeworICAgICAgICAgICAgICAgIHJ1bkNhdGNoaW5nIHsgcmVtb3RlUmVuZGVyZXJUcmFjaz8ucmVtb3ZlU2luayhyZW1vdGVSZW5kZXJlclNpbmspIH0KKyAgICAgICAgICAgIH0KKyAgICAgICAgICAgIHJlbW90ZVJlbmRlcmVyVHJhY2s9bnVsbAorICAgICAgICAgICAgcmVtb3RlUmVuZGVyZXJTaW5rPW51bGwKKyAgICAgICAgICAgIHJldHVybiB0cnVlCisgICAgICAgIH0KKyAgICAgICAgaWYocmVtb3RlUmVuZGVyZXJUcmFjaz09PXRyYWNrICYmIHJlbW90ZVJlbmRlcmVyU2luaz09PXNpbmspIHJldHVybiB0cnVlCisgICAgICAgIGlmKHJlbW90ZVJlbmRlcmVyVHJhY2shPW51bGwgJiYgcmVtb3RlUmVuZGVyZXJTaW5rIT1udWxsKSB7CisgICAgICAgICAgICBydW5DYXRjaGluZyB7IHJlbW90ZVJlbmRlcmVyVHJhY2s/LnJlbW92ZVNpbmsocmVtb3RlUmVuZGVyU2luaykgfQorICAgICAgICB9CisgICAgICAgaWYocnVuQ2F0Y2hpbmcgeyB0cmFjay5hZGRTaW5rKHNpbmspIH0uaXNGYWlsdXJlKSB7CisgICAgICAgICAgICByZW1vdGVSZW5kZXJUcmFjaz1udWxsCisgICAgICAgICAgICByZW1vdGVSZW5kZXJlclNpbms9bnVsbAorICAgICAgICAgICAgcmV0dXJuIGZhbHNlCisgICAgICAgIH0KKyAgICAgICAgcmVtb3RlUmVuZGVyZXJUcmFjaz10cmFjaworICAgICAgICByZW1vdGVSZW5kZXJlclNpbms9c2luawogICAgICAgICByZXR1cm4gdHJ1ZQogICAgIH0KIApAQCAtNTk2LDIxICs2MjEsMjEgQEAKICAgICBwcml2YXRlIGZ1biBzeW5jUmVtb3RlVmlkZW9UcmFja0Zyb21UcmFuc2NlaXZlcnMoKSB7CiAgICAgICAgaWYoIXZpZGVvRW5hYmxlZCB8fCBjbG9zZWQpIHJldHVybgogICAgICAgIHZhbCBjdXJyZW50PXJlbW90ZVZpZGVvVHJhY2sKKyAgICAgICAgdmFsIHByZWZlcnJlZD1ydW5DYXRjaGluZyB7IHZpZGVvVHJhbnNjZWl2ZXI/LnJlY2VpdmVyPy50cmFjaygpIGFzPyBWaWRlb1RyYWNrIH0uZ2V0T3JOdWxsKCkKKyAgICAgICAgICAgID8udGFrZUlmKDo6aXNSZW1vdGVWaWRlb1RyYWNrVXNhYmxlKQogICAgICAgIHZhbCBjYW5kaWRhdGVzPXJ1bkNhdGNoaW5nIHsKICAgICAgICAgICAgIHBlZXI/LnRyYW5zY2VpdmVycwogICAgICAgICAgICAgICAgID8uYXNTZXF1ZW5jZSgpCiAgICAgICAgICAgICAgICAgPy5tYXBOb3ROdWxsIHsgdHJhbnNjZWl2ZXIgLT4gcnVuQ2F0Y2hpbmcgeyB0cmFuc2NlaXZlci5yZWNlaXZlci50cmFjaygpIGFzPyBWaWRlb1RyYWNrIH0uZ2V0T3JOdWxsKCkgfQotICAgICAgICAgICAgICAgID8uZmlsdGVyIHsgY2FuZGlkYXRlIC0+IGlzUmVtb3RlVmlkZW9UcmFja1VzYWJsZShjYW5kaWRhdGUpIH0KKyAgICAgICAgICAgICAgICA/LmZpbHRlcig6OmlzUmVtb3RlVmlkZW9UcmFja1VzYWJsZSkKKyAgICAgICAgICAgICAgICA/LmRpc3RpbmN0QnkgeyBTeXN0ZW0uaWRlbnRpdHlIYXNoQ29kZShpdCkgfQogICAgICAgICAgICAgICAgID8udG9MaXN0KCkKICAgICAgICAgICAgICAgICAub3JFbXB0eSgpCiAgICAgICAgIH0uZ2V0T3JEZWZhdWx0KGVtcHR5TGlzdCgpKQotICAgICAgICB2YWwgbm93PVN5c3RlbS5jdXJyZW50VGltZU1pbGxpcygpCi0gICAgICAgIHZhbCBjdXJyZW50RnJlc2g9Y3VycmVudCE9bnVsbCAmJiBpc1JlbW90ZVZpZGVvVHJhY2tVc2FibGUoY3VycmVudCkgJiYgbGFzdFJlbW90ZVZpZGVvRnJhbWVBdE1zPjBMICYmIG5vdy1sYXN0UmVtb3RlVmlkZW9GcmFtZUF0TXM8Ml81MDBMCi0gICAgICAgIHZhbCByZXBsYWNlbWVudD1jYW5kaWRhdGVzLmZpcnN0T3JOdWxsIHsgaXQgIT09IGN1cnJlbnQgfQogICAgICAgIHdoZW4gewotICAgICAgICAgICAgY3VycmVudEZyZXNoIC0+IGJpbmRSZW1vdGVWaWRlb1RyYWNrKGN1cnJlbnQpCi0gICAgICAgICAgICByZXBsYWNlbWVudCE9bnVsbCAtPiBiaW5kUmVtb3RlVmlkZW9UcmFjayhyZXBsYWNlbWVudCkKKyAgICAgICAgICAgIHByZWZlcnJlZCE9bnVsbCAmJiBwcmVmZXJyZWQhPT1jdXJyZW50IC0+IGJpbmRSZW1vdGVWaWRlb1RyYWNrKHByZWZlcnJlZCkKICAgICAgICAgICAgIGlzUmVtb3RlVmlkZW9UcmFja1VzYWJsZShjdXJyZW50KSAtPiBiaW5kUmVtb3RlVmlkZW9UcmFjayhjdXJyZW50KQorICAgICAgICAgICAgcHJlZmVycmVkIT1udWxsIC0+IGJpbmRSZW1vdGVWaWRlb1RyYWNrKHByZWZlcnJlZCkKICAgICAgICAgICAgIGVsc2UgLT4gewogICAgICAgICAgICAgICAgaWYoY3VycmVudCE9bnVsbCkgY2xlYXJSZW1vdGVWaWRlb1RyYWNrKGN1cnJlbnQpCiAgICAgICAgICAgICAgICBjYW5kaWRhdGVzLmZpcnN0T3JOdWxsKCk/LmxldCg6OmJpbmRSZW1vdGVWaWRlb1RyYWNrKQo=' | base64 -d > /tmp/v22615-webrtc.patch
+          patch -p0 < /tmp/v22615-webrtc.patch
+          sed -i '0,/versionCode = 48/s//versionCode = 52/' app/build.gradle.kts
+          sed -i '0,/versionName = "2.26.11"/s//versionName = "2.26.15"/' app/build.gradle.kts
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22615-runtime-after.sha256
+          awk '{print $2}' /tmp/v22611-runtime-before.sha256 > /tmp/v22611-runtime-files.txt
+          awk '{print $2}' /tmp/v22615-runtime-after.sha256 > /tmp/v22615-runtime-files.txt
+          cmp /tmp/v22611-runtime-files.txt /tmp/v22615-runtime-files.txt
+          CHANGED="$(join -j 2 /tmp/v22611-runtime-before.sha256 /tmp/v22615-runtime-after.sha256 2>/dev/null || true)"
+          diff -u /tmp/v22611-runtime-before.sha256 /tmp/v22615-runtime-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22615-changed-runtime.txt || true
+          test "$(cat /tmp/v22615-changed-runtime.txt)" = "app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.bak' -o -name '*.rej' \) -print)"
+          test "$(grep -c 'class WebRtcVoiceEngine' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt)" -eq 1
+          test "$(grep -c 'fun attachRemoteVideoSink' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt)" -eq 1
+          test "$(grep -c 'private fun syncRemoteVideoTrackFromTransceivers' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt)" -eq 1
+          ! grep -q 'currentFresh' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          ! grep -q 'replacement=candidates.firstOrNull' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'remoteRendererTrack===track && remoteRendererSink===sink' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
           grep -q 'FLAG_INSISTENT' app/src/main/java/com/example/messengerui/NotificationHelper.kt
           grep -q 'android:launchMode="singleTop"' app/src/main/AndroidManifest.xml
           grep -q 'isPictureInPicture = pictureInPictureMode' app/src/main/java/com/example/messengerui/MainActivity.kt
           grep -q 'SCALE_ASPECT_FIT' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          echo "VIDEO_ONLY_REGRESSION_BOUNDARY_PASS"
 
       - name: Package resolved Messenger v2.26.15 source
         shell: bash

@@ -1271,7 +1271,8 @@ jobs:
         run: |
           cd /tmp/messenger-build/messenger_live
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22627-before.sha256
-          base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22627-chats-core-ux.b64" | gzip -dc > /tmp/v22627.patch
+          cat "$GITHUB_WORKSPACE/tmp-messenger-build/v22627-chunk1.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22627-chunk2.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22627-chunk3.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22627-chunk4.txt" > /tmp/v22627.b64
+          base64 --decode /tmp/v22627.b64 | gzip -dc > /tmp/v22627.patch
           sed -i 's#audit22626/src/#a/#g; s#m22627src/#b/#g' /tmp/v22627.patch
           patch -p1 < /tmp/v22627.patch
           grep -q 'versionName = "2.26.27"' app/build.gradle.kts

@@ -1778,6 +1778,23 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "V22639_GROUP_PHOTO_HEADER_BOUNDARY_PASS"
 
+      - name: Fix v2.26.39 nullable group photo MIME compile
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=p.read_text()
+          old='api.uploadMedia(token, UUID.randomUUID().toString(), File(attachment.path), attachment.mimeType, attachment.displayName, 0L, MessageKind.IMAGE)'
+          new='api.uploadMedia(token, UUID.randomUUID().toString(), File(attachment.path), attachment.mimeType ?: "image/jpeg", attachment.displayName, 0L, MessageKind.IMAGE)'
+          if old not in s:
+              raise SystemExit("v2.26.39 nullable MIME compile marker not found")
+          p.write_text(s.replace(old,new,1))
+          PY
+          grep -q 'attachment.mimeType ?: "image/jpeg"' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          echo "V22639_NULLABLE_MIME_FIX_PASS"
+
       - name: Package resolved Messenger v2.26.39 source
         shell: bash
         run: |
@@ -1859,4 +1876,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22639 group photo header trigger 1
+# v22639 group photo header trigger 2

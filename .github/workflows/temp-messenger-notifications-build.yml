@@ -1679,7 +1679,11 @@ jobs:
         run: |
           cd /tmp/messenger-build/messenger_live
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22638-before.sha256
-          cp "$GITHUB_WORKSPACE/tmp-messenger-build/v22638-part-00.txt" /tmp/v22638.b64
+          echo "1b17aa737ae97abf68ee090d03520fec2db739b6b7970c3286d4d65db2f476c6  $GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-00.txt" | sha256sum -c -
+          echo "fbd6ebb19d23bdec114ba4006934eddde8e52faf4e818c669756edd4cdc1da1a  $GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-01.txt" | sha256sum -c -
+          echo "76c973294229848f6f1d40b6431925bde7dbea4a0d7f9674a30e90d2b27773c2  $GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-02.txt" | sha256sum -c -
+          echo "42a54bb92abf7d73f868ce6eeaa8ef7d36778a2db25c1a345cc7958079f40d1b  $GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-03.txt" | sha256sum -c -
+          cat "$GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-00.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-01.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-02.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22638-chunk-03.txt" > /tmp/v22638.b64
           echo "8b5485772c8cad2f0fab7e7ecf6456889dd47d2425ddc486e1011496e5d2b398  /tmp/v22638.b64" | sha256sum -c -
           base64 --decode /tmp/v22638.b64 | gzip -dc > /tmp/v22638.patch
           sed -i 's#v22638_base/#a/#g; s#v22638_work/#b/#g' /tmp/v22638.patch
@@ -1809,4 +1813,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22638 notification controls trigger 1
+# v22638 notification controls trigger 2

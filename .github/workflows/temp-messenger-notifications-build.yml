@@ -1297,6 +1297,42 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "CHATS_CORE_UX_IMPROVEMENTS_BOUNDARY_PASS"
 
+      - name: Fix v2.26.27 chat UX compile
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          python3 - <<'PY'
+          from pathlib import Path
+          vm=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=vm.read_text()
+          old='''        ids.forEach { id ->
+            db.deleteMessageForMe(id)
+            messages.removeAll { it.id == id }
+            starredMessageIds.remove(id)
+        }
+        messages.groupBy { it.chatId }.keys.forEach(::refreshChatPreviewFromMessages)
+        lastToast = "${ids.size} message${if (ids.size==1) "" else "s"} deleted for you"
+        clearMessageSelection()
+'''
+          new='''        clearMessageSelection()
+        ids.forEach { id -> deleteMessageForMe(id) }
+        lastToast = "${ids.size} message${if (ids.size==1) "" else "s"} queued for deletion"
+'''
+          if old not in s: raise SystemExit("bulk delete compile anchor missing")
+          vm.write_text(s.replace(old,new,1))
+          app=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt")
+          s=app.read_text()
+          imp='import androidx.core.content.ContextCompat\n'
+          if 'import kotlinx.coroutines.launch\n' not in s:
+              if imp not in s: raise SystemExit("coroutine import anchor missing")
+              s=s.replace(imp,imp+'import kotlinx.coroutines.launch\n',1)
+          app.write_text(s)
+          PY
+          grep -q 'ids.forEach { id -> deleteMessageForMe(id) }' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'import kotlinx.coroutines.launch' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          echo "CHATS_CORE_UX_COMPILE_FIX_PASS"
+
       - name: Package resolved Messenger v2.26.27 source
         shell: bash
         run: |

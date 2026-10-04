@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-chats-core-ux-22627-locked-20261004 ]
+    branches: [ messenger-contacts-22628-20261004 ]
 
 permissions:
   contents: read
@@ -1308,17 +1308,49 @@ jobs:
           grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           echo "CHATS_CORE_UX_COMPILE_FIX_PASS"
 
-      - name: Package resolved Messenger v2.26.27 source
+      - name: Apply v2.26.28 contacts discovery and management
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.27-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22628-before.sha256
+          base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22628-contacts.patch.gz.b64" | gzip -dc > /tmp/v22628.patch
+          sed -i 's#m22627_orig/#a/#g; s#m22628_work/#b/#g' /tmp/v22628.patch
+          patch -p1 < /tmp/v22628.patch
+          grep -q 'versionName = "2.26.28"' app/build.gradle.kts
+          grep -q 'versionCode = 65' app/build.gradle.kts
+          grep -q 'READ_CONTACTS' app/src/main/AndroidManifest.xml
+          grep -q 'searchContactDirectory' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'syncPhoneContacts' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'BlockedContactsScreen' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'ScanContract' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'commonGroups(userId' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22628-after.sha256
+          diff -u /tmp/v22628-before.sha256 /tmp/v22628-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22628-changed-runtime.txt || true
+          cat > /tmp/v22628-allowed-runtime.txt <<'EOF'
+          app/src/main/AndroidManifest.xml
+          app/src/main/java/com/example/messengerui/AppViewModel.kt
+          app/src/main/java/com/example/messengerui/MessengerApp.kt
+          app/src/main/java/com/example/messengerui/Models.kt
+          EOF
+          sed -i 's/^          //' /tmp/v22628-allowed-runtime.txt
+          sort -o /tmp/v22628-allowed-runtime.txt /tmp/v22628-allowed-runtime.txt
+          diff -u /tmp/v22628-allowed-runtime.txt /tmp/v22628-changed-runtime.txt
+          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
+          echo "CONTACTS_DISCOVERY_MANAGEMENT_BOUNDARY_PASS"
 
-      - name: Upload resolved v2.26.26 source
+      - name: Package resolved Messenger v2.26.28 source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.28-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload resolved v2.26.28 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.27-Resolved-Source
-          path: Messenger-v2.26.27-Resolved-Source.zip
+          name: Messenger-v2.26.28-Resolved-Source
+          path: Messenger-v2.26.28-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -1341,10 +1373,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.27'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.28'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-v2.26.27-Debug.apk
-          sha256sum Messenger-v2.26.27-Debug.apk | tee Messenger-v2.26.27-Debug.sha256
+          cp "$APK" Messenger-v2.26.28-Debug.apk
+          sha256sum Messenger-v2.26.28-Debug.apk | tee Messenger-v2.26.28-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -1359,20 +1391,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.27-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.27-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.27-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.28-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.28-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.28-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.27'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.27-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.27-Stable.sha256"
+          grep -q "versionName='2.26.28'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.28-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.28-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.27-Stable
+          name: Messenger-v2.26.28-Stable
           path: |
-            Messenger-v2.26.27-Stable.apk
-            Messenger-v2.26.27-Stable.sha256
+            Messenger-v2.26.28-Stable.apk
+            Messenger-v2.26.28-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -1381,12 +1413,12 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.27-Debug
+          name: Messenger-v2.26.28-Debug
           path: |
-            Messenger-v2.26.27-Debug.apk
-            Messenger-v2.26.27-Debug.sha256
+            Messenger-v2.26.28-Debug.apk
+            Messenger-v2.26.28-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22627 chats core ux improvements trigger
+# v22628 contacts discovery management trigger

@@ -1647,7 +1647,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/tmp-messenger-build/v22637-part-00.txt" /tmp/v22637.b64
           echo "e71f4cf859ddb58d0ecc352d3725e25d094f88723f903448a9041cca44b18eed  /tmp/v22637.b64" | sha256sum -c -
           base64 --decode /tmp/v22637.b64 | gzip -dc > /tmp/v22637.patch
-          sed -i 's#v22636_final_source/#a/#g; s#v22637_work/#b/#g' /tmp/v22637.patch
+          sed -i 's#a/v22636_final_source/#a/#g; s#b/v22637_work/#b/#g' /tmp/v22637.patch
           patch -p1 < /tmp/v22637.patch
           grep -q 'versionName = "2.26.37"' app/build.gradle.kts
           grep -q 'versionCode = 74' app/build.gradle.kts
@@ -1755,4 +1755,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22637 acceptance density trigger 1
+# v22637 acceptance density trigger 2

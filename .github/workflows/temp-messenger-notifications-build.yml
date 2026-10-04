@@ -1426,9 +1426,18 @@ jobs:
           grep -q 'versionCode = 68' app/build.gradle.kts
           grep -q 'val imeVisible = WindowInsets.isImeVisible' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'messageListState.scrollToItem(chatMessages.lastIndex)' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'approveLinkedDevice' app/src/main/java/com/example/messengerui/ApiClient.kt
+          grep -q 'fun approveLinkedDevice' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'Link a web or desktop device' app/src/main/java/com/example/messengerui/MessengerApp.kt
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22631-after.sha256
           diff -u /tmp/v22631-before.sha256 /tmp/v22631-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22631-changed-runtime.txt || true
-          printf '%s\n' 'app/src/main/java/com/example/messengerui/MessengerApp.kt' > /tmp/v22631-allowed-runtime.txt
+          cat > /tmp/v22631-allowed-runtime.txt <<'EOF'
+          app/src/main/java/com/example/messengerui/ApiClient.kt
+          app/src/main/java/com/example/messengerui/AppViewModel.kt
+          app/src/main/java/com/example/messengerui/MessengerApp.kt
+          EOF
+          sed -i 's/^          //' /tmp/v22631-allowed-runtime.txt
+          sort -o /tmp/v22631-allowed-runtime.txt /tmp/v22631-allowed-runtime.txt
           diff -u /tmp/v22631-allowed-runtime.txt /tmp/v22631-changed-runtime.txt
           grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt

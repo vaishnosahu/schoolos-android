@@ -1237,9 +1237,40 @@ jobs:
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22626-safety.b64" | gzip -dc > /tmp/v22626-safety.patch
-          sed -i 's#/mnt/data/m22626src/#a/#g; s#/mnt/data/m22626src2/#b/#g' /tmp/v22626-safety.patch
-          patch -p1 < /tmp/v22626-safety.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          vm=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=vm.read_text()
+          old='''                .onFailure { err ->
+                    val msg = err.message.orEmpty()
+                    if (msg.contains("not_found", true) || msg.contains("404")) onMissing() else onFailure(err.userMessage("Unable to load business profile"))
+                }'''
+          new='''                .onFailure { err ->
+                    if (err is ApiException && err.statusCode == 404) onMissing() else onFailure(err.userMessage("Unable to load business profile"))
+                }'''
+          if old not in s: raise SystemExit("missing-business anchor not found")
+          vm.write_text(s.replace(old,new,1))
+          app=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt")
+          s=app.read_text()
+          old='''    val about = contact?.about ?: vm.groupMemberAbout(userId)
+
+    LaunchedEffect(userId) {'''
+          new='''    val about = contact?.about ?: vm.groupMemberAbout(userId)
+    val requestContactVoiceCall = rememberVoiceCallPermissionAction(vm) { vm.startContactCall(userId, displayName, false) }
+    val requestContactVideoCall = rememberVideoCallPermissionAction(vm) { vm.startContactCall(userId, displayName, true) }
+
+    LaunchedEffect(userId) {'''
+          if old not in s: raise SystemExit("contact permission anchor not found")
+          s=s.replace(old,new,1)
+          old='OutlinedButton(onClick = { vm.startContactCall(userId, displayName, false) }, modifier = Modifier.weight(1f))'
+          new='OutlinedButton(onClick = requestContactVoiceCall, modifier = Modifier.weight(1f))'
+          if old not in s: raise SystemExit("voice call button anchor not found")
+          s=s.replace(old,new,1)
+          old='OutlinedButton(onClick = { vm.startContactCall(userId, displayName, true) }, modifier = Modifier.weight(1f))'
+          new='OutlinedButton(onClick = requestContactVideoCall, modifier = Modifier.weight(1f))'
+          if old not in s: raise SystemExit("video call button anchor not found")
+          app.write_text(s.replace(old,new,1))
+          PY
           grep -q 'err is ApiException && err.statusCode == 404' app/src/main/java/com/example/messengerui/AppViewModel.kt
           grep -q 'requestContactVoiceCall' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'requestContactVideoCall' app/src/main/java/com/example/messengerui/MessengerApp.kt

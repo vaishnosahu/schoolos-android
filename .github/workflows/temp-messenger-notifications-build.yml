@@ -1582,11 +1582,6 @@ jobs:
           cd /tmp/messenger-build/messenger_live
           zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.34-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
-        shell: bash
-        run: |
-          cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.34-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
-
       - name: Upload resolved v2.26.34 source
         uses: actions/upload-artifact@v4
         with:
@@ -1662,4 +1657,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22634 backup settings hardening trigger
+# v22634 backup settings hardening trigger 2

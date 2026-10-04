@@ -1242,8 +1242,8 @@ jobs:
       - name: Upload resolved v2.26.26 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.25-Resolved-Source
-          path: Messenger-v2.26.25-Resolved-Source.zip
+          name: Messenger-v2.26.26-Resolved-Source
+          path: Messenger-v2.26.26-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 

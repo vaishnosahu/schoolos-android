@@ -1614,7 +1614,7 @@ jobs:
           cd /tmp/messenger-build/messenger_live
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22636-before.sha256
           cp "$GITHUB_WORKSPACE/tmp-messenger-build/v22636-part-00.txt" /tmp/v22636.b64
-          echo "4f21a8fab44b5afa80ae42710639fdcf87ee9928a53a3a186fee19b0381fe94a  /tmp/v22636.b64" | sha256sum -c -
+          echo "071cf333c3e1caae8b9c4d12949d89720a69a773dd583fc7ccc7102e94136be1  /tmp/v22636.b64" | sha256sum -c -
           base64 --decode /tmp/v22636.b64 | gzip -dc > /tmp/v22636.patch
           sed -i 's#v22635work/#a/#g; s#v22636work/#b/#g' /tmp/v22636.patch
           patch -p1 < /tmp/v22636.patch
@@ -1622,6 +1622,9 @@ jobs:
           grep -q 'versionCode = 73' app/build.gradle.kts
           grep -q 'fun chatAvatarUrl' app/src/main/java/com/example/messengerui/AppViewModel.kt
           grep -q 'refreshAvatarCacheAsync' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'fun globalSearchAvatarUrl' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'addAll(contacts.map { it.id })' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'resolvedContactPhotoUrl' app/src/main/java/com/example/messengerui/MessengerApp.kt
           grep -q 'BusinessImagePreview("", vm.chatAvatarUrl(chat)' app/src/main/java/com/example/messengerui/MessengerApp.kt
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22636-after.sha256
           diff -u /tmp/v22636-before.sha256 /tmp/v22636-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22636-changed-runtime.txt || true
@@ -1717,4 +1720,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22636 avatar density trigger 2
+# v22636 avatar density closure trigger 3

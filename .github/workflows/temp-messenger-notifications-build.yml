@@ -1186,6 +1186,21 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "BUSINESS_PROFILE_ACCEPTANCE_BOUNDARY_PASS"
 
+      - name: Fix v2.26.25 customer profile compile
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22625-compile-fix.b64" | gzip -dc > /tmp/v22625-compile-fix.patch
+          sed -i 's#/mnt/data/m22625failed/src/#a/#g; s#/mnt/data/m22625src/#b/#g' /tmp/v22625-compile-fix.patch
+          patch -p1 < /tmp/v22625-compile-fix.patch
+          grep -q 'private fun PublicBusinessScreen(vm: AppViewModel, publicId: String)' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'val visibleItems = allItems.filter' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -Fq 'profile\\.php\\?' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
+          echo "BUSINESS_PROFILE_COMPILE_FIX_PASS"
+
       - name: Package resolved Messenger v2.26.25 source
         shell: bash
         run: |

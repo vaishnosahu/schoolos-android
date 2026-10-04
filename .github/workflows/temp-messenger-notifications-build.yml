@@ -1533,6 +1533,17 @@ jobs:
           ! grep -R "BuildConfig" app/src/main/java/com/example/messengerui/ApiClient.kt app/src/main/java/com/example/messengerui/AppViewModel.kt app/src/main/java/com/example/messengerui/BackupWorker.kt app/src/main/java/com/example/messengerui/MessengerApp.kt
           echo "V22633_VERSION_METADATA_FIX_PASS"
 
+      - name: Fix v2.26.33 backup recovery visibility compile
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          sed -i 's/fun setBackupRecoveryKeyVisible(value:Boolean)/fun updateBackupRecoveryKeyVisibility(value:Boolean)/' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          sed -i 's/vm\.setBackupRecoveryKeyVisible(/vm.updateBackupRecoveryKeyVisibility(/g' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'fun updateBackupRecoveryKeyVisibility' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'updateBackupRecoveryKeyVisibility' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          ! grep -R 'fun setBackupRecoveryKeyVisible' app/src/main/java/com/example/messengerui
+          echo "V22633_BACKUP_VISIBILITY_FIX_PASS"
+
       - name: Package resolved Messenger v2.26.33 source
         shell: bash
         run: |
@@ -1614,4 +1625,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22633 backup search settings trigger 2
+# v22633 backup search settings trigger 3

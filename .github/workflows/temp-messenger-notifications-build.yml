@@ -1370,6 +1370,36 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "PRIVACY_SECURITY_BOUNDARY_PASS"
 
+      - name: Fix v2.26.29 privacy compile
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=p.read_text()
+          old='    private fun persistPrivacySettingsAsync(){ if(!serverMode)return; val token=db.serverToken(); if(token.isBlank())return; val snapshot=privacySettings; viewModelScope.launch(Dispatchers.IO){runCatching{api.updatePrivacySettings(token,snapshot)}.onSuccess{remote->withContext(Dispatchers.Main){privacySettings=remote;readReceipts=remote.readReceipts;showLastSeen=remote.lastSeen!="NOBODY"}}}} }'
+          new='''    private fun persistPrivacySettingsAsync() {
+        if (!serverMode) return
+        val token=db.serverToken()
+        if (token.isBlank()) return
+        val snapshot=privacySettings
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { api.updatePrivacySettings(token,snapshot) } }
+                .onSuccess { remote ->
+                    privacySettings=remote
+                    readReceipts=remote.readReceipts
+                    showLastSeen=remote.lastSeen!="NOBODY"
+                }
+        }
+    }'''
+          if old not in s: raise SystemExit("privacy sync compile anchor missing")
+          p.write_text(s.replace(old,new,1))
+          PY
+          grep -q 'private fun persistPrivacySettingsAsync()' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          echo "PRIVACY_SECURITY_COMPILE_FIX_PASS"
+
       - name: Package resolved Messenger v2.26.29 source
         shell: bash
         run: |

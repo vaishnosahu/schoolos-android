@@ -1549,7 +1549,9 @@ jobs:
         run: |
           cd /tmp/messenger-build/messenger_live
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22634-before.sha256
-          base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22634-chunk1.txt" | gzip -dc > /tmp/v22634.patch
+          cat "$GITHUB_WORKSPACE/tmp-messenger-build/v22634-safe-00.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22634-safe-01.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22634-safe-02.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22634-safe-03.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22634-safe-04.txt" > /tmp/v22634.b64
+          echo "3b1b0e95d13ed8b0c599cc15384bcb7646ac3a94f2140e551e9bafc975bcb462  /tmp/v22634.b64" | sha256sum -c -
+          base64 --decode /tmp/v22634.b64 | gzip -dc > /tmp/v22634.patch
           sed -i 's#v22633inspect/src/#a/#g; s#v22634work/#b/#g' /tmp/v22634.patch
           patch -p1 < /tmp/v22634.patch
           grep -q 'versionName = "2.26.34"' app/build.gradle.kts
@@ -1657,4 +1659,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22634 backup settings hardening trigger 2
+# v22634 backup settings hardening trigger 3

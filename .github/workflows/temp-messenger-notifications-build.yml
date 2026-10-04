@@ -1419,7 +1419,8 @@ jobs:
         run: |
           cd /tmp/messenger-build/messenger_live
           find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22631-before.sha256
-          base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22631-keyboard.patch.gz.b64" | gzip -dc > /tmp/v22631.patch
+          cat "$GITHUB_WORKSPACE/tmp-messenger-build/v22631-chunk1.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22631-chunk2.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22631-chunk3.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22631-chunk4.txt" "$GITHUB_WORKSPACE/tmp-messenger-build/v22631-chunk5.txt" > /tmp/v22631.b64
+          base64 --decode /tmp/v22631.b64 | gzip -dc > /tmp/v22631.patch
           sed -i 's#m22630_actual/#a/#g; s#m22631_work/#b/#g' /tmp/v22631.patch
           patch -p1 < /tmp/v22631.patch
           grep -q 'versionName = "2.26.31"' app/build.gradle.kts

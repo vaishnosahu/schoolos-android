@@ -1375,7 +1375,9 @@ jobs:
         run: |
           cd /tmp/messenger-build/messenger_live
           sed -i 's/showLastSeen=remote.lastSeen!="NOBODY"}}}} }/showLastSeen=remote.lastSeen!="NOBODY"}}}}/' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'android.permission.USE_BIOMETRIC' app/src/main/AndroidManifest.xml || sed -i '/<uses-permission android:name="android.permission.CAMERA"/a\    <uses-permission android:name="android.permission.USE_BIOMETRIC" />' app/src/main/AndroidManifest.xml
           grep -q 'private fun persistPrivacySettingsAsync' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'android.permission.USE_BIOMETRIC' app/src/main/AndroidManifest.xml
           grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           echo "PRIVACY_SECURITY_COMPILE_FIX_PASS"
 

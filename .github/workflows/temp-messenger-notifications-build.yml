@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-business-acceptance-22625-20261004 ]
+    branches: [ messenger-inapp-business-profile-22626-20261004 ]
 
 permissions:
   contents: read
@@ -1201,11 +1201,43 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "BUSINESS_PROFILE_COMPILE_FIX_PASS"
 
-      - name: Package resolved Messenger v2.26.25 source
+      - name: Apply v2.26.26 in-app contact business profile viewer
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.25-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22626-before.sha256
+          base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22626-inapp-profile.b64" | gzip -dc > /tmp/v22626.patch
+          sed -i 's#/mnt/data/m22625tree/#a/#g; s#/mnt/data/m22626src/#b/#g' /tmp/v22626.patch
+          patch -p1 < /tmp/v22626.patch
+          grep -q 'versionName = "2.26.26"' app/build.gradle.kts
+          grep -q 'versionCode = 63' app/build.gradle.kts
+          grep -q 'data class ContactProfile' app/src/main/java/com/example/messengerui/Models.kt
+          grep -q 'publicBusinessProfileForUser' app/src/main/java/com/example/messengerui/ApiClient.kt
+          grep -q 'loadPublicBusinessForUser' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'startContactCall' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'ContactProfileScreen' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'AppScreen.ContactProfile' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22626-after.sha256
+          diff -u /tmp/v22626-before.sha256 /tmp/v22626-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22626-changed-runtime.txt || true
+          cat > /tmp/v22626-allowed-runtime.txt <<'EOF'
+          app/src/main/java/com/example/messengerui/ApiClient.kt
+          app/src/main/java/com/example/messengerui/AppViewModel.kt
+          app/src/main/java/com/example/messengerui/MessengerApp.kt
+          app/src/main/java/com/example/messengerui/Models.kt
+          EOF
+          sed -i 's/^          //' /tmp/v22626-allowed-runtime.txt
+          sort -o /tmp/v22626-allowed-runtime.txt /tmp/v22626-allowed-runtime.txt
+          diff -u /tmp/v22626-allowed-runtime.txt /tmp/v22626-changed-runtime.txt
+          grep -q 'scheduleRemoteVideoSyncBurst' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'calls_v5' app/src/main/java/com/example/messengerui/NotificationHelper.kt
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
+          echo "IN_APP_CONTACT_BUSINESS_PROFILE_BOUNDARY_PASS"
+
+      - name: Package resolved Messenger v2.26.26 source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.26-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
       - name: Upload resolved v2.26.19 source
         uses: actions/upload-artifact@v4
@@ -1234,10 +1266,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.25'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.26'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-Video-v2.26.25-Debug.apk
-          sha256sum Messenger-Video-v2.26.25-Debug.apk | tee Messenger-Video-v2.26.25-Debug.sha256
+          cp "$APK" Messenger-Video-v2.26.26-Debug.apk
+          sha256sum Messenger-Video-v2.26.26-Debug.apk | tee Messenger-Video-v2.26.26-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -1252,20 +1284,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.25-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.25-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.25-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-Video-v2.26.26-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-Video-v2.26.26-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-Video-v2.26.26-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.25'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.25-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.25-Stable.sha256"
+          grep -q "versionName='2.26.26'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-Video-v2.26.26-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-Video-v2.26.26-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.25-Stable
+          name: Messenger-Video-v2.26.26-Stable
           path: |
-            Messenger-Video-v2.26.25-Stable.apk
-            Messenger-Video-v2.26.25-Stable.sha256
+            Messenger-Video-v2.26.26-Stable.apk
+            Messenger-Video-v2.26.26-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -1274,12 +1306,12 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-Video-v2.26.25-Debug
+          name: Messenger-Video-v2.26.26-Debug
           path: |
-            Messenger-Video-v2.26.25-Debug.apk
-            Messenger-Video-v2.26.25-Debug.sha256
+            Messenger-Video-v2.26.26-Debug.apk
+            Messenger-Video-v2.26.26-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22625 business profile acceptance trigger
+# v22626 in-app contact business profile trigger

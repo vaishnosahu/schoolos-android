@@ -1239,7 +1239,7 @@ jobs:
           cd /tmp/messenger-build/messenger_live
           zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.26-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
 
-      - name: Upload resolved v2.26.19 source
+      - name: Upload resolved v2.26.26 source
         uses: actions/upload-artifact@v4
         with:
           name: Messenger-v2.26.25-Resolved-Source

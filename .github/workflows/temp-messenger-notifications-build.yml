@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-search-deeplink-22640-20261004 ]
+    branches: [ messenger-newchat-search-hotfix-226401-20261004 ]
 
 permissions:
   contents: read
@@ -1836,17 +1836,51 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "V22640_SEARCH_DEEPLINK_BOUNDARY_PASS"
 
-      - name: Package resolved Messenger v2.26.40 source
+      - name: Apply v2.26.40.1 new chat search hotfix
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.40-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v226401-before.sha256
+          cp "$GITHUB_WORKSPACE/tmp-messenger-build/v226401-part-00.txt" /tmp/v226401.b64
+          echo "023937d2eccb48043582a0d97c51f0a9a89050d341e464a0b9a6dd22f50b8ca3  /tmp/v226401.b64" | sha256sum -c -
+          base64 --decode /tmp/v226401.b64 | gzip -dc > /tmp/v226401.patch
+          echo "12c82ba0ee9e90d5ab00ac81bd8fd770d5c2775328220bbdc86f273f5d5319ff  /tmp/v226401.patch" | sha256sum -c -
+          sed -i 's#v22640_audit/#a/#g; s#v226401_work/#b/#g' /tmp/v226401.patch
+          patch -p1 < /tmp/v226401.patch
+          grep -q 'versionName = "2.26.40.1"' app/build.gradle.kts
+          grep -q 'versionCode = 78' app/build.gradle.kts
+          grep -q 'const val APP_VERSION = "2.26.40.1"' app/src/main/java/com/example/messengerui/ApiConfig.kt
+          grep -q 'fun newChatRegisteredMatches' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'fun newChatInviteMatches' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'val searching=directoryQuery.isNotBlank()' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'SectionLabel("Invite to Messenger")' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q '"No contacts found"' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v226401-after.sha256
+          diff -u /tmp/v226401-before.sha256 /tmp/v226401-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v226401-changed-runtime.txt || true
+          cat > /tmp/v226401-allowed-runtime.txt <<'EOF'
+          app/src/main/java/com/example/messengerui/ApiConfig.kt
+          app/src/main/java/com/example/messengerui/AppViewModel.kt
+          app/src/main/java/com/example/messengerui/MessengerApp.kt
+          EOF
+          sed -i 's/^          //' /tmp/v226401-allowed-runtime.txt
+          sort -o /tmp/v226401-allowed-runtime.txt /tmp/v226401-allowed-runtime.txt
+          diff -u /tmp/v226401-allowed-runtime.txt /tmp/v226401-changed-runtime.txt
+          echo "f08dcbcec9671c1c38f20f040e02dc3275100b2d868c07443a89ea088f533597  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+          echo "d27294b7b569b6d8936bd5b318218e1b0127af95a17dfddfcbcf26bf58ff317d  app/src/main/java/com/example/messengerui/NotificationHelper.kt" | sha256sum -c -
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
+          echo "V226401_NEW_CHAT_SEARCH_HOTFIX_PASS"
 
-      - name: Upload resolved v2.26.40 source
+      - name: Package resolved Messenger v2.26.40.1.1 source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.40.1.1-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload resolved v2.26.40.1.1 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.40-Resolved-Source
-          path: Messenger-v2.26.40-Resolved-Source.zip
+          name: Messenger-v2.26.40.1.1-Resolved-Source
+          path: Messenger-v2.26.40.1.1-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -1869,10 +1903,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.40'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.40.1'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-v2.26.40-Debug.apk
-          sha256sum Messenger-v2.26.40-Debug.apk | tee Messenger-v2.26.40-Debug.sha256
+          cp "$APK" Messenger-v2.26.40.1.1-Debug.apk
+          sha256sum Messenger-v2.26.40.1.1-Debug.apk | tee Messenger-v2.26.40.1.1-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -1887,20 +1921,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.40-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.40-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.40-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.40.1.1-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.40.1.1-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.40.1.1-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.40'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.40-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.40-Stable.sha256"
+          grep -q "versionName='2.26.40.1'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.40.1.1-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.40.1.1-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.40-Stable
+          name: Messenger-v2.26.40.1.1-Stable
           path: |
-            Messenger-v2.26.40-Stable.apk
-            Messenger-v2.26.40-Stable.sha256
+            Messenger-v2.26.40.1.1-Stable.apk
+            Messenger-v2.26.40.1.1-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -1909,12 +1943,12 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.40-Debug
+          name: Messenger-v2.26.40.1.1-Debug
           path: |
-            Messenger-v2.26.40-Debug.apk
-            Messenger-v2.26.40-Debug.sha256
+            Messenger-v2.26.40.1.1-Debug.apk
+            Messenger-v2.26.40.1.1-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22640 search deeplink trigger 1
+# v226401 new chat search hotfix trigger 1

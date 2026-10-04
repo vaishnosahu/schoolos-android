@@ -1241,25 +1241,14 @@ jobs:
           from pathlib import Path
           vm=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
           s=vm.read_text()
-          old='''                .onFailure { err ->
-                    val msg = err.message.orEmpty()
-                    if (msg.contains("not_found", true) || msg.contains("404")) onMissing() else onFailure(err.userMessage("Unable to load business profile"))
-                }'''
-          new='''                .onFailure { err ->
-                    if (err is ApiException && err.statusCode == 404) onMissing() else onFailure(err.userMessage("Unable to load business profile"))
-                }'''
+          old='                .onFailure { err ->\n                    val msg = err.message.orEmpty()\n                    if (msg.contains("not_found", true) || msg.contains("404")) onMissing() else onFailure(err.userMessage("Unable to load business profile"))\n                }'
+          new='                .onFailure { err ->\n                    if (err is ApiException && err.statusCode == 404) onMissing() else onFailure(err.userMessage("Unable to load business profile"))\n                }'
           if old not in s: raise SystemExit("missing-business anchor not found")
           vm.write_text(s.replace(old,new,1))
           app=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt")
           s=app.read_text()
-          old='''    val about = contact?.about ?: vm.groupMemberAbout(userId)
-
-    LaunchedEffect(userId) {'''
-          new='''    val about = contact?.about ?: vm.groupMemberAbout(userId)
-    val requestContactVoiceCall = rememberVoiceCallPermissionAction(vm) { vm.startContactCall(userId, displayName, false) }
-    val requestContactVideoCall = rememberVideoCallPermissionAction(vm) { vm.startContactCall(userId, displayName, true) }
-
-    LaunchedEffect(userId) {'''
+          old='    val about = contact?.about ?: vm.groupMemberAbout(userId)\n\n    LaunchedEffect(userId) {'
+          new='    val about = contact?.about ?: vm.groupMemberAbout(userId)\n    val requestContactVoiceCall = rememberVoiceCallPermissionAction(vm) { vm.startContactCall(userId, displayName, false) }\n    val requestContactVideoCall = rememberVideoCallPermissionAction(vm) { vm.startContactCall(userId, displayName, true) }\n\n    LaunchedEffect(userId) {'
           if old not in s: raise SystemExit("contact permission anchor not found")
           s=s.replace(old,new,1)
           old='OutlinedButton(onClick = { vm.startContactCall(userId, displayName, false) }, modifier = Modifier.weight(1f))'

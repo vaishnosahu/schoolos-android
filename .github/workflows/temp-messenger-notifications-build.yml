@@ -1,8 +1,8 @@
-name: Messenger Video Calling 2.26 Build
+name: Messenger v2.26.45 Loading Empty Error Reaction UX
 
 on:
   push:
-    branches: [ messenger-help-legal-diagnostics-22644-20261005 ]
+    branches: [ messenger-loading-reaction-states-22645-20261005 ]
 
 permissions:
   contents: read
@@ -2156,17 +2156,90 @@ jobs:
           print("V22644_HELP_CONTEXT_COMPILE_FIX_PASS")
           PY
 
-      - name: Package resolved Messenger v2.26.44 source
+      - name: Apply v2.26.45 loading empty error reaction UX
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.44-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          cp "$GITHUB_WORKSPACE/tmp-messenger-build/v22645-loading-reaction.patch.gz.b64" /tmp/v22645.patch.gz.b64
+          base64 --decode /tmp/v22645.patch.gz.b64 | gzip -dc > /tmp/v22645.patch
+          sed -i 's#v244orig/#a/#g; s#v244src/src/#b/#g' /tmp/v22645.patch
+          patch -p1 < /tmp/v22645.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          api=Path("app/src/main/java/com/example/messengerui/ApiConfig.kt")
+          s=api.read_text()
+          s=s.replace('const val APP_VERSION = "2.26.44"','const val APP_VERSION = "2.26.45"')
+          s=s.replace('const val APP_VERSION_CODE = 83','const val APP_VERSION_CODE = 84')
+          api.write_text(s)
 
-      - name: Upload resolved v2.26.44 source
+          vm=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=vm.read_text()
+          s=s.replace('    var backupOperationText by mutableStateOf("")\n        private set\n',
+                      '    var backupOperationText by mutableStateOf("")\n        private set\n    var backupErrorText by mutableStateOf("")\n        private set\n')
+          s=s.replace('    fun refreshBackupStatus(){\n        if(!serverMode)return\n        val token=db.serverToken()\n        viewModelScope.launch{runCatching{withContext(Dispatchers.IO){api.backupStatus(token)}}.onSuccess{backupHistory.clear();backupHistory.addAll(it)}}\n    }',
+          '''    fun refreshBackupStatus(){
+              if(!serverMode){ backupErrorText="Connect to the server to check cloud backup."; return }
+              backupErrorText=""
+              val token=db.serverToken()
+              viewModelScope.launch{runCatching{withContext(Dispatchers.IO){api.backupStatus(token)}}
+                  .onSuccess{backupHistory.clear();backupHistory.addAll(it);backupErrorText=""}
+                  .onFailure{backupErrorText=it.userMessage("Unable to refresh backup status. Check your connection and try again.")}}
+          }''')
+          s=s.replace('        backupBusy=true\n        backupOperationText="Preparing encrypted backup…"',
+                      '        backupErrorText=""\n        backupBusy=true\n        backupOperationText="Preparing encrypted backup…"',1)
+          s=s.replace('                db.setStringSetting("backup_last_error",t.message.orEmpty().take(300))\n                lastToast=t.userMessage("Backup failed. Your encrypted backup checkpoint was kept for retry")',
+                      '                db.setStringSetting("backup_last_error",t.message.orEmpty().take(300))\n                backupErrorText=t.userMessage("Backup failed. Your encrypted backup checkpoint was kept for retry")\n                lastToast=backupErrorText')
+          s=s.replace('        if(backupBusy)return\n        backupBusy=true\n        backupOperationText="Downloading encrypted backup…"',
+                      '        if(backupBusy)return\n        backupErrorText=""\n        backupBusy=true\n        backupOperationText="Downloading encrypted backup…"')
+          s=s.replace('            } catch(t:Throwable) {\n                lastToast=t.userMessage("Unable to restore backup")\n            } finally {',
+                      '            } catch(t:Throwable) {\n                backupErrorText=t.userMessage("Unable to restore backup. Check the recovery key and connection, then retry.")\n                lastToast=backupErrorText\n            } finally {')
+          vm.write_text(s)
+
+          app=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt")
+          s=app.read_text()
+          s=s.replace('if(vm.backupBusy){Spacer(Modifier.height(10.dp));LinearProgressIndicator(Modifier.fillMaxWidth())}\n                            Spacer(Modifier.height(12.dp));Button',
+                      'if(vm.backupBusy){Spacer(Modifier.height(10.dp));LinearProgressIndicator(Modifier.fillMaxWidth());Text(vm.backupOperationText.ifBlank { "Backup in progress…" },style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=6.dp))};if(vm.backupErrorText.isNotBlank()){Spacer(Modifier.height(8.dp));FriendlyState(title="Backup needs attention",message=vm.backupErrorText,retryLabel="Retry status",onRetry={vm.refreshBackupStatus()})}\n                            Spacer(Modifier.height(12.dp));Button',1)
+          s=s.replace('item{if(vm.businessMediaBusy)LinearProgressIndicator(Modifier.fillMaxWidth())};item{SectionLabel("Business identity")}',
+                      'item{if(vm.businessLoading||vm.businessMediaBusy){Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=6.dp)){LinearProgressIndicator(Modifier.fillMaxWidth());Text(if(vm.businessLoading)"Loading business profile…" else "Updating business media…",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=5.dp))}}};item{SectionLabel("Business identity")}',1)
+          s=s.replace('2->BusinessCatalogueTab(catalogue,bizName,onAdd={editing=BusinessCatalogueItem(System.currentTimeMillis().toString())},onEdit={editing=it},onDelete={target->catalogue=catalogue.filterNot{it.id==target.id};saveCatalogue();if(target.publicId.isNotBlank())vm.deleteBusinessCatalogueItemServer(target.publicId)},onShare={sharing=it})',
+                      '2->if(vm.businessLoading){Column(Modifier.fillMaxSize().padding(16.dp)){CompactSkeletonRow();CompactSkeletonRow();CompactSkeletonRow();Spacer(Modifier.height(8.dp));Text("Loading catalogue…",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}else BusinessCatalogueTab(catalogue,bizName,onAdd={editing=BusinessCatalogueItem(System.currentTimeMillis().toString())},onEdit={editing=it},onDelete={target->catalogue=catalogue.filterNot{it.id==target.id};saveCatalogue();if(target.publicId.isNotBlank())vm.deleteBusinessCatalogueItemServer(target.publicId)},onShare={sharing=it})',1)
+          app.write_text(s)
+          PY
+          grep -q 'versionName = "2.26.45"' app/build.gradle.kts
+          grep -q 'versionCode = 84' app/build.gradle.kts
+          grep -q 'const val APP_VERSION = "2.26.45"' app/src/main/java/com/example/messengerui/ApiConfig.kt
+          grep -q 'BusinessLabelsHomeStrip' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'toggleReaction(msg.id, emoji)' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'Mute notifications' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'fun serviceHealth' app/src/main/java/com/example/messengerui/ApiClient.kt
+          grep -q 'api.serviceHealth(token)' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'backupErrorText' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          echo "f08dcbcec9671c1c38f20f040e02dc3275100b2d868c07443a89ea088f533597  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+          echo "d27294b7b569b6d8936bd5b318218e1b0127af95a17dfddfcbcf26bf58ff317d  app/src/main/java/com/example/messengerui/NotificationHelper.kt" | sha256sum -c -
+          echo "c76f3a7740e59ebeb3add85371e6edc51bb70570423be68b756db9944de6cad0  app/src/main/java/com/example/messengerui/CallForegroundService.kt" | sha256sum -c -
+          echo "e4dbb21c34613ccc2a9a0c4366d3959fa3a74636d5191c3fc7db503b6319dc2b  app/src/main/java/com/example/messengerui/IncomingCallActivity.kt" | sha256sum -c -
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          app=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt").read_text()
+          c=app.index("@Composable\nprivate fun VoiceCallScreen")
+          assert hashlib.sha256(app[c:].encode()).hexdigest()=="3257674d57c8ab1b1a7e728bb095eeba6df3fa7550d05100f2628b1bbb16fa72"
+          print("V22645_FROZEN_CALL_VIDEO_ENGINE_GUARDS_PASS")
+          PY
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
+          echo "V22645_SCOPE_GUARD_PASS"
+
+      - name: Package resolved Messenger v2.26.45 source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.45-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload resolved v2.26.45 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.44-Resolved-Source
-          path: Messenger-v2.26.44-Resolved-Source.zip
+          name: Messenger-v2.26.45-Resolved-Source
+          path: Messenger-v2.26.45-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -2189,10 +2262,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.44'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.45'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-v2.26.44-Debug.apk
-          sha256sum Messenger-v2.26.44-Debug.apk | tee Messenger-v2.26.44-Debug.sha256
+          cp "$APK" Messenger-v2.26.45-Debug.apk
+          sha256sum Messenger-v2.26.45-Debug.apk | tee Messenger-v2.26.45-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -2207,20 +2280,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.45-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.45-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.45-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.44'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.sha256"
+          grep -q "versionName='2.26.45'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.45-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.45-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.44-Stable
+          name: Messenger-v2.26.45-Stable
           path: |
-            Messenger-v2.26.44-Stable.apk
-            Messenger-v2.26.44-Stable.sha256
+            Messenger-v2.26.45-Stable.apk
+            Messenger-v2.26.45-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -2229,10 +2302,10 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.44-Debug
+          name: Messenger-v2.26.45-Debug
           path: |
-            Messenger-v2.26.44-Debug.apk
-            Messenger-v2.26.44-Debug.sha256
+            Messenger-v2.26.45-Debug.apk
+            Messenger-v2.26.45-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error

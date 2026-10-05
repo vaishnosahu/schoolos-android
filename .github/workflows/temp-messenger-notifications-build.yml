@@ -2346,7 +2346,7 @@ jobs:
           ACTUAL="$(grep '^+++ work/' /tmp/v22650.patch | sed 's#^+++ work/##' | cut -f1 | sort -u)"
           EXPECTED="$(printf '%s\n'             app/build.gradle.kts             app/src/main/java/com/example/messengerui/ApiConfig.kt             app/src/main/java/com/example/messengerui/MediaPresentation.kt             app/src/main/java/com/example/messengerui/MessengerApp.kt             app/src/main/java/com/example/messengerui/UiMetrics.kt | sort)"
           test "$ACTUAL" = "$EXPECTED"
-          patch -p2 < /tmp/v22650.patch
+          patch -p1 < /tmp/v22650.patch
           grep -q 'versionName = "2.26.50"' app/build.gradle.kts
           grep -q 'versionCode = 89' app/build.gradle.kts
           grep -q 'const val APP_VERSION = "2.26.50"' app/src/main/java/com/example/messengerui/ApiConfig.kt

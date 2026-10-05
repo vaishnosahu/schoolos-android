@@ -2,7 +2,7 @@ name: Messenger Video Calling 2.26 Build
 
 on:
   push:
-    branches: [ messenger-business-qr-22643-20261005 ]
+    branches: [ messenger-help-legal-diagnostics-22644-20261005 ]
 
 permissions:
   contents: read
@@ -2073,17 +2073,71 @@ jobs:
           print("V22643_PROFILE_QR_COMPILE_FIX_PASS")
           PY
 
-      - name: Package resolved Messenger v2.26.43 source
+      - name: Apply v2.26.44 help legal diagnostics closure
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
-          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.43-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22644-before.sha256
+          cp "$GITHUB_WORKSPACE/tmp-messenger-build/v22644-part-00.txt" /tmp/v22644.b64
+          echo "bf790f3b7acdb5c1d25d6bf1e29004ed0ca5577c1437abcc7489f7e780ab06e7  /tmp/v22644.b64" | sha256sum -c -
+          base64 --decode /tmp/v22644.b64 | gzip -dc > /tmp/v22644.patch
+          echo "4acff62b25eb5fa43c083ef02ff4734e3bb34913cf22f40dee628f5a789c1c57  /tmp/v22644.patch" | sha256sum -c -
+          sed -i 's#v22644_base/#a/#g; s#v22644_work/#b/#g' /tmp/v22644.patch
+          patch -p1 < /tmp/v22644.patch
+          grep -q 'versionName = "2.26.44"' app/build.gradle.kts
+          grep -q 'versionCode = 83' app/build.gradle.kts
+          grep -q 'const val APP_VERSION = "2.26.44"' app/src/main/java/com/example/messengerui/ApiConfig.kt
+          grep -q 'const val APP_VERSION_CODE = 83' app/src/main/java/com/example/messengerui/ApiConfig.kt
+          grep -q '"Help Center"' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q '"Contact Support"' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q '"Terms & Conditions"' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q '"Privacy Policy"' app/src/main/java/com/example/messengerui/MessengerApp.kt
+          grep -q 'supportDiagnosticSummary' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'runSupportDiagnostics' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          grep -q 'Fatal error' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          find app/src/main -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/v22644-after.sha256
+          diff -u /tmp/v22644-before.sha256 /tmp/v22644-after.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u > /tmp/v22644-changed-runtime.txt || true
+          cat > /tmp/v22644-allowed-runtime.txt <<'EOF'
+          app/src/main/java/com/example/messengerui/ApiConfig.kt
+          app/src/main/java/com/example/messengerui/AppViewModel.kt
+          app/src/main/java/com/example/messengerui/MessengerApp.kt
+          EOF
+          sed -i 's/^          //' /tmp/v22644-allowed-runtime.txt
+          sort -o /tmp/v22644-allowed-runtime.txt /tmp/v22644-allowed-runtime.txt
+          diff -u /tmp/v22644-allowed-runtime.txt /tmp/v22644-changed-runtime.txt
+          echo "05db41319f755be59ca463a74fa9336cb5f3aee213e7dc2f79cb54bf34b22cca  app/src/main/java/com/example/messengerui/ApiClient.kt" | sha256sum -c -
+          echo "f08dcbcec9671c1c38f20f040e02dc3275100b2d868c07443a89ea088f533597  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+          echo "d27294b7b569b6d8936bd5b318218e1b0127af95a17dfddfcbcf26bf58ff317d  app/src/main/java/com/example/messengerui/NotificationHelper.kt" | sha256sum -c -
+          echo "03fc0802908d26e5cbe72e9f4816b41dd83ce0ada2d20cd13e68af7c8878301b  app/src/main/java/com/example/messengerui/WebQrScannerActivity.kt" | sha256sum -c -
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          app=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt").read_text()
+          a=app.index("@Composable\nprivate fun CallsTab")
+          b=app.index("@Composable\nprivate fun SettingsTab",a)
+          assert hashlib.sha256(app[a:b].encode()).hexdigest()=="bd19e4425804a18fadba8503c1a9cdfb31a2d8f51297fe1044401f5087ee6f1c"
+          c=app.index("@Composable\nprivate fun VoiceCallScreen")
+          assert hashlib.sha256(app[c:].encode()).hexdigest()=="3257674d57c8ab1b1a7e728bb095eeba6df3fa7550d05100f2628b1bbb16fa72"
+          vm=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt").read_text()
+          x=vm.index("    fun startVoiceCall(chatId: String)")
+          y=vm.index("    fun setLastSeen",x)
+          assert hashlib.sha256(vm[x:y].encode()).hexdigest()=="6a6ddd9e548efbf85b30761966d5b78db8274b9a17824d6d88b1bc45eb44d431"
+          print("V22644_CALL_VIDEO_WEBRTC_FROZEN_PASS")
+          PY
+          test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
+          echo "V22644_HELP_LEGAL_DIAGNOSTICS_BOUNDARY_PASS"
 
-      - name: Upload resolved v2.26.43 source
+      - name: Package resolved Messenger v2.26.44 source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.44-Resolved-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload resolved v2.26.44 source
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.43-Resolved-Source
-          path: Messenger-v2.26.43-Resolved-Source.zip
+          name: Messenger-v2.26.44-Resolved-Source
+          path: Messenger-v2.26.44-Resolved-Source.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -2106,10 +2160,10 @@ jobs:
           test -x "$APKSIGNER"
           "$AAPT" dump badging "$APK" | tee messenger-canonical217-apk-badging.txt
           grep -q "package: name='com.example.messengerui'" messenger-canonical217-apk-badging.txt
-          grep -q "versionName='2.26.43'" messenger-canonical217-apk-badging.txt
+          grep -q "versionName='2.26.44'" messenger-canonical217-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-canonical217-apksigner.txt
-          cp "$APK" Messenger-v2.26.43-Debug.apk
-          sha256sum Messenger-v2.26.43-Debug.apk | tee Messenger-v2.26.43-Debug.sha256
+          cp "$APK" Messenger-v2.26.44-Debug.apk
+          sha256sum Messenger-v2.26.44-Debug.apk | tee Messenger-v2.26.44-Debug.sha256
 
 
       - name: Build and sign stable Messenger APK
@@ -2124,20 +2178,20 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.43-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.43-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.43-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" "$GITHUB_WORKSPACE/Messenger-Incoming-Background-Call-Lifecycle-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" | tee "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
           grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          grep -q "versionName='2.26.43'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
-          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.43-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.43-Stable.sha256"
+          grep -q "versionName='2.26.44'" "$GITHUB_WORKSPACE/messenger-canonical217-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.44-Stable.sha256"
 
       - name: Upload stable Messenger APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.43-Stable
+          name: Messenger-v2.26.44-Stable
           path: |
-            Messenger-v2.26.43-Stable.apk
-            Messenger-v2.26.43-Stable.sha256
+            Messenger-v2.26.44-Stable.apk
+            Messenger-v2.26.44-Stable.sha256
             messenger-canonical217-stable-badging.txt
             messenger-canonical217-stable-apksigner.txt
           if-no-files-found: error
@@ -2146,12 +2200,12 @@ jobs:
       - name: Upload Messenger debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Messenger-v2.26.43-Debug
+          name: Messenger-v2.26.44-Debug
           path: |
-            Messenger-v2.26.43-Debug.apk
-            Messenger-v2.26.43-Debug.sha256
+            Messenger-v2.26.44-Debug.apk
+            Messenger-v2.26.44-Debug.sha256
             messenger-canonical217-apk-badging.txt
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22643 business qr trigger 2
+# v22644 help legal diagnostics trigger 1

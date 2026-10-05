@@ -2283,7 +2283,7 @@ jobs:
           cd /tmp/messenger-build/messenger_live
           base64 --decode "$GITHUB_WORKSPACE/tmp-messenger-build/v22648-avatar-propagation.patch.gz.b64" | gzip -dc > /tmp/v22648.patch
           echo "d4129701e425a4ee1022299b0ff31091a5d75dc21ffab311df29e95f410e667a  /tmp/v22648.patch" | sha256sum -c -
-          patch -p5 < /tmp/v22648.patch
+          patch -p4 < /tmp/v22648.patch
           grep -q 'versionName = "2.26.48"' app/build.gradle.kts
           grep -q 'versionCode = 87' app/build.gradle.kts
           grep -q 'const val APP_VERSION = "2.26.48"' app/src/main/java/com/example/messengerui/ApiConfig.kt

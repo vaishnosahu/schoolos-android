@@ -2127,6 +2127,35 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "V22644_HELP_LEGAL_DIAGNOSTICS_BOUNDARY_PASS"
 
+      - name: Fix v2.26.44 Help screen context compile scope
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          FILE=app/src/main/java/com/example/messengerui/MessengerApp.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt")
+          s=p.read_text()
+          old='private fun SettingsSectionScreen(vm: AppViewModel, section: String) {\n    val title = when(section) {'
+          new='private fun SettingsSectionScreen(vm: AppViewModel, section: String) {\n    val context = LocalContext.current\n    val title = when(section) {'
+          if old not in s:
+              raise SystemExit("SettingsSectionScreen context marker not found")
+          p.write_text(s.replace(old,new,1))
+          PY
+          grep -A2 -q 'private fun SettingsSectionScreen' "$FILE"
+          grep -q 'val context = LocalContext.current' "$FILE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          app=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt").read_text()
+          a=app.index("@Composable\nprivate fun CallsTab")
+          b=app.index("@Composable\nprivate fun SettingsTab",a)
+          assert hashlib.sha256(app[a:b].encode()).hexdigest()=="bd19e4425804a18fadba8503c1a9cdfb31a2d8f51297fe1044401f5087ee6f1c"
+          c=app.index("@Composable\nprivate fun VoiceCallScreen")
+          assert hashlib.sha256(app[c:].encode()).hexdigest()=="3257674d57c8ab1b1a7e728bb095eeba6df3fa7550d05100f2628b1bbb16fa72"
+          print("V22644_HELP_CONTEXT_COMPILE_FIX_PASS")
+          PY
+
       - name: Package resolved Messenger v2.26.44 source
         shell: bash
         run: |
@@ -2208,4 +2237,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22644 help legal diagnostics trigger 1
+# v22644 help legal diagnostics trigger 2

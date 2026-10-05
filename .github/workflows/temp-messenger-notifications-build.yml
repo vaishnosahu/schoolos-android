@@ -1984,34 +1984,22 @@ jobs:
         shell: bash
         run: |
           cd /tmp/messenger-build/messenger_live
+          cp "$GITHUB_WORKSPACE/tmp-messenger-build/v22642-migration.txt" /tmp/v22642-migration.b64
+          echo "c7dda9ddf71f9d68b506b7a4f75eef69d1546888315d768e8ecb32fc7da1d13c  /tmp/v22642-migration.b64" | sha256sum -c -
+          base64 --decode /tmp/v22642-migration.b64 | gzip -dc > /tmp/v22642-migration.patch
+          echo "c706135e7a20b41c95ca2301cef43d2278a465154857111bff39c68c72de65f0  /tmp/v22642-migration.patch" | sha256sum -c -
+          patch -p1 < /tmp/v22642-migration.patch
           python3 - <<'PY'
           from pathlib import Path
-          p=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
-          s=p.read_text()
-          old='''    private fun initializePersistentContactSync() {
-        val app = getApplication<Application>()
-        if (!db.getBooleanSetting("phone_contacts_sync_enabled", false)) return
-        if (ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return
-        registerPhoneContactsObserver()
-        syncPhoneContactsInternal(manual = false, force = true)
-    }
-'''
-          new='''    private fun initializePersistentContactSync() {
-        val app = getApplication<Application>()
-        if (ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return
-        if (!db.getBooleanSetting("phone_contacts_sync_enabled", false)) {
-            db.setBooleanSetting("phone_contacts_sync_enabled", true)
-        }
-        registerPhoneContactsObserver()
-        syncPhoneContactsInternal(manual = false, force = true)
-    }
-'''
-          if old not in s:
-              raise SystemExit("persistent contact migration marker not found")
-          p.write_text(s.replace(old,new,1))
+          s=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt").read_text()
+          start=s.index("    private fun initializePersistentContactSync()")
+          end=s.index("\n    private fun maybeAutoRefreshPhoneContacts()",start)
+          block=s[start:end]
+          assert 'READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return' in block
+          assert 'db.setBooleanSetting("phone_contacts_sync_enabled", true)' in block
+          assert block.index('READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return') < block.index('db.setBooleanSetting("phone_contacts_sync_enabled", true)')
+          print("V22642_CONTACT_PERMISSION_MIGRATION_PASS")
           PY
-          grep -q 'db.setBooleanSetting("phone_contacts_sync_enabled", true)' app/src/main/java/com/example/messengerui/AppViewModel.kt
-          echo "V22642_CONTACT_PERMISSION_MIGRATION_PASS"
 
       - name: Package resolved Messenger v2.26.42 source
         shell: bash
@@ -2094,4 +2082,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22642 backup contact persistence trigger 2
+# v22642 backup contact persistence trigger 3

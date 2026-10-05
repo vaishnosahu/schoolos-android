@@ -1980,6 +1980,39 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "V22642_BACKUP_CONTACT_PERSISTENCE_BOUNDARY_PASS"
 
+      - name: Migrate previously granted contact sync into persistent mode
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt")
+          s=p.read_text()
+          old='''    private fun initializePersistentContactSync() {
+        val app = getApplication<Application>()
+        if (!db.getBooleanSetting("phone_contacts_sync_enabled", false)) return
+        if (ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return
+        registerPhoneContactsObserver()
+        syncPhoneContactsInternal(manual = false, force = true)
+    }
+'''
+          new='''    private fun initializePersistentContactSync() {
+        val app = getApplication<Application>()
+        if (ContextCompat.checkSelfPermission(app, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return
+        if (!db.getBooleanSetting("phone_contacts_sync_enabled", false)) {
+            db.setBooleanSetting("phone_contacts_sync_enabled", true)
+        }
+        registerPhoneContactsObserver()
+        syncPhoneContactsInternal(manual = false, force = true)
+    }
+'''
+          if old not in s:
+              raise SystemExit("persistent contact migration marker not found")
+          p.write_text(s.replace(old,new,1))
+          PY
+          grep -q 'db.setBooleanSetting("phone_contacts_sync_enabled", true)' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          echo "V22642_CONTACT_PERMISSION_MIGRATION_PASS"
+
       - name: Package resolved Messenger v2.26.42 source
         shell: bash
         run: |
@@ -2061,4 +2094,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22642 backup contact persistence trigger 1
+# v22642 backup contact persistence trigger 2

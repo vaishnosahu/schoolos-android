@@ -2053,6 +2053,26 @@ jobs:
           test -z "$(find app/src/main -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
           echo "V22643_BUSINESS_QR_BOUNDARY_PASS"
 
+      - name: Fix v2.26.43 Profile QR Material3 compile opt-in
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          FILE=app/src/main/java/com/example/messengerui/MessengerApp.kt
+          sed -i '/private fun ProfileQrDialog/ i @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)' "$FILE"
+          grep -B2 -A1 -q 'private fun ProfileQrDialog' "$FILE"
+          grep -q '@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)' "$FILE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          s=Path("app/src/main/java/com/example/messengerui/MessengerApp.kt").read_text()
+          a=s.index("@Composable\nprivate fun CallsTab")
+          b=s.index("@Composable\nprivate fun SettingsTab",a)
+          assert hashlib.sha256(s[a:b].encode()).hexdigest()=="bd19e4425804a18fadba8503c1a9cdfb31a2d8f51297fe1044401f5087ee6f1c"
+          c=s.index("@Composable\nprivate fun VoiceCallScreen")
+          assert hashlib.sha256(s[c:].encode()).hexdigest()=="3257674d57c8ab1b1a7e728bb095eeba6df3fa7550d05100f2628b1bbb16fa72"
+          print("V22643_PROFILE_QR_COMPILE_FIX_PASS")
+          PY
+
       - name: Package resolved Messenger v2.26.43 source
         shell: bash
         run: |
@@ -2134,4 +2154,4 @@ jobs:
             messenger-canonical217-apksigner.txt
           if-no-files-found: error
           retention-days: 1
-# v22643 business qr trigger 1
+# v22643 business qr trigger 2

@@ -1,8 +1,8 @@
-name: Messenger v2.26.52 Video Call P1 P2 P3 P4 P5 Validation
+name: Messenger v2.26.52 Video Call P1 P2 P3 P4 P5 P6 Validation
 
 on:
   push:
-    branches: [ messenger-video-p5-call-screen-22652-20261006 ]
+    branches: [ messenger-video-p6-transceiver-22652-20261006 ]
 
 permissions:
   contents: read
@@ -2479,6 +2479,23 @@ jobs:
           grep -q 'answerHandoffStarted' app/src/main/java/com/example/messengerui/IncomingCallActivity.kt
           grep -q 'finish()' app/src/main/java/com/example/messengerui/IncomingCallActivity.kt
           echo "MESSENGER_P5_CALL_SCREEN_SCOPE_PASS"
+
+      - name: Apply P6 remote video transceiver stale-track hardening
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          printf '%s' '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' | base64 --decode | gzip -dc > /tmp/messenger-v22652-p6.patch
+          echo "d4ffbab00ba512970bac2466c1784a7b082d3fc68cb5930af6b5d5725667829d  /tmp/messenger-v22652-p6.patch" | sha256sum -c -
+          ACTUAL="$(grep '^+++ b/' /tmp/messenger-v22652-p6.patch | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < /tmp/messenger-v22652-p6.patch
+          echo "6fa9c9d38f09fef5a1163daba950fe59298fa0848cbc37835123ffbce52431b0  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+          grep -q 'RemoteVideoCandidate' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'remoteVideoReceiver' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'video_transceiver_selected' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          ! grep -q 'let(::bindRemoteVideoTrack)' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          echo "MESSENGER_P6_REMOTE_VIDEO_TRANSCEIVER_SCOPE_PASS"
 
       - name: Package resolved Messenger v2.26.52 source
         shell: bash

@@ -1,8 +1,8 @@
-name: Messenger v2.26.52 Video Call P1 P2 P3 Validation
+name: Messenger v2.26.52 Video Call P1 P2 P3 P4 Validation
 
 on:
   push:
-    branches: [ messenger-video-p3-stall-recovery-22652-20261006 ]
+    branches: [ messenger-video-p4-history-22652-20261006 ]
 
 permissions:
   contents: read
@@ -2443,6 +2443,27 @@ jobs:
           echo "833a2fe81b52669173d69c582b57fd4b36dde144194c30c62fc082d05905feeb  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
           echo "30aea862ca2526cbe02038f346d0e502464ef633835aeb33e0d5cc0f334e3732  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
           echo "MESSENGER_P3_VIDEO_STALL_SCOPE_PASS"
+
+      - name: Apply P4 active-call history polling fix
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          printf '%s' 'H4sICNMVxWoAA21lc3Nlbmdlci12MjI2NTItcDQucGF0Y2gApZBRS4RAEMff/RTzqHi6wgXRwYZHEAVFUHAv0cOmo23p7rK7miL33XP14rCup+ZlhvnP/zfDRFEEjDCliNEZqRkX5J21jGSyJtixWlVIajQGRYm64WSr1I7j573MsYo/rBeGIbz+w5+mEK3P1snqHMIpX0CaeuCiaARotLq/YlV1w42VuvcDoGOz0GjenlC3qJ1otqYXmR94MDuV5i2zOBEaZVDb4+ydLH2NtbS4eZzSTvIMnRIMXgSH+HtF+D3Ssgq4xZrOtCX7xxx24/lclLcix45mjhdzVz8U11wbC8OIinlOqSOOBeyPAF74C/8lTQKYGM+L/stkBqwMznLM8txPVq4bzI/Zn/rQqft//WZz0GHwvgBnjuUVMwIAAA==' | base64 --decode | gzip -dc > /tmp/messenger-v22652-p4.patch
+          echo "a7b80e651ad6417f0edaac1cc31f3a913494ac9a77227b40efbbf7cef95c1eaf  /tmp/messenger-v22652-p4.patch" | sha256sum -c -
+          ACTUAL="$(grep '^+++ b/' /tmp/messenger-v22652-p4.patch | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="app/src/main/java/com/example/messengerui/AppViewModel.kt"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < /tmp/messenger-v22652-p4.patch
+          echo "f33c9b87066015b79ba8b612c463a7628f3fac947795edb4666cb096dd612d9a  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("app/src/main/java/com/example/messengerui/AppViewModel.kt").read_text()
+          block=s.split("private fun upsertServerCallLog",1)[1].split("private fun remoteCallLog",1)[0]
+          assert "refreshServerCallsAsync()" not in block
+          assert "calls.indexOfFirst" in block
+          assert "calls.add(0,item)" in block
+          PY
+          echo "MESSENGER_P4_HISTORY_POLLING_SCOPE_PASS"
 
       - name: Package resolved Messenger v2.26.52 source
         shell: bash

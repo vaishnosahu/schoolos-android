@@ -1,0 +1,51 @@
+--- a/app/src/main/java/com/example/messengerui/AppViewModel.kt
++++ b/app/src/main/java/com/example/messengerui/AppViewModel.kt
+@@ -4111,6 +4111,8 @@
+                 val remote=event.payload.optJSONObject("call")?.let(api::parseVoiceCallPayload) ?: return
+                 PushDeduper.alreadyHandled(getApplication(), "call-state:${remote.id}:ACCEPTED")
+                 NotificationHelper.cancelIncomingCall(getApplication(),remote.id)
++                IncomingCallActivity.finishActive(remote.id)
++                CallAlertStore.markTerminal(getApplication(),remote.id)
+                 val current=activeVoiceCall
+                 val acceptedHere=acceptedLocallyCallId==remote.id
+                 if(remote.incoming && current?.callId==remote.id && !acceptedHere){ finishVoiceCall(remote,false); return }
+@@ -4142,6 +4144,7 @@
+                     if(waitingVoiceCall?.id==remote.id) waitingVoiceCall=null
+                     val eventKey="call-state:${remote.id}:${remote.state}"
+                     val alreadyHandled=PushDeduper.alreadyHandled(getApplication(),eventKey)
++                    IncomingCallActivity.finishActive(remote.id)
+                     NotificationHelper.markCallTerminal(getApplication(),remote.id)
+                     if(!alreadyHandled && remote.incoming && remote.state=="MISSED" && !NotificationRuntime.appVisible) NotificationHelper.showMissedCall(getApplication(),remote.id,remote.peerName)
+                 }
+--- a/app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt
++++ b/app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt
+@@ -69,16 +69,27 @@
+         }
+         if (eventType == "call.accepted") {
+             val callId=data["call_id"].orEmpty()
+-            if(callId.isNotBlank()) NotificationHelper.cancelIncomingCall(this,callId)
++            if(callId.isNotBlank()) {
++                NotificationHelper.cancelIncomingCall(this,callId)
++                IncomingCallActivity.finishActive(callId)
++                // ACCEPTED is terminal for the ringing surface even though the media call continues.
++                // Persisting this guard prevents an out-of-order/delayed call.incoming push from
++                // reopening the lock-screen incoming UI after another device already answered.
++                CallAlertStore.markTerminal(this,callId)
++                CallLifecycleLog.info("accepted_push_ring_surface_closed",callId)
++            }
+             return
+         }
+-        if (eventType == "call.ended") {
++        if (eventType in setOf("call.ended","call.declined","call.cancelled","call.missed","call.failed")) {
+             val callId=data["call_id"].orEmpty()
+             if(callId.isBlank()) return
+             val incoming=data["incoming"]=="1"
+             val state=data["state"].orEmpty().uppercase()
+             val peer=data["peer_name"].orEmpty().ifBlank { data["caller_name"].orEmpty().ifBlank { "Messenger User" } }
++            IncomingCallActivity.finishActive(callId)
+             NotificationHelper.markCallTerminal(this,callId)
++            val activeCallId=NotificationRuntime.activeCallId
++            if(activeCallId.isNullOrBlank() || activeCallId==callId) CallForegroundService.stop(this)
+             if(incoming && state=="MISSED") NotificationHelper.showMissedCall(this,callId,peer)
+             return
+         }

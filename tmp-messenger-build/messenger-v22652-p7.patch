@@ -1,0 +1,234 @@
+--- a/app/src/main/java/com/example/messengerui/AppViewModel.kt
++++ b/app/src/main/java/com/example/messengerui/AppViewModel.kt
+@@ -2938,7 +2938,7 @@
+         val ownerCallId=engineCallId
+         fun ownsEngine():Boolean = generation==voiceEngineGeneration && activeVoiceCall?.callId==ownerCallId
+         voiceEngine=WebRtcVoiceEngine(getApplication(),config.iceServers,relayValidationMode,activeVoiceCall?.callType==CallType.VIDEO,activeVoiceCall?.incoming==true,
+-            onLocalVideoAvailable={ available -> if(ownsEngine() && !available) viewModelScope.launch { if(ownsEngine()) activeVoiceCall=activeVoiceCall?.copy(cameraEnabled=false) } },
++            onLocalVideoAvailable={ available -> if(ownsEngine()) viewModelScope.launch { if(ownsEngine() && activeVoiceCall?.callType==CallType.VIDEO) activeVoiceCall=activeVoiceCall?.copy(cameraEnabled=available) } },
+             onRemoteVideoAvailable={ available -> if(ownsEngine()) viewModelScope.launch { if(ownsEngine()) activeVoiceCall=activeVoiceCall?.copy(remoteVideoAvailable=available) } },
+             onLocalSignal={ type,payload -> if(ownsEngine()) sendVoiceSignal(type,payload) },
+             onState={ phase -> if(ownsEngine()) viewModelScope.launch { if(ownsEngine()) onVoiceEngineState(phase) } },
+--- a/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
++++ b/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+@@ -65,6 +65,7 @@
+     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+     private val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+     private val videoSyncHandler = Handler(Looper.getMainLooper())
++    private val cameraRecoveryHandler = Handler(Looper.getMainLooper())
+     private var audioFocusRequest: AudioFocusRequest? = null
+     private var factory: PeerConnectionFactory? = null
+     private var audioSource: AudioSource? = null
+@@ -79,6 +80,11 @@
+     private var localVideoSink: VideoSink? = null
+     private var remoteVideoSink: VideoSink? = null
+     private var usingFrontCamera = true
++    @Volatile private var localCameraRequestedEnabled = videoEnabled
++    @Volatile private var localCameraHealthy = false
++    private var cameraRecoveryAttempt = 0
++    private var cameraRecoveryGeneration = 0L
++    private var rebuildingCamera = false
+     @Volatile private var remoteVideoReported = false
+     @Volatile private var lastRemoteVideoFrameAtMs = 0L
+     @Volatile private var remoteVideoEverFlowed = false
+@@ -152,33 +158,9 @@
+                     .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglContext))
+             }
+             factory = factoryBuilder.createPeerConnectionFactory()
+-            if(videoEnabled && ContextCompat.checkSelfPermission(appContext, Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED){
+-                runCatching {
+-                    val enumerator=Camera2Enumerator(appContext)
+-                    val names=enumerator.deviceNames.toList()
+-                    val cameraName=names.firstOrNull { enumerator.isFrontFacing(it) } ?: names.firstOrNull()
+-                    if(cameraName!=null){
+-                        usingFrontCamera=enumerator.isFrontFacing(cameraName)
+-                        val cameraEvents=object: CameraVideoCapturer.CameraEventsHandler {
+-                            override fun onCameraError(errorDescription:String?) { onLocalVideoAvailable(false) }
+-                            override fun onCameraDisconnected() { onLocalVideoAvailable(false) }
+-                            override fun onCameraFreezed(errorDescription:String?) { onLocalVideoAvailable(false) }
+-                            override fun onCameraOpening(cameraName:String?) = Unit
+-                            override fun onFirstFrameAvailable() { onLocalVideoAvailable(true) }
+-                            override fun onCameraClosed() = Unit
+-                        }
+-                        videoCapturer=enumerator.createCapturer(cameraName,cameraEvents) as? CameraVideoCapturer
+-                        if(videoCapturer!=null){
+-                            surfaceTextureHelper=SurfaceTextureHelper.create("MessengerVideoCapture",MessengerWebRtcEgl.context)
+-                            videoSource=factory!!.createVideoSource(false)
+-                            videoCapturer!!.initialize(surfaceTextureHelper,appContext,videoSource!!.capturerObserver)
+-                            videoCapturer!!.startCapture(720,1280,24)
+-                            videoTrack=factory!!.createVideoTrack("messenger-video",videoSource).apply { setEnabled(true) }
+-                        } else onLocalVideoAvailable(false)
+-                    } else onLocalVideoAvailable(false)
+-                }.onFailure { onLocalVideoAvailable(false) }
+-            } else if(videoEnabled) {
+-                onLocalVideoAvailable(false)
++            if(videoEnabled) {
++                localCameraRequestedEnabled = ContextCompat.checkSelfPermission(appContext, Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED
++                if(localCameraRequestedEnabled) ensureLocalVideoPipeline() else onLocalVideoAvailable(false)
+             }
+             val audioConstraints = MediaConstraints().apply {
+                 optional.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+@@ -427,10 +409,140 @@
+         runCatching { audioTrack?.setEnabled(!muted) }
+     }
+ 
++    @Synchronized
+     fun setCameraEnabled(enabled:Boolean):Boolean {
+-        if(closed) return false
++        if(closed || !videoEnabled) return false
++        localCameraRequestedEnabled=enabled
++        if(!enabled){
++            cameraRecoveryHandler.removeCallbacksAndMessages(null)
++            cameraRecoveryAttempt=0
++            return runCatching { videoTrack?.setEnabled(false); true }.getOrDefault(false)
++        }
++        if(ContextCompat.checkSelfPermission(appContext,Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
++            onLocalVideoAvailable(false)
++            return false
++        }
++        val createdNow=videoTrack==null || videoCapturer==null
++        val ready=!createdNow || ensureLocalVideoPipeline()
++        if(!ready) return false
+         val track=videoTrack ?: return false
+-        return runCatching { track.setEnabled(enabled); true }.getOrDefault(false)
++        val enabledOk=runCatching { track.setEnabled(true); true }.getOrDefault(false)
++        if(enabledOk){
++            normalizeVideoTransceiverForTwoWayMedia()
++            if(createdNow && runCatching { peer?.signalingState()==PeerConnection.SignalingState.STABLE }.getOrDefault(false)) {
++                CallLifecycleLog.info("late_camera_permission_renegotiate",detail="local_video_added")
++                createOfferInternal()
++            }
++        }
++        return enabledOk
++    }
++
++    @Synchronized
++    private fun ensureLocalVideoPipeline(forceRecreate:Boolean=false):Boolean {
++        if(closed || !videoEnabled || !localCameraRequestedEnabled) return false
++        if(ContextCompat.checkSelfPermission(appContext,Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED) return false
++        if(!forceRecreate && videoTrack!=null && videoCapturer!=null) return true
++        val localFactory=factory ?: return false
++        if(forceRecreate){
++            ++cameraRecoveryGeneration
++            releaseLocalVideoPipelineForRecovery()
++        }
++        return runCatching {
++            val enumerator=Camera2Enumerator(appContext)
++            val names=enumerator.deviceNames.toList()
++            val preferred=names.firstOrNull { name -> if(usingFrontCamera) enumerator.isFrontFacing(name) else !enumerator.isFrontFacing(name) }
++            val cameraName=preferred ?: names.firstOrNull { enumerator.isFrontFacing(it) } ?: names.firstOrNull() ?: error("No camera device available")
++            usingFrontCamera=enumerator.isFrontFacing(cameraName)
++            val generation=if(forceRecreate) cameraRecoveryGeneration else ++cameraRecoveryGeneration
++            val cameraEvents=object: CameraVideoCapturer.CameraEventsHandler {
++                override fun onCameraError(errorDescription:String?) { handleLocalCameraFailure("error",errorDescription,generation) }
++                override fun onCameraDisconnected() { handleLocalCameraFailure("disconnected",null,generation) }
++                override fun onCameraFreezed(errorDescription:String?) { handleLocalCameraFailure("frozen",errorDescription,generation) }
++                override fun onCameraOpening(cameraName:String?) = Unit
++                override fun onFirstFrameAvailable() {
++                    if(closed || generation!=cameraRecoveryGeneration) return
++                    localCameraHealthy=true
++                    cameraRecoveryAttempt=0
++                    cameraRecoveryHandler.removeCallbacksAndMessages(null)
++                    onLocalVideoAvailable(localCameraRequestedEnabled)
++                    CallLifecycleLog.info("local_camera_frame_recovered",detail="front=$usingFrontCamera")
++                }
++                override fun onCameraClosed() = Unit
++            }
++            val capturer=enumerator.createCapturer(cameraName,cameraEvents) as? CameraVideoCapturer ?: error("Unable to create camera capturer")
++            val helper=SurfaceTextureHelper.create("MessengerVideoCapture",MessengerWebRtcEgl.context)
++            val source=localFactory.createVideoSource(false)
++            capturer.initialize(helper,appContext,source.capturerObserver)
++            capturer.startCapture(720,1280,24)
++            val track=localFactory.createVideoTrack("messenger-video",source).apply { setEnabled(localCameraRequestedEnabled) }
++            videoCapturer=capturer
++            surfaceTextureHelper=helper
++            videoSource=source
++            videoTrack=track
++            localCameraHealthy=false
++            localVideoSink?.let { sink -> runCatching { track.addSink(sink) } }
++            normalizeVideoTransceiverForTwoWayMedia()
++            true
++        }.onFailure { error ->
++            CallLifecycleLog.info("local_camera_pipeline_create_failed",detail=error.javaClass.simpleName)
++            releaseLocalVideoPipelineForRecovery()
++            onLocalVideoAvailable(false)
++        }.getOrDefault(false)
++    }
++
++    @Synchronized
++    private fun releaseLocalVideoPipelineForRecovery() {
++        val oldTrack=videoTrack
++        if(oldTrack!=null){
++            localVideoSink?.let { sink -> runCatching { oldTrack.removeSink(sink) } }
++            videoTransceiver?.let { transceiver ->
++                if(runCatching { transceiver.sender.track() === oldTrack }.getOrDefault(false)) runCatching { transceiver.sender.setTrack(null,false) }
++            }
++        }
++        runCatching { videoCapturer?.stopCapture() }
++        runCatching { videoCapturer?.dispose() }
++        videoCapturer=null
++        runCatching { surfaceTextureHelper?.dispose() }
++        surfaceTextureHelper=null
++        runCatching { oldTrack?.dispose() }
++        videoTrack=null
++        runCatching { videoSource?.dispose() }
++        videoSource=null
++        localCameraHealthy=false
++    }
++
++    private fun handleLocalCameraFailure(kind:String,detail:String?,generation:Long) {
++        if(closed || generation!=cameraRecoveryGeneration) return
++        localCameraHealthy=false
++        onLocalVideoAvailable(false)
++        CallLifecycleLog.info("local_camera_$kind",detail=detail ?: "unknown")
++        scheduleLocalCameraRecovery(generation)
++    }
++
++    @Synchronized
++    private fun scheduleLocalCameraRecovery(generation:Long=cameraRecoveryGeneration) {
++        if(closed || !videoEnabled || !localCameraRequestedEnabled || generation!=cameraRecoveryGeneration || rebuildingCamera) return
++        if(ContextCompat.checkSelfPermission(appContext,Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED) return
++        if(cameraRecoveryAttempt>=3) {
++            CallLifecycleLog.info("local_camera_recovery_exhausted",detail="attempts=$cameraRecoveryAttempt")
++            return
++        }
++        val attempt=++cameraRecoveryAttempt
++        val delayMs=when(attempt){ 1->500L; 2->1_500L; else->3_000L }
++        cameraRecoveryHandler.postDelayed({
++            if(closed || !localCameraRequestedEnabled || generation!=cameraRecoveryGeneration) return@postDelayed
++            rebuildingCamera=true
++            val ok=runCatching { ensureLocalVideoPipeline(forceRecreate=true) }.getOrDefault(false)
++            rebuildingCamera=false
++            if(ok){
++                val watchdogGeneration=cameraRecoveryGeneration
++                cameraRecoveryHandler.postDelayed({
++                    if(!closed && localCameraRequestedEnabled && !localCameraHealthy && watchdogGeneration==cameraRecoveryGeneration) {
++                        scheduleLocalCameraRecovery(watchdogGeneration)
++                    }
++                },4_000L)
++            } else scheduleLocalCameraRecovery(cameraRecoveryGeneration)
++        },delayMs)
+     }
+ 
+     fun switchCamera(onDone:(Boolean)->Unit = {}) {
+@@ -647,6 +759,7 @@
+         settingRemoteAnswerPending=false
+         ignoreRemoteOfferIce=false
+         videoSyncHandler.removeCallbacksAndMessages(null)
++        cameraRecoveryHandler.removeCallbacksAndMessages(null)
+         releaseProximity()
+         runCatching { audioManager.unregisterAudioDeviceCallback(deviceCallback) }
+         localVideoSink?.let { runCatching { videoTrack?.removeSink(it) } }; localVideoSink=null
+@@ -659,11 +772,8 @@
+         remoteVideoReceiver=null
+         remoteVideoTransceiver=null
+         reportRemoteVideoAvailable(false)
+-        runCatching { videoCapturer?.stopCapture() }; runCatching { videoCapturer?.dispose() }; videoCapturer=null
+-        runCatching { surfaceTextureHelper?.dispose() }; surfaceTextureHelper=null
++        releaseLocalVideoPipelineForRecovery()
+         runCatching{peer?.close()}; runCatching{peer?.dispose()}; peer=null; videoTransceiver=null
+-        runCatching { videoTrack?.dispose() }; videoTrack=null
+-        runCatching { videoSource?.dispose() }; videoSource=null
+         runCatching{audioTrack?.dispose()}; audioTrack=null
+         runCatching{audioSource?.dispose()}; audioSource=null
+         runCatching{factory?.dispose()}; factory=null

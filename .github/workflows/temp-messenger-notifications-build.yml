@@ -1,8 +1,8 @@
-name: Messenger v2.26.52 Video Call P1 P2 Hardening
+name: Messenger v2.26.52 Video Call P1 P2 P3 Validation
 
 on:
   push:
-    branches: [ messenger-video-p1-p2-hardening-22652-20261006 ]
+    branches: [ messenger-video-p3-stall-recovery-22652-20261006 ]
 
 permissions:
   contents: read
@@ -2429,6 +2429,20 @@ jobs:
           echo "941f469e6c8304a978b3f5e77ca9601bae4d1f94bbba71c04ff07c10e09d3b5e  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
           echo "5c4bc32b5b7bcbf2d3948d3b08abb24e70c7edae7fc701decde5a84c6a2ce748  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
           echo "MESSENGER_P1_P2_RUNTIME_SCOPE_PASS"
+
+      - name: Apply P3 video-specific stall recovery
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          printf '%s' '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' | base64 --decode | gzip -dc > /tmp/messenger-v22652-p3.patch
+          echo "a2865644ef0a2b68e95fdc0a36ceff85f4c497c3f3fdf9f18d548e32dd616ff6  /tmp/messenger-v22652-p3.patch" | sha256sum -c -
+          ACTUAL="$(grep '^+++ b/' /tmp/messenger-v22652-p3.patch | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="$(printf '%s\n' app/src/main/java/com/example/messengerui/AppViewModel.kt app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < /tmp/messenger-v22652-p3.patch
+          echo "833a2fe81b52669173d69c582b57fd4b36dde144194c30c62fc082d05905feeb  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "30aea862ca2526cbe02038f346d0e502464ef633835aeb33e0d5cc0f334e3732  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+          echo "MESSENGER_P3_VIDEO_STALL_SCOPE_PASS"
 
       - name: Package resolved Messenger v2.26.52 source
         shell: bash

@@ -1,8 +1,8 @@
-name: Messenger v2.26.52 Video Call P1 P2 P3 P4 Validation
+name: Messenger v2.26.52 Video Call P1 P2 P3 P4 P5 Validation
 
 on:
   push:
-    branches: [ messenger-video-p4-history-22652-20261006 ]
+    branches: [ messenger-video-p5-call-screen-22652-20261006 ]
 
 permissions:
   contents: read
@@ -2464,6 +2464,21 @@ jobs:
           assert "calls.add(0,item)" in block
           PY
           echo "MESSENGER_P4_HISTORY_POLLING_SCOPE_PASS"
+
+      - name: Apply P5 single-owner incoming call screen lifecycle
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          printf '%s' 'H4sICIgcxWoAA21lc3Nlbmdlci12MjI2NTItcDUucGF0Y2gArVRRb9owEH7nV5x4CgKSdpPWDgmNLKVdpBQQZKv2hNzkAl4TO7IdWjT1v+8coKNd6NNOiDjO+fvs775zv98H5rGy9LRKvIJx4f1iG+YlsvDwiRVljl6BWqNYoaq4Fwr6wsUqYHnuJ4ZvuNm6D6bV7Xbh/j/gjEbQ/3je+wRd+r+A0agFvCilMkD57h7JPUJy6WfWWKB7e5iM7WsLWpDkTGtoooIBBJJwBQpzmHM68LvVBYpS8Q0zCBumgAn9iOobE6nMsoVhymA6zFiuicGG3KBSPEXIKgFSBApppaPZBtNQaMNEgrTK4AC+ViLN8YtlgUPoqkTlvrOs8zeX2X3iHLPhHbIHeqJCSnPMmutOLdxFLdzFh95lLdwLCZpACkNHPaa28Vqyt19tHIu3qFTGiDChMaoJK7C3G87WJGQ9jrcl9qTwa9GGeznfBs+cJlU7oNBUSowaOJuBGmtjVIX/nsPGhuUgSxTDsBajFq53S1Y9OGAwqB3jWud2XDJzvm3S5LggUgzbp5zpTxZ34/ky8KOofRoly9lK77fkXkf+zdIP4vBHGP9cBtHYny/j6QykgsaMRTi5icbvpszH0/nV2MIsr+fTSbxzyqV1yuV57/MrpxzHc/O0LUrEM0y2SY6RXLlcZNJp833Nlmyv5XJXnHZtizDtNKNpW7SXBrTF6TSX2vPguFIgH4UG6vt9V4Blge8hsMzgoWldCHKpsU7LZfLQ14lCFCcJDmegrqxNRzdPgSmnLiQfaAn30qx3RDsgTS8CBNINQLcTPnFt3GbwjAuu184JEUaLqiwVGcdpX41n83Hgx+F00j6RfbhwZihS2mys6LDcGtE56501rHmmfrzCJOcCqSH/ADVbewzwBQAA' | base64 --decode | gzip -dc > /tmp/messenger-v22652-p5.patch
+          echo "675a48d1fe05c19b5bf489e741ccadade1a4c3d662b52810b9bfeb23d40abbd8  /tmp/messenger-v22652-p5.patch" | sha256sum -c -
+          ACTUAL="$(grep '^+++ b/' /tmp/messenger-v22652-p5.patch | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="app/src/main/java/com/example/messengerui/IncomingCallActivity.kt"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < /tmp/messenger-v22652-p5.patch
+          echo "5de06e5654e5770226973479a0d61f07ad611bad06d133950c8d003833002f6f  app/src/main/java/com/example/messengerui/IncomingCallActivity.kt" | sha256sum -c -
+          grep -q 'answerHandoffStarted' app/src/main/java/com/example/messengerui/IncomingCallActivity.kt
+          grep -q 'finish()' app/src/main/java/com/example/messengerui/IncomingCallActivity.kt
+          echo "MESSENGER_P5_CALL_SCREEN_SCOPE_PASS"
 
       - name: Package resolved Messenger v2.26.52 source
         shell: bash

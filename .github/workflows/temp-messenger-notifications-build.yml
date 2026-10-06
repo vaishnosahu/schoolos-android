@@ -1,8 +1,8 @@
-name: Messenger v2.26.52 Video Call P1 P2 P3 P4 P5 P6 Validation
+name: Messenger v2.26.52 Video Call P1 P2 P3 P4 P5 P6 P7 Validation
 
 on:
   push:
-    branches: [ messenger-video-p6-transceiver-22652-20261006 ]
+    branches: [ messenger-video-p7-camera-recovery-22652-20261006 ]
 
 permissions:
   contents: read
@@ -2496,6 +2496,24 @@ jobs:
           grep -q 'video_transceiver_selected' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           ! grep -q 'let(::bindRemoteVideoTrack)' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           echo "MESSENGER_P6_REMOTE_VIDEO_TRANSCEIVER_SCOPE_PASS"
+
+      - name: Apply P7 local camera recovery and late-permission hardening
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          PATCH="$GITHUB_WORKSPACE/tmp-messenger-build/messenger-v22652-p7.patch"
+          test -s "$PATCH"
+          echo "c75282d173d7e960a33f66f35f19dc3c57e1325186311c669829fd1bbc7d3a8b  $PATCH" | sha256sum -c -
+          ACTUAL="$(grep '^+++ b/' "$PATCH" | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="$(printf '%s\n' app/src/main/java/com/example/messengerui/AppViewModel.kt app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < "$PATCH"
+          echo "e09fc86ab86c7cc1f187cffc4bd8462764c72bc8770448d297117ce68096c81a  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "18b6424cb26e51e64ebda272ef30e31a064660100c67a88c7aa96f1003ee9c62  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+          grep -q 'local_camera_recovery_exhausted' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'late_camera_permission_renegotiate' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          grep -q 'ensureLocalVideoPipeline' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+          echo "MESSENGER_P7_CAMERA_RECOVERY_SCOPE_PASS"
 
       - name: Package resolved Messenger v2.26.52 source
         shell: bash

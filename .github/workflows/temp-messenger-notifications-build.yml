@@ -1,8 +1,8 @@
-name: Messenger v2.26.52 Video Call P1 P2 P3 P4 P5 P6 P7 Validation
+name: Messenger v2.26.52 Video Call P1 P2 P3 P4 P5 P6 P7 P8 Final
 
 on:
   push:
-    branches: [ messenger-video-p7-camera-recovery-22652-20261006 ]
+    branches: [ messenger-video-p8-call-state-22652-20261006 ]
 
 permissions:
   contents: read
@@ -2514,6 +2514,23 @@ jobs:
           grep -q 'late_camera_permission_renegotiate' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           grep -q 'ensureLocalVideoPipeline' app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
           echo "MESSENGER_P7_CAMERA_RECOVERY_SCOPE_PASS"
+
+      - name: Apply P8 FCM call-state cleanup
+        shell: bash
+        run: |
+          cd /tmp/messenger-build/messenger_live
+          PATCH="$GITHUB_WORKSPACE/tmp-messenger-build/messenger-v22652-p8.patch"
+          test -s "$PATCH"
+          echo "f6760fb2e55e07e03349e1da5b86d56b90c4abf4f8b66b6ee609a2b36bd2e369  $PATCH" | sha256sum -c -
+          ACTUAL="$(grep '^+++ b/' "$PATCH" | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="$(printf '%s\n' app/src/main/java/com/example/messengerui/AppViewModel.kt app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < "$PATCH"
+          echo "d7705155bb1271800a29aa007c25b8229e29d94d0423c4de6acb498282c419d0  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "1efefe3aec18445e71cbf0bc3187703dae0b32ec4c3c46e1aebf444191ab1be0  app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt" | sha256sum -c -
+          grep -q 'accepted_push_ring_surface_closed' app/src/main/java/com/example/messengerui/MessengerFirebaseService.kt
+          grep -q 'IncomingCallActivity.finishActive(remote.id)' app/src/main/java/com/example/messengerui/AppViewModel.kt
+          echo "MESSENGER_P8_CALL_STATE_SCOPE_PASS"
 
       - name: Package resolved Messenger v2.26.52 source
         shell: bash

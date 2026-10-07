@@ -100,9 +100,9 @@ jobs:
           assert 'SignalApplyResult.APPLIED || result==WebRtcVoiceEngine.SignalApplyResult.IGNORED' in vm
           assert 'callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)' not in vm
           assert 'callSignalCursor=maxOf(callSignalCursor,packet.signalCursor)' not in vm
-          assert 'fun addRemoteIce(payload:JSONObject):SignalApplyResult' in we.replace(' ','')
+          assert 'funaddRemoteIce(payload:JSONObject):SignalApplyResult' in we.replace(' ','')
           assert 'getOrDefault(false)' in we[we.index('fun addRemoteIce'):we.index('fun setMuted')]
-          assert 'offer_collision_deferred' in we and 'SignalApplyResult.DEFERRED' in we
+          assert 'offer_collision_deferred' in we and 'onResult(SignalApplyResult.DEFERRED)' in we
           assert 'MessengerWebRtcRuntime.ensureInitialized(appContext)' in we
           print('PASS: signal IDs are consumed only after engine acknowledgement; deferred signals block later cursor advancement')
           PY

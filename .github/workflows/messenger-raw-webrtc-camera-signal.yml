@@ -1,0 +1,179 @@
+name: Messenger v2.26.52 Raw WebRTC Camera Signal Fix
+
+on:
+  push:
+    branches: [ messenger-raw-webrtc-camera-signal-22652-20261007 ]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  messenger-raw-webrtc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Download verified root-cause fixed source
+        uses: actions/download-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Video-RootCause-Fixed-Source
+          path: /tmp/rootcause-artifact
+          repository: vaishnosahu/schoolos-android
+          run-id: 37558566625
+          github-token: ${{ github.token }}
+
+      - name: Reconstruct root-cause fixed source
+        shell: bash
+        run: |
+          rm -rf /tmp/messenger-build
+          mkdir -p /tmp/messenger-build
+          SRCZIP="$(find /tmp/rootcause-artifact -type f -name 'Messenger-v2.26.52-Video-RootCause-Fixed-Source.zip' | head -1)"
+          test -s "$SRCZIP"
+          unzip -tq "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/messenger-build
+          test -f /tmp/messenger-build/settings.gradle.kts
+          echo "d7705155bb1271800a29aa007c25b8229e29d94d0423c4de6acb498282c419d0  /tmp/messenger-build/app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "24eaae1c42f0861ba72c941bacbaa8252739f8f8fb39c28d93e3687313950364  /tmp/messenger-build/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: RED - reproduce camera initial retry and signal wake defects
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          if python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app/src/main/java/com/example/messengerui')
+          vm=(root/'AppViewModel.kt').read_text()
+          webrtc=(root/'WebRtcVoiceEngine.kt').read_text()
+          block=webrtc.split('}.onFailure { error ->',1)[1].split('}.getOrDefault(false)',1)[0]
+          sig=vm.split('"call.signal" -> {',1)[1].split('"call.connected" -> {',1)[0]
+          loop=vm.split('private fun startCallStateLoop()',1)[1].split('private fun applyRemoteCall',1)[0]
+          assert 'if(!forceRecreate) scheduleLocalCameraRecovery(cameraRecoveryGeneration)' in block
+          assert 'callStateWake.trySend(Unit)' in sig
+          assert 'callStateWake.receive()' in loop and 'withTimeoutOrNull' in loop
+          PY
+          then
+            echo 'ERROR: regression test unexpectedly passed before fix'
+            exit 1
+          else
+            echo 'EXPECTED_RED: initial camera failure has no retry and call.signal waits for fixed state poll'
+          fi
+
+      - name: Apply minimal raw WebRTC camera and signaling fix
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          PATCH="$GITHUB_WORKSPACE/tmp-messenger-build/messenger-v22652-raw-webrtc-camera-signal.patch"
+          test -s "$PATCH"
+          echo "84811dc5d645f27822cfd2441c55fe9a5ebc92dd68e488447a28effd10561296  $PATCH" | sha256sum -c -
+          ACTUAL="$(grep '^+++ b/' "$PATCH" | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="$(printf '%s\n' app/src/main/java/com/example/messengerui/AppViewModel.kt app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < "$PATCH"
+          echo "91b99c350201dae886333ba0be58f464a48011e341a2ead4a3ec6965ffa8b902  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "49e0e28f54f033a4676a815025c70b6c858999e386d41a1c2340cd68f0514e34  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: GREEN - verify immediate signal wake and bounded camera retry
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app/src/main/java/com/example/messengerui')
+          vm=(root/'AppViewModel.kt').read_text()
+          webrtc=(root/'WebRtcVoiceEngine.kt').read_text()
+          block=webrtc.split('}.onFailure { error ->',1)[1].split('}.getOrDefault(false)',1)[0]
+          sig=vm.split('"call.signal" -> {',1)[1].split('"call.connected" -> {',1)[0]
+          loop=vm.split('private fun startCallStateLoop()',1)[1].split('private fun applyRemoteCall',1)[0]
+          assert 'if(!forceRecreate) scheduleLocalCameraRecovery(cameraRecoveryGeneration)' in block
+          assert 'callStateWake.trySend(Unit)' in sig
+          assert 'callStateWake.receive()' in loop and 'withTimeoutOrNull(1_200L)' in loop
+          assert 'processVoiceSignal' not in sig
+          print('PASS: realtime signal wakes state authority and initial camera failure enters bounded recovery')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Run Android lint
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon :app:lintDebug
+
+      - name: Verify debug APK
+        shell: bash
+        run: |
+          APK=/tmp/messenger-build/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee messenger-raw-webrtc-debug-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-raw-webrtc-debug-badging.txt
+          grep -q "versionName='2.26.52'" messenger-raw-webrtc-debug-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-raw-webrtc-debug-apksigner.txt
+
+      - name: Build and sign stable APK
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          gradle --no-daemon assembleRelease
+          UNSIGNED="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -s "$UNSIGNED"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed-aligned.apk"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed.apk" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed.apk" | tee "$GITHUB_WORKSPACE/messenger-raw-webrtc-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed.apk" | tee "$GITHUB_WORKSPACE/messenger-raw-webrtc-stable-badging.txt"
+          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-raw-webrtc-stable-badging.txt"
+          grep -q "versionName='2.26.52'" "$GITHUB_WORKSPACE/messenger-raw-webrtc-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed.sha256"
+
+      - name: Package resolved fixed source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.52-Raw-WebRTC-Fixed-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload stable fixed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Raw-WebRTC-Fixed
+          path: |
+            Messenger-v2.26.52-Raw-WebRTC-Fixed.apk
+            Messenger-v2.26.52-Raw-WebRTC-Fixed.sha256
+            messenger-raw-webrtc-stable-badging.txt
+            messenger-raw-webrtc-stable-apksigner.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload resolved fixed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Raw-WebRTC-Fixed-Source
+          path: Messenger-v2.26.52-Raw-WebRTC-Fixed-Source.zip
+          if-no-files-found: error
+          retention-days: 1

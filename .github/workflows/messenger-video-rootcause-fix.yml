@@ -1,0 +1,176 @@
+name: Messenger v2.26.52 Video Root Cause Fix
+
+on:
+  push:
+    branches: [ messenger-video-rootcause-incoming-transceiver-22652-20261007 ]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  messenger-video-rootcause:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Download verified P1-P8 resolved source
+        uses: actions/download-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Resolved-Source
+          path: /tmp/p1p8-artifact
+          repository: vaishnosahu/schoolos-android
+          run-id: 37503502396
+          github-token: ${{ github.token }}
+
+      - name: Reconstruct P1-P8 source
+        shell: bash
+        run: |
+          rm -rf /tmp/messenger-build
+          mkdir -p /tmp/messenger-build
+          SRCZIP="$(find /tmp/p1p8-artifact -type f -name 'Messenger-v2.26.52-Resolved-Source.zip' | head -1)"
+          test -s "$SRCZIP"
+          unzip -tq "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/messenger-build
+          test -f /tmp/messenger-build/settings.gradle.kts
+          echo "18b6424cb26e51e64ebda272ef30e31a064660100c67a88c7aa96f1003ee9c62  /tmp/messenger-build/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: RED - reproduce incoming transceiver asymmetry
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          if python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt').read_text()
+          expected='peer!!.addTrack(audioTrack, listOf("messenger-stream"))\n            if (videoEnabled) {'
+          assert expected in s, 'incoming side still skips initial video transceiver'
+          PY
+          then
+            echo 'ERROR: root-cause test unexpectedly passed before fix'
+            exit 1
+          else
+            echo 'EXPECTED_RED: incoming side skips initial video transceiver'
+          fi
+
+      - name: Apply minimal symmetric video transceiver fix
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt')
+          s=p.read_text()
+          old='peer!!.addTrack(audioTrack, listOf("messenger-stream"))\n            if (videoEnabled && !incomingCall) {'
+          new='peer!!.addTrack(audioTrack, listOf("messenger-stream"))\n            if (videoEnabled) {'
+          if s.count(old) != 1:
+              raise SystemExit(f'unexpected root-cause match count: {s.count(old)}')
+          p.write_text(s.replace(old,new,1))
+          PY
+          echo "24eaae1c42f0861ba72c941bacbaa8252739f8f8fb39c28d93e3687313950364  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: GREEN - verify symmetric initial video topology
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt').read_text()
+          old='peer!!.addTrack(audioTrack, listOf("messenger-stream"))\n            if (videoEnabled && !incomingCall) {'
+          expected='peer!!.addTrack(audioTrack, listOf("messenger-stream"))\n            if (videoEnabled) {'
+          assert old not in s
+          assert expected in s
+          print('PASS: incoming and outgoing video calls share symmetric initial transceiver setup')
+          PY
+
+      - name: Verify runtime scope
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          test "$(sha256sum app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt | awk '{print $1}')" = "24eaae1c42f0861ba72c941bacbaa8252739f8f8fb39c28d93e3687313950364"
+          echo 'MESSENGER_VIDEO_ROOTCAUSE_SCOPE_PASS'
+
+      - name: Build debug APK
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Run Android lint
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon :app:lintDebug
+
+      - name: Verify debug APK
+        shell: bash
+        run: |
+          APK=/tmp/messenger-build/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee messenger-video-rootcause-debug-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-video-rootcause-debug-badging.txt
+          grep -q "versionName='2.26.52'" messenger-video-rootcause-debug-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-video-rootcause-debug-apksigner.txt
+
+      - name: Build and sign stable APK
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          gradle --no-daemon assembleRelease
+          UNSIGNED="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -s "$UNSIGNED"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed-aligned.apk"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed.apk" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed.apk" | tee "$GITHUB_WORKSPACE/messenger-video-rootcause-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed.apk" | tee "$GITHUB_WORKSPACE/messenger-video-rootcause-stable-badging.txt"
+          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-video-rootcause-stable-badging.txt"
+          grep -q "versionName='2.26.52'" "$GITHUB_WORKSPACE/messenger-video-rootcause-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed.sha256"
+
+      - name: Package resolved fixed source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.52-Video-RootCause-Fixed-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload stable fixed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Video-RootCause-Fixed
+          path: |
+            Messenger-v2.26.52-Video-RootCause-Fixed.apk
+            Messenger-v2.26.52-Video-RootCause-Fixed.sha256
+            messenger-video-rootcause-stable-badging.txt
+            messenger-video-rootcause-stable-apksigner.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload resolved fixed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Video-RootCause-Fixed-Source
+          path: Messenger-v2.26.52-Video-RootCause-Fixed-Source.zip
+          if-no-files-found: error
+          retention-days: 1

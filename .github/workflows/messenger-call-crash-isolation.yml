@@ -85,7 +85,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tmp-messenger-build/apply_call_crash_isolation.py"
           echo "d4f236160e94ff16b6289e4643bdd785c85b1585b64645ea37a575e635e04089  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
           echo "2447fd942f5c68912cfcde384d6882d9c2b014fdd531a64bb76f145d824587ef  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
-          echo "f27d921e596bdf7c9df5c5ebce5bc035e0d5d3277ca1826c420e42cb3cadb096  app/src/main/java/com/example/messengerui/ProcessExitDiagnostics.kt" | sha256sum -c -
+          echo "e88e95a7f1bae5d4080d229d34f4452dd9e67de98d946c6394ceee6080710fd1  app/src/main/java/com/example/messengerui/ProcessExitDiagnostics.kt" | sha256sum -c -
 
       - name: GREEN - verify rollback and crash breadcrumbs
         shell: bash

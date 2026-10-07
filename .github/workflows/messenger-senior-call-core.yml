@@ -1,0 +1,178 @@
+name: Messenger v2.26.52 Senior Call Core Fix
+
+on:
+  push:
+    branches: [ messenger-senior-call-core-22652-20261007 ]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  messenger-senior-call-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Download verified raw WebRTC fixed source
+        uses: actions/download-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Raw-WebRTC-Fixed-Source
+          path: /tmp/raw-webrtc-artifact
+          repository: vaishnosahu/schoolos-android
+          run-id: 37563559796
+          github-token: ${{ github.token }}
+
+      - name: Reconstruct verified baseline
+        shell: bash
+        run: |
+          rm -rf /tmp/messenger-build
+          mkdir -p /tmp/messenger-build
+          SRCZIP="$(find /tmp/raw-webrtc-artifact -type f -name 'Messenger-v2.26.52-Raw-WebRTC-Fixed-Source.zip' | head -1)"
+          test -s "$SRCZIP"
+          unzip -tq "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/messenger-build
+          test -f /tmp/messenger-build/settings.gradle.kts
+          echo "91b99c350201dae886333ba0be58f464a48011e341a2ead4a3ec6965ffa8b902  /tmp/messenger-build/app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "49e0e28f54f033a4676a815025c70b6c858999e386d41a1c2340cd68f0514e34  /tmp/messenger-build/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: RED - reproduce unsafe signal acknowledgement
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app/src/main/java/com/example/messengerui')
+          vm=(root/'AppViewModel.kt').read_text()
+          we=(root/'WebRtcVoiceEngine.kt').read_text()
+          failures=[]
+          if 'enum class SignalApplyResult' not in we: failures.append('engine has no explicit signal apply result')
+          if 'private suspend fun processVoiceSignals(' not in vm: failures.append('no ordered signal batch gate')
+          if 'callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)' in vm: failures.append('blind server cursor jump')
+          if 'fun addRemoteIce(payload:JSONObject):SignalApplyResult' not in we.replace(' ',''): failures.append('ICE has no apply result')
+          if not failures:
+              raise SystemExit('ERROR: RED test unexpectedly passed')
+          print('EXPECTED_RED:', '; '.join(failures))
+          PY
+
+      - name: Apply senior call-core correctness patch
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          PATCH="$GITHUB_WORKSPACE/tmp-messenger-build/messenger-v22652-senior-call-core.patch"
+          test -s "$PATCH"
+          ACTUAL="$(grep '^+++ b/' "$PATCH" | sed 's#^+++ b/##' | cut -f1 | sort -u)"
+          EXPECTED="$(printf '%s\n' app/src/main/java/com/example/messengerui/AppViewModel.kt app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+          patch -p1 < "$PATCH"
+          echo "1ae3da5088378da427a4df5e61771a8c476c97939cc8398f69d09c6985b1b81f  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "ec3fd05f32212aafaf19738c3519aa92540a957be212c9c78dbdf0047f2d1c86  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: GREEN - verify ACK-on-success and ordered cursor
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app/src/main/java/com/example/messengerui')
+          vm=(root/'AppViewModel.kt').read_text()
+          we=(root/'WebRtcVoiceEngine.kt').read_text()
+          assert 'enum class SignalApplyResult { APPLIED, IGNORED, DEFERRED, FAILED }' in we
+          assert 'private suspend fun processVoiceSignals(' in vm
+          assert 'if(!processVoiceSignal(signal)) break' in vm
+          assert 'signal_not_consumed' in vm
+          assert 'SignalApplyResult.APPLIED || result==WebRtcVoiceEngine.SignalApplyResult.IGNORED' in vm
+          assert 'callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)' not in vm
+          assert 'callSignalCursor=maxOf(callSignalCursor,packet.signalCursor)' not in vm
+          assert 'fun addRemoteIce(payload:JSONObject):SignalApplyResult' in we.replace(' ','')
+          assert 'getOrDefault(false)' in we[we.index('fun addRemoteIce'):we.index('fun setMuted')]
+          assert 'offer_collision_deferred' in we and 'SignalApplyResult.DEFERRED' in we
+          assert 'MessengerWebRtcRuntime.ensureInitialized(appContext)' in we
+          print('PASS: signal IDs are consumed only after engine acknowledgement; deferred signals block later cursor advancement')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Run Android lint
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon :app:lintDebug
+
+      - name: Verify debug APK
+        shell: bash
+        run: |
+          APK=/tmp/messenger-build/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee messenger-senior-debug-badging.txt
+          grep -q "package: name='com.example.messengerui'" messenger-senior-debug-badging.txt
+          grep -q "versionName='2.26.52'" messenger-senior-debug-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee messenger-senior-debug-apksigner.txt
+
+      - name: Build and sign stable APK
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          gradle --no-daemon assembleRelease
+          UNSIGNED="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -s "$UNSIGNED"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed-aligned.apk"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed.apk" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed.apk" | tee "$GITHUB_WORKSPACE/messenger-senior-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed.apk" | tee "$GITHUB_WORKSPACE/messenger-senior-stable-badging.txt"
+          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/messenger-senior-stable-badging.txt"
+          grep -q "versionName='2.26.52'" "$GITHUB_WORKSPACE/messenger-senior-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed.sha256"
+
+      - name: Package resolved source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.52-Senior-Call-Core-Fixed-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload stable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Senior-Call-Core-Fixed
+          path: |
+            Messenger-v2.26.52-Senior-Call-Core-Fixed.apk
+            Messenger-v2.26.52-Senior-Call-Core-Fixed.sha256
+            messenger-senior-stable-badging.txt
+            messenger-senior-stable-apksigner.txt
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload resolved source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Senior-Call-Core-Fixed-Source
+          path: Messenger-v2.26.52-Senior-Call-Core-Fixed-Source.zip
+          if-no-files-found: error
+          retention-days: 2

@@ -35,21 +35,21 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Download verified webrtc-init hotfix source
+      - name: Download verified answer-crash hotfix source
         uses: actions/download-artifact@v4
         with:
-          name: Messenger-v2.26.52-WebRTC-Init-Rollback-Source
+          name: Messenger-v2.26.52-Answer-Crash-Hotfix-Source
           path: /tmp/senior-artifact
           repository: vaishnosahu/schoolos-android
           run-id: 37576209925
           github-token: ${{ github.token }}
 
-      - name: Reconstruct verified webrtc-init baseline
+      - name: Reconstruct verified answer-crash baseline
         shell: bash
         run: |
           rm -rf /tmp/messenger-build
           mkdir -p /tmp/messenger-build
-          SRCZIP="$(find /tmp/senior-artifact -type f -name 'Messenger-v2.26.52-WebRTC-Init-Rollback-Source.zip' | head -1)"
+          SRCZIP="$(find /tmp/senior-artifact -type f -name 'Messenger-v2.26.52-Answer-Crash-Hotfix-Source.zip' | head -1)"
           test -s "$SRCZIP"
           unzip -tq "$SRCZIP"
           unzip -q "$SRCZIP" -d /tmp/messenger-build

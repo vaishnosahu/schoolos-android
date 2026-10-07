@@ -80,12 +80,7 @@ jobs:
         shell: bash
         run: |
           cd /tmp/messenger-build
-          PATCH="$GITHUB_WORKSPACE/tmp-messenger-build/messenger-v22652-senior-call-core.patch"
-          test -s "$PATCH"
-          ACTUAL="$(grep '^+++ b/' "$PATCH" | sed 's#^+++ b/##' | cut -f1 | sort -u)"
-          EXPECTED="$(printf '%s\n' app/src/main/java/com/example/messengerui/AppViewModel.kt app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt | sort)"
-          test "$ACTUAL" = "$EXPECTED"
-          patch -p1 < "$PATCH"
+          python3 "$GITHUB_WORKSPACE/tmp-messenger-build/apply_senior_call_core.py"
           echo "1ae3da5088378da427a4df5e61771a8c476c97939cc8398f69d09c6985b1b81f  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
           echo "ec3fd05f32212aafaf19738c3519aa92540a957be212c9c78dbdf0047f2d1c86  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
 

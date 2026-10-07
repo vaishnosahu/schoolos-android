@@ -1,0 +1,58 @@
+--- a/app/src/main/java/com/example/messengerui/AppViewModel.kt
++++ b/app/src/main/java/com/example/messengerui/AppViewModel.kt
+@@ -34,9 +34,11 @@
+ import java.util.UUID
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
++import kotlinx.coroutines.channels.Channel
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.isActive
+ import kotlinx.coroutines.launch
++import kotlinx.coroutines.withTimeoutOrNull
+ import kotlinx.coroutines.withContext
+ import org.json.JSONObject
+ 
+@@ -54,6 +56,7 @@
+     private var voiceRecordingJob: Job? = null
+     private var realtimeJob: Job? = null
+     private var callStateJob: Job? = null
++    private val callStateWake = Channel<Unit>(Channel.CONFLATED)
+     private var voiceEngine: WebRtcVoiceEngine? = null
+     private var voiceEngineGeneration: Long = 0L
+     var callVideoRendererGeneration by mutableStateOf(0)
+@@ -3274,7 +3277,7 @@
+                             }
+                         }
+                 }
+-                delay(1_200)
++                withTimeoutOrNull(1_200L) { callStateWake.receive() }
+             }
+         }
+     }
+@@ -4127,10 +4130,10 @@
+                     CallLifecycleLog.info("signal_ignored_non_current_call",callId,"active=${currentId.orEmpty()}")
+                     return
+                 }
+-                // OFFER / ANSWER / ICE have one authority: calls/state.php. The realtime event is
+-                // only a wake-up hint. Processing the same payload here and again from state.php
+-                // caused duplicate SDP application and unstable WebRTC negotiation.
+-                CallLifecycleLog.info("signal_event_hint",callId)
++                // OFFER / ANSWER / ICE have one authority: calls/state.php. The realtime event only
++                // wakes that authority immediately; the SDP payload is still never applied twice.
++                callStateWake.trySend(Unit)
++                CallLifecycleLog.info("signal_event_wake",callId)
+             }
+             "call.connected" -> {
+                 val remote=event.payload.optJSONObject("call")?.let(api::parseVoiceCallPayload) ?: return
+--- a/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
++++ b/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+@@ -487,6 +487,9 @@
+             CallLifecycleLog.info("local_camera_pipeline_create_failed",detail=error.javaClass.simpleName)
+             releaseLocalVideoPipelineForRecovery()
+             onLocalVideoAvailable(false)
++            // Initial camera creation/start failures previously stopped here and only a manual
++            // camera toggle retried the pipeline. Recovery attempts already reschedule themselves.
++            if(!forceRecreate) scheduleLocalCameraRecovery(cameraRecoveryGeneration)
+         }.getOrDefault(false)
+     }
+ 

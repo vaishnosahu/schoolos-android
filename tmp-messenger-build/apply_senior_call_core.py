@@ -15,13 +15,13 @@ vm = replace_once(vm, "import kotlinx.coroutines.launch\n", "import kotlinx.coro
 vm = replace_once(vm, "import org.json.JSONObject\n", "import org.json.JSONObject\nimport kotlin.coroutines.resume\n", "vm resume import")
 
 for old, new, label in [
-    ('sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }\\n                    callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)',
+    ('sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }\n                    callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)',
      'processVoiceSignals(sync.signals)', 'notification cursor'),
-    ('sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }\\n                callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)',
+    ('sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }\n                callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)',
      'processVoiceSignals(sync.signals)', 'accept cursor'),
-    ('sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }\\n                            callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)',
+    ('sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }\n                            callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)',
      'processVoiceSignals(sync.signals)', 'state cursor'),
-    ('for(signal in packet.signals.sortedBy { it.id }) processVoiceSignal(signal)\\n            callSignalCursor=maxOf(callSignalCursor,packet.signalCursor)',
+    ('for(signal in packet.signals.sortedBy { it.id }) processVoiceSignal(signal)\n            callSignalCursor=maxOf(callSignalCursor,packet.signalCursor)',
      'processVoiceSignals(packet.signals)', 'recovery cursor'),
 ]:
     vm = replace_once(vm, old, new, label)
@@ -37,12 +37,12 @@ new_vm_block = '''    private suspend fun processVoiceSignals(signals:List<Remot
     private suspend fun processVoiceSignal(signal:RemoteCallSignal):Boolean {
         activeVoiceCall ?: return false
         if(signal.id>0L && (signal.id<=callSignalCursor || processedCallSignalIds.contains(signal.id))) {
-            CallLifecycleLog.info("signal_duplicate_ignored", activeVoiceCall?.callId, "id=\${signal.id} type=\${signal.type}")
+            CallLifecycleLog.info("signal_duplicate_ignored", activeVoiceCall?.callId, "id=${signal.id} type=${signal.type}")
             return true
         }
         val config=voiceCallConfig ?: runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(db.serverToken()) } }.getOrNull()
         if(config==null){
-            CallLifecycleLog.info("signal_deferred_no_config",activeVoiceCall?.callId,"id=\${signal.id} type=\${signal.type}")
+            CallLifecycleLog.info("signal_deferred_no_config",activeVoiceCall?.callId,"id=${signal.id} type=${signal.type}")
             return false
         }
         ensureVoiceEngine(config)
@@ -59,7 +59,7 @@ new_vm_block = '''    private suspend fun processVoiceSignals(signals:List<Remot
         }
         val consumed=result==WebRtcVoiceEngine.SignalApplyResult.APPLIED || result==WebRtcVoiceEngine.SignalApplyResult.IGNORED
         if(!consumed){
-            CallLifecycleLog.info("signal_not_consumed",activeVoiceCall?.callId,"id=\${signal.id} type=\${signal.type} result=\${result.name}")
+            CallLifecycleLog.info("signal_not_consumed",activeVoiceCall?.callId,"id=${signal.id} type=${signal.type} result=${result.name}")
             return false
         }
         if(signal.id>0L){
@@ -67,7 +67,7 @@ new_vm_block = '''    private suspend fun processVoiceSignals(signals:List<Remot
             callSignalCursor=maxOf(callSignalCursor,signal.id)
         }
         while(processedCallSignalIds.size>512) processedCallSignalIds.remove(processedCallSignalIds.first())
-        CallLifecycleLog.info("signal_consumed", activeVoiceCall?.callId, "id=\${signal.id} type=\${signal.type} result=\${result.name}")
+        CallLifecycleLog.info("signal_consumed", activeVoiceCall?.callId, "id=${signal.id} type=${signal.type} result=${result.name}")
         return true
     }
 
@@ -168,10 +168,10 @@ new_negotiation = '''    private fun applyRemoteOffer(pc:PeerConnection,remote:S
         val readyForOffer=!offerInFlight && (state==PeerConnection.SignalingState.STABLE || settingRemoteAnswerPending)
         val collision=!readyForOffer
         if(collision){
-            CallLifecycleLog.info("offer_collision_detected",detail="role=\${if(incomingCall) "polite" else "impolite"} state=\${state?.name ?: "unknown"}")
+            CallLifecycleLog.info("offer_collision_detected",detail="role=${if(incomingCall) "polite" else "impolite"} state=${state?.name ?: "unknown"}")
             if(!incomingCall){
                 ignoreRemoteOfferIce=true
-                CallLifecycleLog.info("offer_collision_ignored",detail="state=\${state?.name ?: "unknown"}")
+                CallLifecycleLog.info("offer_collision_ignored",detail="state=${state?.name ?: "unknown"}")
                 onResult(SignalApplyResult.IGNORED)
                 return
             }
@@ -193,7 +193,7 @@ new_negotiation = '''    private fun applyRemoteOffer(pc:PeerConnection,remote:S
                 return
             }
             if(state!=PeerConnection.SignalingState.STABLE){
-                CallLifecycleLog.info("offer_collision_deferred",detail="state=\${state?.name ?: "unknown"}")
+                CallLifecycleLog.info("offer_collision_deferred",detail="state=${state?.name ?: "unknown"}")
                 onResult(SignalApplyResult.DEFERRED)
                 return
             }
@@ -211,7 +211,7 @@ new_negotiation = '''    private fun applyRemoteOffer(pc:PeerConnection,remote:S
         val state=runCatching { pc.signalingState() }.getOrNull()
         if(state!=PeerConnection.SignalingState.HAVE_LOCAL_OFFER){
             val alreadyApplied=runCatching { pc.remoteDescription?.type==SessionDescription.Type.ANSWER }.getOrDefault(false)
-            CallLifecycleLog.info(if(alreadyApplied) "stale_answer_ignored" else "answer_deferred",detail="state=\${state?.name ?: "unknown"}")
+            CallLifecycleLog.info(if(alreadyApplied) "stale_answer_ignored" else "answer_deferred",detail="state=${state?.name ?: "unknown"}")
             onResult(if(alreadyApplied) SignalApplyResult.IGNORED else SignalApplyResult.DEFERRED)
             return
         }
@@ -256,10 +256,10 @@ new_ice = '''    private fun completeRemoteDescriptionUpdate(pc:PeerConnection) 
                 val added=runCatching { pc.addIceCandidate(candidate) }.getOrDefault(false)
                 if(added) flushed += 1 else {
                     pendingRemoteIceCandidates.addLast(candidate)
-                    CallLifecycleLog.info("remote_ice_apply_deferred",detail="buffered=\${pendingRemoteIceCandidates.size}")
+                    CallLifecycleLog.info("remote_ice_apply_deferred",detail="buffered=${pendingRemoteIceCandidates.size}")
                 }
             }
-            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=\$flushed remaining=\${pendingRemoteIceCandidates.size}")
+            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=\$flushed remaining=${pendingRemoteIceCandidates.size}")
         }
     }
 
@@ -288,7 +288,7 @@ new_ice = '''    private fun completeRemoteDescriptionUpdate(pc:PeerConnection) 
             }
             if(!remoteDescriptionReady) {
                 pendingRemoteIceCandidates.addLast(candidate)
-                CallLifecycleLog.info("remote_ice_buffered",detail="count=\${pendingRemoteIceCandidates.size}")
+                CallLifecycleLog.info("remote_ice_buffered",detail="count=${pendingRemoteIceCandidates.size}")
                 return SignalApplyResult.APPLIED
             }
             val added=runCatching { pc.addIceCandidate(candidate) }.getOrDefault(false)

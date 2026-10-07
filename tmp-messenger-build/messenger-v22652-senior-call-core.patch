@@ -267,30 +267,41 @@
 -            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=$flushed")
 +            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=$flushed remaining=${pendingRemoteIceCandidates.size}")
 @@ -380,27 +426,31 @@
+         }
+     }
+ 
 -    fun addRemoteIce(payload:JSONObject) {
 +    fun addRemoteIce(payload:JSONObject):SignalApplyResult {
-@@
+         val mid=payload.optString("sdp_mid").takeIf{it.isNotBlank()}
+         val index=payload.optInt("sdp_mline_index",0)
+         val value=payload.optString("candidate")
 -        if(value.isBlank()) return
 +        if(value.isBlank()) return SignalApplyResult.IGNORED
-@@
+         if (value.contains(" typ relay ", ignoreCase = true)) relayCandidateAvailable = true
+         val candidate=IceCandidate(mid,index,value)
+         synchronized(remoteIceLock) {
 -            val pc=peer ?: return
 -            if(closed) return
 +            val pc=peer ?: return SignalApplyResult.DEFERRED
 +            if(closed) return SignalApplyResult.FAILED
-@@
+             if(ignoreRemoteOfferIce) {
+                 CallLifecycleLog.info("remote_ice_ignored_collision",detail="candidate_ignored")
 -                return
 +                return SignalApplyResult.IGNORED
-@@
+             }
+             if(!remoteDescriptionReady) {
+                 pendingRemoteIceCandidates.addLast(candidate)
+                 CallLifecycleLog.info("remote_ice_buffered",detail="count=${pendingRemoteIceCandidates.size}")
 -                return
 +                return SignalApplyResult.APPLIED
-             }
--            runCatching { pc.addIceCandidate(candidate) }
--                .onFailure { CallLifecycleLog.info("remote_ice_apply_failed",detail=it.javaClass.simpleName) }
++            }
 +            val added=runCatching { pc.addIceCandidate(candidate) }.getOrDefault(false)
 +            if(!added){
 +                CallLifecycleLog.info("remote_ice_apply_deferred",detail="addIceCandidate=false")
 +                return SignalApplyResult.DEFERRED
-+            }
+             }
+-            runCatching { pc.addIceCandidate(candidate) }
+-                .onFailure { CallLifecycleLog.info("remote_ice_apply_failed",detail=it.javaClass.simpleName) }
 +            return SignalApplyResult.APPLIED
          }
      }

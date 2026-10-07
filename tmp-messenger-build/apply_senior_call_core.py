@@ -259,7 +259,7 @@ new_ice = '''    private fun completeRemoteDescriptionUpdate(pc:PeerConnection) 
                     CallLifecycleLog.info("remote_ice_apply_deferred",detail="buffered=${pendingRemoteIceCandidates.size}")
                 }
             }
-            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=\$flushed remaining=${pendingRemoteIceCandidates.size}")
+            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=$flushed remaining=${pendingRemoteIceCandidates.size}")
         }
     }
 
@@ -268,7 +268,7 @@ new_ice = '''    private fun completeRemoteDescriptionUpdate(pc:PeerConnection) 
             val dropped=pendingRemoteIceCandidates.size
             pendingRemoteIceCandidates.clear()
             remoteDescriptionReady=false
-            if(dropped>0) CallLifecycleLog.info("remote_ice_discarded",detail="remote_description_failed count=\$dropped")
+            if(dropped>0) CallLifecycleLog.info("remote_ice_discarded",detail="remote_description_failed count=$dropped")
         }
     }
 

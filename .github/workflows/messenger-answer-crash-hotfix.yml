@@ -1,0 +1,166 @@
+name: Messenger v2.26.52 Answer Crash Hotfix
+
+on:
+  push:
+    branches: [ messenger-call-answer-crash-hotfix-22652-20261007 ]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  answer-crash-hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Download verified senior call-core source
+        uses: actions/download-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Senior-Call-Core-Fixed-Source
+          path: /tmp/senior-artifact
+          repository: vaishnosahu/schoolos-android
+          run-id: 37572960516
+          github-token: ${{ github.token }}
+
+      - name: Reconstruct verified senior baseline
+        shell: bash
+        run: |
+          rm -rf /tmp/messenger-build
+          mkdir -p /tmp/messenger-build
+          SRCZIP="$(find /tmp/senior-artifact -type f -name 'Messenger-v2.26.52-Senior-Call-Core-Fixed-Source.zip' | head -1)"
+          test -s "$SRCZIP"
+          unzip -tq "$SRCZIP"
+          unzip -q "$SRCZIP" -d /tmp/messenger-build
+          test -f /tmp/messenger-build/settings.gradle.kts
+          echo "1ae3da5088378da427a4df5e61771a8c476c97939cc8398f69d09c6985b1b81f  /tmp/messenger-build/app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "ec3fd05f32212aafaf19738c3519aa92540a957be212c9c78dbdf0047f2d1c86  /tmp/messenger-build/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: RED - reproduce answer lifecycle race
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 - <<'PY'
+          from pathlib import Path
+          vm=Path('app/src/main/java/com/example/messengerui/AppViewModel.kt').read_text()
+          failures=[]
+          if 'suspendCancellableCoroutine' in vm: failures.append('remote SDP acknowledgement suspends state loop')
+          if 'signal_deferred_until_answer' not in vm: failures.append('incoming media signals can run before Answer')
+          if 'applyingRemoteSignalId' not in vm: failures.append('no single in-flight remote SDP guard')
+          if not failures:
+              raise SystemExit('ERROR: RED test unexpectedly passed')
+          print('EXPECTED_RED:', '; '.join(failures))
+          PY
+
+      - name: Apply answer crash hotfix
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 "$GITHUB_WORKSPACE/tmp-messenger-build/apply_answer_crash_hotfix.py"
+          echo "70936527fda20b5aa9f2cc8274919f859783eaa8da679f0ee3a52fbe04729e2c  app/src/main/java/com/example/messengerui/AppViewModel.kt" | sha256sum -c -
+          echo "ec3fd05f32212aafaf19738c3519aa92540a957be212c9c78dbdf0047f2d1c86  app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt" | sha256sum -c -
+
+      - name: GREEN - verify crash-safe signal lifecycle
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          python3 - <<'PY'
+          from pathlib import Path
+          vm=Path('app/src/main/java/com/example/messengerui/AppViewModel.kt').read_text()
+          assert 'suspendCancellableCoroutine' not in vm
+          assert 'kotlin.coroutines.resume' not in vm
+          assert 'signal_deferred_until_answer' in vm
+          assert 'private var applyingRemoteSignalId: Long? = null' in vm
+          assert 'if(applyingRemoteSignalId!=null) return' in vm
+          assert 'val callback:(WebRtcVoiceEngine.SignalApplyResult)->Unit' in vm
+          assert 'viewModelScope.launch {' in vm
+          assert 'callStateWake.trySend(Unit)' in vm
+          assert 'markRemoteSignalConsumed(signal,result)' in vm
+          print('PASS: no suspending native callback bridge; incoming media waits for Answer; one remote SDP signal applies at a time')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon clean assembleDebug
+
+      - name: Run Android lint
+        working-directory: /tmp/messenger-build
+        run: gradle --no-daemon :app:lintDebug
+
+      - name: Verify debug APK
+        shell: bash
+        run: |
+          APK=/tmp/messenger-build/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee answer-crash-debug-badging.txt
+          grep -q "package: name='com.example.messengerui'" answer-crash-debug-badging.txt
+          grep -q "versionName='2.26.52'" answer-crash-debug-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee answer-crash-debug-apksigner.txt
+
+      - name: Build and sign stable APK
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          gradle --no-daemon assembleRelease
+          UNSIGNED="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -s "$UNSIGNED"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -s "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore"
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix-aligned.apk"
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/schoolos-stable-debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android --out "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix.apk" "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix-aligned.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix.apk" | tee "$GITHUB_WORKSPACE/answer-crash-stable-apksigner.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix.apk" | tee "$GITHUB_WORKSPACE/answer-crash-stable-badging.txt"
+          grep -q "package: name='com.example.messengerui'" "$GITHUB_WORKSPACE/answer-crash-stable-badging.txt"
+          grep -q "versionName='2.26.52'" "$GITHUB_WORKSPACE/answer-crash-stable-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix.apk" | tee "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix.sha256"
+
+      - name: Package resolved source
+        shell: bash
+        run: |
+          cd /tmp/messenger-build
+          zip -qr "$GITHUB_WORKSPACE/Messenger-v2.26.52-Answer-Crash-Hotfix-Source.zip" . -x '.gradle/*' '*/build/*' '.idea/*'
+
+      - name: Upload stable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Answer-Crash-Hotfix
+          path: |
+            Messenger-v2.26.52-Answer-Crash-Hotfix.apk
+            Messenger-v2.26.52-Answer-Crash-Hotfix.sha256
+            answer-crash-stable-badging.txt
+            answer-crash-stable-apksigner.txt
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload resolved source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-v2.26.52-Answer-Crash-Hotfix-Source
+          path: Messenger-v2.26.52-Answer-Crash-Hotfix-Source.zip
+          if-no-files-found: error
+          retention-days: 2

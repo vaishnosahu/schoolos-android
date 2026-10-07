@@ -1,0 +1,296 @@
+--- a/app/src/main/java/com/example/messengerui/AppViewModel.kt
++++ b/app/src/main/java/com/example/messengerui/AppViewModel.kt
+@@ -38,9 +38,11 @@
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.isActive
+ import kotlinx.coroutines.launch
++import kotlinx.coroutines.suspendCancellableCoroutine
+ import kotlinx.coroutines.withTimeoutOrNull
+ import kotlinx.coroutines.withContext
+ import org.json.JSONObject
++import kotlin.coroutines.resume
+ 
+ class AppViewModel(application: Application) : AndroidViewModel(application) {
+@@ -2752,8 +2754,7 @@
+                     callSignalCursor=0L
+                     processedCallSignalIds.clear()
+                     applyRemoteCall(sync.call)
+-                    sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }
+-                    callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)
++                    processVoiceSignals(sync.signals)
+                     navigate(AppScreen.VoiceCall(callId))
+                     startCallStateLoop()
+                 }
+@@ -2845,8 +2846,7 @@
+                 ensureVoiceEngine(config)
+                 NotificationHelper.cancelIncomingCall(getApplication(),accepted.id)
+                 CallForegroundService.start(getApplication(),accepted.id,accepted.peerName,accepted.type==CallType.VIDEO && activeVoiceCall?.cameraEnabled==true)
+-                sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }
+-                callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)
++                processVoiceSignals(sync.signals)
+                 upsertServerCallLog(accepted)
+                 navigate(AppScreen.VoiceCall(accepted.id))
+                 startCallStateLoop()
+@@ -3038,29 +3038,47 @@
+         pendingVoiceSignals.clear()
+     }
+ 
+-    private suspend fun processVoiceSignal(signal:RemoteCallSignal) {
+-        activeVoiceCall ?: return
++    private suspend fun processVoiceSignals(signals:List<RemoteCallSignal>) {
++        for(signal in signals.sortedBy { it.id }) {
++            if(!processVoiceSignal(signal)) break
++        }
++    }
++
++    private suspend fun processVoiceSignal(signal:RemoteCallSignal):Boolean {
++        activeVoiceCall ?: return false
+         if(signal.id>0L && (signal.id<=callSignalCursor || processedCallSignalIds.contains(signal.id))) {
+             CallLifecycleLog.info("signal_duplicate_ignored", activeVoiceCall?.callId, "id=${signal.id} type=${signal.type}")
+-            return
++            return true
+         }
+         val config=voiceCallConfig ?: runCatching { withContext(Dispatchers.IO){ api.voiceCallConfig(db.serverToken()) } }.getOrNull()
+         if(config==null){
+             CallLifecycleLog.info("signal_deferred_no_config",activeVoiceCall?.callId,"id=${signal.id} type=${signal.type}")
+-            return
++            return false
+         }
+         ensureVoiceEngine(config)
+-        when(signal.type.uppercase()){
+-            "OFFER" -> voiceEngine?.acceptOffer(signal.payload.optString("sdp"))
+-            "ANSWER" -> voiceEngine?.acceptAnswer(signal.payload.optString("sdp"))
+-            "ICE" -> voiceEngine?.addRemoteIce(signal.payload)
++        val engine=voiceEngine ?: return false
++        val result=when(signal.type.uppercase()){
++            "OFFER" -> suspendCancellableCoroutine { cont ->
++                engine.acceptOffer(signal.payload.optString("sdp")) { if(cont.isActive) cont.resume(it) }
++            }
++            "ANSWER" -> suspendCancellableCoroutine { cont ->
++                engine.acceptAnswer(signal.payload.optString("sdp")) { if(cont.isActive) cont.resume(it) }
++            }
++            "ICE" -> engine.addRemoteIce(signal.payload)
++            else -> WebRtcVoiceEngine.SignalApplyResult.IGNORED
++        }
++        val consumed=result==WebRtcVoiceEngine.SignalApplyResult.APPLIED || result==WebRtcVoiceEngine.SignalApplyResult.IGNORED
++        if(!consumed){
++            CallLifecycleLog.info("signal_not_consumed",activeVoiceCall?.callId,"id=${signal.id} type=${signal.type} result=${result.name}")
++            return false
+         }
+         if(signal.id>0L){
+             processedCallSignalIds.add(signal.id)
+             callSignalCursor=maxOf(callSignalCursor,signal.id)
+         }
+         while(processedCallSignalIds.size>512) processedCallSignalIds.remove(processedCallSignalIds.first())
+-        CallLifecycleLog.info("signal_processed", activeVoiceCall?.callId, "id=${signal.id} type=${signal.type}")
++        CallLifecycleLog.info("signal_consumed", activeVoiceCall?.callId, "id=${signal.id} type=${signal.type} result=${result.name}")
++        return true
+     }
+@@ -3267,8 +3285,7 @@
+                     runCatching { withContext(Dispatchers.IO){ api.voiceCallState(token,callId,callSignalCursor) } }
+                         .onSuccess { sync ->
+                             applyRemoteCall(sync.call)
+-                            sync.signals.sortedBy { it.id }.forEach { processVoiceSignal(it) }
+-                            callSignalCursor=maxOf(callSignalCursor,sync.signalCursor)
++                            processVoiceSignals(sync.signals)
+                         }
+@@ -3403,8 +3420,7 @@
+         }
+         if((screen as? AppScreen.VoiceCall)?.callId!=authoritative.id) navigate(AppScreen.VoiceCall(authoritative.id))
+         sync?.let { packet ->
+-            for(signal in packet.signals.sortedBy { it.id }) processVoiceSignal(signal)
+-            callSignalCursor=maxOf(callSignalCursor,packet.signalCursor)
++            processVoiceSignals(packet.signals)
+         }
+--- a/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
++++ b/app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt
+@@ -44,6 +44,18 @@
+     val context: EglBase.Context get() = base.eglBaseContext
+ }
+ 
++private object MessengerWebRtcRuntime {
++    @Volatile private var initialized = false
++    fun ensureInitialized(context: Context) {
++        if(initialized) return
++        synchronized(this) {
++            if(initialized) return
++            PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions())
++            initialized = true
++        }
++    }
++}
++
+ class WebRtcVoiceEngine(
+@@ -61,6 +73,8 @@
+     private val onVideoStall: (String) -> Unit = {},
+     private val onError: (String) -> Unit
+ ) {
++    enum class SignalApplyResult { APPLIED, IGNORED, DEFERRED, FAILED }
++
+@@ -149,7 +163,7 @@
+     init {
+         runCatching {
+-            PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(appContext).createInitializationOptions())
++            MessengerWebRtcRuntime.ensureInitialized(appContext)
+@@ -255,7 +269,7 @@
+-    private fun applyRemoteOffer(pc:PeerConnection,remote:SessionDescription) {
++    private fun applyRemoteOffer(pc:PeerConnection,remote:SessionDescription,onResult:(SignalApplyResult)->Unit) {
+@@ -266,26 +280,44 @@
+                 scheduleRemoteVideoSyncBurst()
+                 pc.createAnswer(object:SdpAdapter(){
+                     override fun onCreateSuccess(desc: SessionDescription?) {
+-                        if(desc==null)return
+-                        if(videoEnabled && !containsVideoMedia(desc.description)){ onError("Video media could not be negotiated"); return }
++                        if(desc==null){ onResult(SignalApplyResult.FAILED); return }
++                        if(videoEnabled && !containsVideoMedia(desc.description)){
++                            onError("Video media could not be negotiated")
++                            onResult(SignalApplyResult.FAILED)
++                            return
++                        }
+                         pc.setLocalDescription(object:SdpAdapter(){
+-                            override fun onSetSuccess(){ onLocalSignal("ANSWER",JSONObject().put("sdp",desc.description)) }
+-                            override fun onSetFailure(error:String?){ onError(error ?: "Unable to apply local call answer") }
++                            override fun onSetSuccess(){
++                                onLocalSignal("ANSWER",JSONObject().put("sdp",desc.description))
++                                onResult(SignalApplyResult.APPLIED)
++                            }
++                            override fun onSetFailure(error:String?){
++                                onError(error ?: "Unable to apply local call answer")
++                                onResult(SignalApplyResult.FAILED)
++                            }
+                         },desc)
+                     }
+-                    override fun onCreateFailure(error:String?) { onError(error ?: "Unable to create call answer") }
++                    override fun onCreateFailure(error:String?) {
++                        onError(error ?: "Unable to create call answer")
++                        onResult(SignalApplyResult.FAILED)
++                    }
+                 },MediaConstraints())
+             }
+             override fun onSetFailure(error:String?) {
+                 failRemoteDescriptionUpdate()
+                 onError(error ?: "Unable to apply call offer")
++                onResult(SignalApplyResult.FAILED)
+             }
+         },remote)
+     }
+ 
+-    fun acceptOffer(sdp:String) {
+-        val pc=peer ?: return onError("Call engine unavailable")
+-        if(videoEnabled && !containsVideoMedia(sdp)) return onError("Remote video media is unavailable")
++    fun acceptOffer(sdp:String,onResult:(SignalApplyResult)->Unit) {
++        val pc=peer ?: run { onError("Call engine unavailable"); onResult(SignalApplyResult.FAILED); return }
++        if(videoEnabled && !containsVideoMedia(sdp)){
++            onError("Remote video media is unavailable")
++            onResult(SignalApplyResult.FAILED)
++            return
++        }
+@@ -295,6 +327,7 @@
+             if(!incomingCall){
+                 ignoreRemoteOfferIce=true
+                 CallLifecycleLog.info("offer_collision_ignored",detail="state=${state?.name ?: "unknown"}")
++                onResult(SignalApplyResult.IGNORED)
+                 return
+             }
+@@ -304,29 +337,37 @@
+                     override fun onSetSuccess(){
+                         CallLifecycleLog.info("offer_collision_rollback",detail="applied")
+-                        applyRemoteOffer(pc,remote)
++                        applyRemoteOffer(pc,remote,onResult)
+                     }
+                     override fun onSetFailure(error:String?){
+                         CallLifecycleLog.info("offer_collision_rollback_failed",detail=error ?: "unknown")
+                         onError(error ?: "Unable to resolve call negotiation collision")
++                        onResult(SignalApplyResult.FAILED)
+                     }
+                 },rollback)
+                 return
+             }
+             if(state!=PeerConnection.SignalingState.STABLE){
+                 CallLifecycleLog.info("offer_collision_deferred",detail="state=${state?.name ?: "unknown"}")
++                onResult(SignalApplyResult.DEFERRED)
+                 return
+             }
+         }
+-        applyRemoteOffer(pc,remote)
++        applyRemoteOffer(pc,remote,onResult)
+     }
+ 
+-    fun acceptAnswer(sdp:String) {
+-        val pc=peer ?: return onError("Call engine unavailable")
+-        if(videoEnabled && !containsVideoMedia(sdp)) return onError("Remote video media is unavailable")
++    fun acceptAnswer(sdp:String,onResult:(SignalApplyResult)->Unit) {
++        val pc=peer ?: run { onError("Call engine unavailable"); onResult(SignalApplyResult.FAILED); return }
++        if(videoEnabled && !containsVideoMedia(sdp)){
++            onError("Remote video media is unavailable")
++            onResult(SignalApplyResult.FAILED)
++            return
++        }
+         val state=runCatching { pc.signalingState() }.getOrNull()
+         if(state!=PeerConnection.SignalingState.HAVE_LOCAL_OFFER){
+-            CallLifecycleLog.info("stale_answer_ignored",detail="state=${state?.name ?: "unknown"}")
++            val alreadyApplied=runCatching { pc.remoteDescription?.type==SessionDescription.Type.ANSWER }.getOrDefault(false)
++            CallLifecycleLog.info(if(alreadyApplied) "stale_answer_ignored" else "answer_deferred",detail="state=${state?.name ?: "unknown"}")
++            onResult(if(alreadyApplied) SignalApplyResult.IGNORED else SignalApplyResult.DEFERRED)
+             return
+         }
+@@ -339,11 +380,13 @@
+                 normalizeVideoTransceiverForTwoWayMedia()
+                 syncRemoteVideoTrackFromTransceivers()
+                 scheduleRemoteVideoSyncBurst()
++                onResult(SignalApplyResult.APPLIED)
+             }
+             override fun onSetFailure(error:String?) {
+                 settingRemoteAnswerPending=false
+                 failRemoteDescriptionUpdate()
+                 onError(error ?: "Unable to apply call answer")
++                onResult(SignalApplyResult.FAILED)
+             }
+@@ -359,15 +402,18 @@
++            remoteDescriptionReady=true
++            val pendingCount=pendingRemoteIceCandidates.size
+             var flushed=0
+-            while(pendingRemoteIceCandidates.isNotEmpty()) {
+-                val candidate=pendingRemoteIceCandidates.removeFirst()
+-                runCatching { pc.addIceCandidate(candidate) }
+-                    .onSuccess { flushed += 1 }
+-                    .onFailure { CallLifecycleLog.info("remote_ice_apply_failed",detail=it.javaClass.simpleName) }
++            repeat(pendingCount) {
++                val candidate=pendingRemoteIceCandidates.pollFirst() ?: return@repeat
++                val added=runCatching { pc.addIceCandidate(candidate) }.getOrDefault(false)
++                if(added) flushed += 1 else {
++                    pendingRemoteIceCandidates.addLast(candidate)
++                    CallLifecycleLog.info("remote_ice_apply_deferred",detail="buffered=${pendingRemoteIceCandidates.size}")
++                }
+             }
+-            remoteDescriptionReady=true
+-            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=$flushed")
++            if(flushed>0) CallLifecycleLog.info("remote_ice_flushed",detail="count=$flushed remaining=${pendingRemoteIceCandidates.size}")
+@@ -380,27 +426,31 @@
+-    fun addRemoteIce(payload:JSONObject) {
++    fun addRemoteIce(payload:JSONObject):SignalApplyResult {
+@@
+-        if(value.isBlank()) return
++        if(value.isBlank()) return SignalApplyResult.IGNORED
+@@
+-            val pc=peer ?: return
+-            if(closed) return
++            val pc=peer ?: return SignalApplyResult.DEFERRED
++            if(closed) return SignalApplyResult.FAILED
+@@
+-                return
++                return SignalApplyResult.IGNORED
+@@
+-                return
++                return SignalApplyResult.APPLIED
+             }
+-            runCatching { pc.addIceCandidate(candidate) }
+-                .onFailure { CallLifecycleLog.info("remote_ice_apply_failed",detail=it.javaClass.simpleName) }
++            val added=runCatching { pc.addIceCandidate(candidate) }.getOrDefault(false)
++            if(!added){
++                CallLifecycleLog.info("remote_ice_apply_deferred",detail="addIceCandidate=false")
++                return SignalApplyResult.DEFERRED
++            }
++            return SignalApplyResult.APPLIED
+         }
+     }

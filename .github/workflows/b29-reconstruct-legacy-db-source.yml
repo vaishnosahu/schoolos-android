@@ -55,9 +55,15 @@ jobs:
           names=re.findall(r'CREATE TABLE(?: IF NOT EXISTS)?\s+([A-Za-z_]+)',source,re.I)
           migration=re.findall(r'(?:DB_VERSION|DATABASE_VERSION)\s*=\s*\d+',source)
           # Keep exact SQL DDL declarations (schema only; no user rows/tokens).
-          table_ddl=re.findall(r'db\\.execSQL\\("(CREATE TABLE [^"\\n]+)"\\)',source)
-          alter_ddl=re.findall(r'safeAlter\\(db, "(ALTER TABLE [^"\\n]+)"\\)',source)
-          index_ddl=re.findall(r'db\\.execSQL\\("(CREATE (?:UNIQUE )?INDEX [^"\\n]+)"\\)',source)
+          # Kotlin DDL is a static single-line literal. Extract by exact prefix,
+          # not a free-form regex that can double-escape old YAML source.
+          lines=source.splitlines()
+          def sql_literal(prefix):
+              return [x.split(prefix,1)[1].rsplit('")',1)[0] for x in lines if prefix in x]
+          table_ddl=sql_literal('db.execSQL("CREATE TABLE ')
+          table_ddl=['CREATE TABLE '+x for x in table_ddl]
+          alter_ddl=['ALTER TABLE '+x for x in [v.split('safeAlter(db, "ALTER TABLE ',1)[1].rsplit('")',1)[0] for v in lines if 'safeAlter(db, "ALTER TABLE ' in v]]
+          index_ddl=['CREATE '+x for x in [v.split('db.execSQL("CREATE ',1)[1].rsplit('")',1)[0] for v in lines if 'db.execSQL("CREATE ' in v and 'INDEX ' in v]]
           for ddl in table_ddl:
               assert len(ddl) < 40000
 

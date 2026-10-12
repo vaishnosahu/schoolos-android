@@ -35,16 +35,17 @@ jobs:
           for ver in ("v22633","v22634"):
               patch=(root/(ver+".patch")).read_text(errors="replace")
               recorded.append({"version":ver,"sha256":hashlib.sha256(patch.encode()).hexdigest(),"bytes":len(patch)})
-              sections=re.split(r"(?=^diff --git )",patch,flags=re.M)
+              # Historical patches use 'diff -ruN', not always 'diff --git'.
+              # A newly added file has a @@ -0,0 +1,N @@ unified hunk.
+              sections=re.split(r"(?=^diff (?:--git|-ruN|-u) )",patch,flags=re.M)
               for section in sections:
-                  if not section.startswith("diff --git"): continue
-                  hdr=section.splitlines()[0]
-                  m=re.search(r" b/([^ ]+\.kt)",hdr)
-                  if not m: continue
-                  name=Path(m.group(1)).name
-                  if name not in ("BackupManager.kt","BackupKeyStore.kt","BackupWorker.kt"): continue
                   lines=section.splitlines()
-                  is_new=any(x.startswith("--- /dev/null") for x in lines)
+                  plus=next((x for x in lines if x.startswith("+++ ")), "")
+                  m=re.search(r"([A-Za-z]+Backup[A-Za-z]*\\.kt|BackupManager\\.kt|BackupKeyStore\\.kt|BackupWorker\\.kt)",plus)
+                  if not m: continue
+                  name=m.group(1)
+                  if name not in ("BackupManager.kt","BackupKeyStore.kt","BackupWorker.kt"): continue
+                  is_new=any(re.search(r"^@@ -0,0 \\+1,",x) for x in lines)
                   if is_new:
                       body=[];inhunk=False
                       for x in lines:
@@ -52,7 +53,7 @@ jobs:
                           if not inhunk:continue
                           if x.startswith("+") and not x.startswith("+++"): body.append(x[1:])
                           elif x.startswith(" "):body.append(x[1:])
-                          elif x.startswith("\\ No newline"):continue
+                          elif x.startswith("\\\\ No newline"):continue
                       (out/name).write_text("\n".join(body)+"\n")
           summary=[]
           # Expose only algorithm-related source lines; never log any stored user backups or credentials.

@@ -1,0 +1,74 @@
+name: B29 Reconstruct Legacy v2.26.34 Local DB Structure (Audit Only)
+on:
+  push:
+    branches: [b29-legacy-codec-audit-20261012]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  readonly-reconstruct:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read historical rebuild steps safely without executing Android/production code
+        shell: bash
+        run: |
+          python3 -m pip -q install 'PyYAML==6.0.2'
+          python3 - <<'PY'
+          import yaml,subprocess,os,sys,re
+          from pathlib import Path
+          history=Path('.github/workflows/temp-messenger-notifications-build.yml')
+          project=yaml.safe_load(history.read_text())
+          jobs=project.get('jobs',{})
+          job=next(iter(jobs.values()))
+          steps=job['steps']
+          start=next(i for i,s in enumerate(steps) if s.get('name')=='Reconstruct and verify Messenger source')
+          end=next(i for i,s in enumerate(steps) if s.get('name')=='Apply v2.26.34 backup crash and settings hierarchy hardening')
+          print('Verified historical steps',start,'through',end,flush=True)
+          for index in range(start,end+1):
+              st=steps[index]
+              source=st.get('run')
+              if source is None: continue
+              if re.search(r'(^|\n)\s*(?:rm\s+-rf\s+(?!/tmp/)|curl\s|wget\s|gh\s|git\s+push|mysql\s)',source):
+                  raise SystemExit('Disallowed shell command encountered in historical job: '+st.get('name',''))
+              print('Reconstructing stage:',st.get('name'),flush=True)
+              env=os.environ.copy()
+              proc=subprocess.run(['bash','-e','-o','pipefail','-c',source],cwd=Path.cwd(),env=env)
+              if proc.returncode!=0:
+                  raise SystemExit('Failed reconstruction stage '+st.get('name','')+': '+str(proc.returncode))
+          PY
+      - name: Static inventory original LocalMessengerDb and backup schema (no user content)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib,re
+          root=Path('/tmp/messenger-build/messenger_live/app/src/main/java/com/example/messengerui')
+          output=Path('/tmp/b29-db-struct')
+          output.mkdir(exist_ok=True)
+          assert (root/'BackupManager.kt').is_file()
+          assert (root/'LocalMessengerDb.kt').is_file()
+          source=(root/'LocalMessengerDb.kt').read_text()
+          creates=re.findall(r'CREATE TABLE IF NOT EXISTS \w+[\s\S]{0,2000}?\)',source)
+          names=re.findall(r'CREATE TABLE(?: IF NOT EXISTS)?\s+([A-Za-z_]+)',source,re.I)
+          migration=re.findall(r'(?:DB_VERSION|DATABASE_VERSION)\s*=\s*\d+',source)
+          indices=re.findall(r'CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF NOT EXISTS)?\s+[A-Za-z_]+',source,re.I)
+          models={}
+          for table in ['contacts','chats','chat_members','messages','statuses','call_logs','starred_messages','app_state','receipt_queue']:
+              lines=source.splitlines()
+              occurrences=[{"line":i+1,"text":line.strip()[:220]} for i,line in enumerate(lines) if table in line and (('CREATE TABLE' in line) or ('CREATE INDEX' in line) or ('db.execSQL' in line) or ('ALTER TABLE' in line) or ('put(' in line))]
+              models[table]=occurrences[:80]
+          functions=[line.strip()[:210] for line in source.splitlines() if re.match(r'\s*(?:override\s+)?(?:private\s+|internal\s+)?fun\s+\w+\(',line)]
+          file_inventory=[{"path":p.name,"bytes":p.stat().st_size,"sha256":hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.glob('*.kt'))]
+          result={"source":"historical v2.26.34 rebuild using original verified upgrade steps","local_database_version":migration,"tables":sorted(set(names)),"index_definitions":indices,"schema_snippets":models,"function_signatures":functions,"kotlin_inventory":file_inventory,"known_limitations":["legacy v2.26.52 newer source not reconstructed","no live schema compared","no account database accessed","no migration/restore executed"]}
+          (output/'old-db-structure.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('PASS original historical LocalMessengerDb extracted; Kotlin sources:',len(file_inventory),'legacy tables:',len(set(names)),'DB version:',migration,flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B29-Historical-Messenger-v22634-Safe-DB-Structure
+          path: /tmp/b29-db-struct/old-db-structure.json
+          retention-days: 21
+          if-no-files-found: error

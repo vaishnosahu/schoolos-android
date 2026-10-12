@@ -1,0 +1,104 @@
+name: B29 Reconstruct Final Messenger v2.26.52 Hotfix Source (Static)
+on:
+  push:
+    branches: [b29-v22652-source-mapping-20261012]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reconstruct-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild original source and original verified call fix chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip -q install PyYAML==6.0.2
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,yaml,os,shutil,re,hashlib
+          base=Path('/tmp/messenger-build')
+          original=yaml.safe_load(Path('.github/workflows/temp-messenger-notifications-build.yml').read_text())
+          steps=next(iter(original['jobs'].values()))['steps']
+          start=next(i for i,x in enumerate(steps) if x.get('name')=='Reconstruct and verify Messenger source')
+          end=next(i for i,x in enumerate(steps) if x.get('name')=='Apply P8 FCM call-state cleanup')
+          def run_step(step):
+              body=step.get('run')
+              if not body:return
+              name=step.get('name','')
+              if re.search(r'(^|\n)\s*(?:rm\s+-rf\s+(?!/tmp/)|curl\s|wget\s|gh\s|git\s+push|mysql\s)',body):
+                  raise RuntimeError('Disallowed historical command '+name)
+              print('Applying historical source step:',name,flush=True)
+              subprocess.run(['bash','-e','-o','pipefail','-c',body],env=os.environ.copy(),check=True)
+          for index in range(start,end+1):
+              if steps[index].get('name')=='Run v2.26.49 targeted unit tests':
+                  continue
+              run_step(steps[index])
+          nested=base/'messenger_live'
+          assert (nested/'app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt').is_file()
+          root=Path('/tmp/b29-messenger-root')
+          if root.exists():shutil.rmtree(root)
+          nested.rename(root)
+          shutil.rmtree(base)
+          root.rename(base)
+          old=base/'app/src/main/java/com/example/messengerui/WebRtcVoiceEngine.kt'
+          expected='18b6424cb26e51e64ebda272ef30e31a064660100c67a88c7aa96f1003ee9c62'
+          assert hashlib.sha256(old.read_bytes()).hexdigest()==expected, 'Initial P8 source hash mismatch'
+          chain=[
+              ('.github/workflows/messenger-video-rootcause-fix.yml','Apply minimal symmetric video transceiver fix'),
+              ('.github/workflows/messenger-raw-webrtc-camera-signal.yml','Apply minimal raw WebRTC camera and signaling fix'),
+              ('.github/workflows/messenger-senior-call-core.yml','Apply senior call-core correctness patch'),
+              ('.github/workflows/messenger-answer-crash-hotfix.yml','Apply answer crash hotfix'),
+              ('.github/workflows/messenger-call-crash-isolation.yml','Apply crash isolation transform')
+          ]
+          for workflow,stepname in chain:
+              job=next(iter(yaml.safe_load(Path(workflow).read_text())['jobs'].values()))
+              step=next(s for s in job['steps'] if s.get('name')==stepname)
+              run_step(step)
+          print('PASS final historical call-hotfix chain applied source-only',flush=True)
+          PY
+      - name: Produce safe final source inventory with hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,re,hashlib
+          root=Path('/tmp/messenger-build')
+          kt=root/'app/src/main/java/com/example/messengerui'
+          out=Path('/tmp/b29-final')
+          out.mkdir(exist_ok=True)
+          files=[]
+          for f in sorted((root/'app/src/main/java').rglob('*.kt')):
+              text=f.read_text(errors='replace')
+              files.append({'name':f.name,'lines':len(text.splitlines()),
+                            'sha256':hashlib.sha256(f.read_bytes()).hexdigest(),
+                            'api_paths':sorted(set(re.findall(r'[A-Za-z0-9_/-]+\.php',text)))[:100]})
+          expected={
+              'AppViewModel.kt':'d4f236160e94ff16b6289e4643bdd785c85b1585b64645ea37a575e635e04089',
+              'WebRtcVoiceEngine.kt':'2447fd942f5c68912cfcde384d6882d9c2b014fdd531a64bb76f145d824587ef',
+              'ProcessExitDiagnostics.kt':'e88e95a7f1bae5d4080d229d34f4452dd9e67de98d946c6394ceee6080710fd1'
+          }
+          observed={x['name']:x['sha256'] for x in files}
+          for name,h in expected.items():
+              assert observed[name]==h,(name,observed[name],h)
+          local=(kt/'LocalMessengerDb.kt').read_text()
+          document={
+              'version':'v2.26.52 post P8 + video rootcause + raw camera + senior core + answer-crash + crash isolation',
+              'verified_original_last_hashes':expected,
+              'DB_VERSION':re.findall(r'DB_VERSION\s*=\s*\d+',local),
+              'local_tables':sorted(set(re.findall(r'CREATE TABLE(?: IF NOT EXISTS)?\s+(\w+)',local,re.I))),
+              'kotlin_files':files,
+              'not_verified':['live device/production server','old user data or private keys','new Rudhra media/call parity']
+          }
+          (out/'legacy-v22652-final-source-audit.json').write_text(json.dumps(document,indent=2)+'\n')
+          print('PASS reconstructed complete historical v2.26.52 final source hashes; Kotlin files:',len(files))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B29-Final-Messenger-v22652-Source-Hotfix-Inventory
+          path: /tmp/b29-final/legacy-v22652-final-source-audit.json
+          retention-days: 21
+          if-no-files-found: error

@@ -54,6 +54,13 @@ jobs:
           creates=re.findall(r'CREATE TABLE IF NOT EXISTS \w+[\s\S]{0,2000}?\)',source)
           names=re.findall(r'CREATE TABLE(?: IF NOT EXISTS)?\s+([A-Za-z_]+)',source,re.I)
           migration=re.findall(r'(?:DB_VERSION|DATABASE_VERSION)\s*=\s*\d+',source)
+          # Keep exact SQL DDL declarations (schema only; no user rows/tokens).
+          table_ddl=re.findall(r'db\\.execSQL\\("(CREATE TABLE [^"\\n]+)"\\)',source)
+          alter_ddl=re.findall(r'safeAlter\\(db, "(ALTER TABLE [^"\\n]+)"\\)',source)
+          index_ddl=re.findall(r'db\\.execSQL\\("(CREATE (?:UNIQUE )?INDEX [^"\\n]+)"\\)',source)
+          for ddl in table_ddl:
+              assert len(ddl) < 40000
+
           indices=re.findall(r'CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF NOT EXISTS)?\s+[A-Za-z_]+',source,re.I)
           models={}
           for table in ['contacts','chats','chat_members','messages','statuses','call_logs','starred_messages','app_state','receipt_queue']:
@@ -62,7 +69,7 @@ jobs:
               models[table]=occurrences[:80]
           functions=[line.strip()[:210] for line in source.splitlines() if re.match(r'\s*(?:override\s+)?(?:private\s+|internal\s+)?fun\s+\w+\(',line)]
           file_inventory=[{"path":p.name,"bytes":p.stat().st_size,"sha256":hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.glob('*.kt'))]
-          result={"source":"historical v2.26.34 rebuild using original verified upgrade steps","local_database_version":migration,"tables":sorted(set(names)),"index_definitions":indices,"schema_snippets":models,"function_signatures":functions,"kotlin_inventory":file_inventory,"known_limitations":["legacy v2.26.52 newer source not reconstructed","no live schema compared","no account database accessed","no migration/restore executed"]}
+          result={"source":"historical v2.26.34 rebuild using original verified upgrade steps","original_table_ddl":table_ddl,"original_alter_ddl":alter_ddl,"original_index_ddl":index_ddl,"local_database_version":migration,"tables":sorted(set(names)),"index_definitions":indices,"schema_snippets":models,"function_signatures":functions,"kotlin_inventory":file_inventory,"known_limitations":["legacy v2.26.52 newer source not reconstructed","no live schema compared","no account database accessed","no migration/restore executed"]}
           (output/'old-db-structure.json').write_text(json.dumps(result,indent=2)+'\n')
           print('PASS original historical LocalMessengerDb extracted; Kotlin sources:',len(file_inventory),'legacy tables:',len(set(names)),'DB version:',migration,flush=True)
           PY

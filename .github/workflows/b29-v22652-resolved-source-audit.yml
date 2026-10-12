@@ -65,7 +65,17 @@ jobs:
           local=(kt/'LocalMessengerDb.kt').read_text()
           backups=[(kt/n) for n in ('BackupManager.kt','BackupKeyStore.kt','BackupWorker.kt')]
           assert all(p.is_file() for p in backups)
+          # B29: source-defined late DB migrations and backup contract without user rows
+          table_sql=[x.strip()[:10000] for x in local.splitlines() if
+              'CREATE TABLE ' in x and ('db.execSQL' in x or 'safeAlter' in x)]
+          alter_sql=[x.strip()[:1000] for x in local.splitlines() if 'ALTER TABLE ' in x]
+          backup_source=(kt/'BackupManager.kt').read_text()
+          backup_markers=[{'line':i+1,'code':v.strip()[:180]} for i,v in enumerate(backup_source.splitlines())
+              if any(w in v for w in ('MSGBK','210_000','backup_version','manifest.json','media_map','restoreEncryptedBackup','encrypt(','decrypt('))]
           schema={
+            'source_table_sql':table_sql,
+            'source_alter_sql':alter_sql,
+            'backup_code_markers':backup_markers,
             'local_db_version': re.findall(r'(?:DB_VERSION|DATABASE_VERSION)\s*=\s*\d+',local),
             'table_names': sorted(set(re.findall(r'CREATE TABLE(?: IF NOT EXISTS)?\s+([A-Za-z_]+)',local,re.I))),
             'backup_included_tables':['contacts','chats','chat_members','messages','statuses','call_logs','starred_messages'],

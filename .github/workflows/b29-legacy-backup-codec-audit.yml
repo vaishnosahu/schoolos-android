@@ -41,11 +41,11 @@ jobs:
               for section in sections:
                   lines=section.splitlines()
                   plus=next((x for x in lines if x.startswith("+++ ")), "")
-                  m=re.search(r"([A-Za-z]+Backup[A-Za-z]*\\.kt|BackupManager\\.kt|BackupKeyStore\\.kt|BackupWorker\\.kt)",plus)
+                  m=re.search(r"([A-Za-z]+Backup[A-Za-z]*\.kt|BackupManager\.kt|BackupKeyStore\.kt|BackupWorker\.kt)",plus)
                   if not m: continue
                   name=m.group(1)
                   if name not in ("BackupManager.kt","BackupKeyStore.kt","BackupWorker.kt"): continue
-                  is_new=any(re.search(r"^@@ -0,0 \\+1,",x) for x in lines)
+                  is_new=any(re.search(r"^@@ -0,0 \+1,",x) for x in lines)
                   if is_new:
                       body=[];inhunk=False
                       for x in lines:

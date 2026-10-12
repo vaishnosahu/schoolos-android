@@ -72,7 +72,7 @@ jobs:
             'backup_Kotlin_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in backups},
             'old_android_package':'com.example.messengerui',
             'source_tag':'v2.26.52 P8 chain, not newer answer-crash-hotfix artifact',
-            'limitations':['No original user's data used','Post-P8 answer-crash hotfix not automatically applied','No device test or server deployment proof']
+            'limitations':["No original user data used",'Post-P8 answer-crash hotfix not automatically applied','No device test or server deployment proof']
           }
           (out/'v22652-source-inventory.json').write_text(json.dumps({'files':full,'legacy_schema':schema},indent=2)+'\n')
           (out/'v22652-schema-only.json').write_text(json.dumps(schema,indent=2)+'\n')

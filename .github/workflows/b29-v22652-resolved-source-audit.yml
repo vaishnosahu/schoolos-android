@@ -1,0 +1,86 @@
+name: B29 Rebuild historical v2.26.52 source for parity (audit-only)
+on:
+  push:
+    branches: [b29-v22652-source-mapping-20261012]
+permissions:
+  contents: read
+jobs:
+  reconstruct:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recreate original historical v2.26.52 source from committed patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip -q install PyYAML==6.0.2
+          python3 - <<'PY'
+          import yaml,subprocess,os,re
+          from pathlib import Path
+          history=Path('.github/workflows/temp-messenger-notifications-build.yml')
+          steps=next(iter(yaml.safe_load(history.read_text())['jobs'].values()))['steps']
+          start=next(i for i,s in enumerate(steps) if s.get('name')=='Reconstruct and verify Messenger source')
+          end=next(i for i,s in enumerate(steps) if s.get('name')=='Apply P8 FCM call-state cleanup')
+          skipped={'Run v2.26.49 targeted unit tests'}
+          print(f'Source chain: {start}..{end}, total {end-start+1} steps',flush=True)
+          for index in range(start,end+1):
+              step=steps[index]
+              name=step.get('name','')
+              if name in skipped: print('Skipping SDK-only step:',name,flush=True);continue
+              body=step.get('run')
+              if body is None: continue
+              # The historical workflow must only perform local patching, no online production calls.
+              if re.search(r'(^|\n)\s*(?:rm\s+-rf\s+(?!/tmp/)|curl\s|wget\s|gh\s|git\s+push|mysql\s)',body):
+                  raise SystemExit(f'Disallowed command in stage {name}')
+              print('Reconstruct:',name,flush=True)
+              p=subprocess.run(['bash','-e','-o','pipefail','-c',body],env=os.environ.copy(),cwd=Path.cwd())
+              if p.returncode!=0: raise SystemExit(f'{name} failed with {p.returncode}')
+          PY
+      - name: Generate safe code-and-feature inventory (no credentials or data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,re,hashlib
+          root=Path('/tmp/messenger-build/messenger_live')
+          kt=root/'app/src/main/java/com/example/messengerui'
+          out=Path('/tmp/b29-v22652')
+          out.mkdir(exist_ok=True)
+          if not kt.is_dir():raise SystemExit('Original old Kotlin source missing')
+          full=[]
+          for f in sorted((root/'app/src/main/java').rglob('*.kt')):
+              s=f.read_text(errors='replace')
+              methods=[]
+              for i,line in enumerate(s.splitlines(),1):
+                  st=line.strip()
+                  if re.match(r'^(?:private |internal |public |protected |override |suspend |open |@Composable )*(?:data |sealed )?(?:class|object|interface|fun|enum class)\s+',st):
+                      # names/signatures only; avoid literal credentials
+                      methods.append({'line':i,'signature':re.sub(r'\"[^\"\\n]*\"','\"…\"',st)[:165]})
+              endpoints=sorted(set(re.findall(r'[A-Za-z0-9_/-]+\.php',s)))
+              full.append({'file':str(f.relative_to(root)), 'size':f.stat().st_size,
+                           'sha256':hashlib.sha256(f.read_bytes()).hexdigest(),
+                           'lines':len(s.splitlines()),'methods':methods[:180], 'endpoint_literals':endpoints[:90]})
+          local=(kt/'LocalMessengerDb.kt').read_text()
+          backups=[(kt/n) for n in ('BackupManager.kt','BackupKeyStore.kt','BackupWorker.kt')]
+          assert all(p.is_file() for p in backups)
+          schema={
+            'local_db_version': re.findall(r'(?:DB_VERSION|DATABASE_VERSION)\s*=\s*\d+',local),
+            'table_names': sorted(set(re.findall(r'CREATE TABLE(?: IF NOT EXISTS)?\s+([A-Za-z_]+)',local,re.I))),
+            'backup_included_tables':['contacts','chats','chat_members','messages','statuses','call_logs','starred_messages'],
+            'backup_Kotlin_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in backups},
+            'old_android_package':'com.example.messengerui',
+            'source_tag':'v2.26.52 P8 chain, not newer answer-crash-hotfix artifact',
+            'limitations':['No original user's data used','Post-P8 answer-crash hotfix not automatically applied','No device test or server deployment proof']
+          }
+          (out/'v22652-source-inventory.json').write_text(json.dumps({'files':full,'legacy_schema':schema},indent=2)+'\n')
+          (out/'v22652-schema-only.json').write_text(json.dumps(schema,indent=2)+'\n')
+          print('PASS reconstructed old 2.26.52 Kotlin sources:',len(full),'tables:',len(schema['table_names']))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B29-v22652-P8-Historical-Source-Inventory
+          path: /tmp/b29-v22652/*.json
+          retention-days: 21
+          if-no-files-found: error

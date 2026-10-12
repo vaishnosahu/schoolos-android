@@ -66,6 +66,23 @@ jobs:
                       if not any(t in line.lower() for t in ("password =", "api_key", "server_token", "secret =")):
                           highlighted.append({"line":i,"text":line.strip()[:170]})
               summary.append({"file":p.name,"lines":len(code.splitlines()),"sha256":hashlib.sha256(code.encode()).hexdigest(),"algorithm_evidence":highlighted[:100]})
+          # Extract only source-code lines of LocalMessengerDb backup snapshot hooks.
+          # No user databases or secret config files are read by this CI job.
+          hooks=[]
+          for ver in ("v22633","v22634"):
+              patch=(root/(ver+".patch")).read_text(errors="replace")
+              ls=patch.splitlines()
+              markers=("fun exportBackupSnapshot(", "fun restoreBackupSnapshot(", "backupMessageCount(", "private fun backup")
+              for i,row in enumerate(ls):
+                  if not any(m in row for m in markers): continue
+                  if not row.startswith("+") or row.startswith("+++"): continue
+                  excerpt=[]
+                  for line in ls[i:min(i+115,len(ls))]:
+                      if line.startswith("diff "):break
+                      if line.startswith("+") and not line.startswith("+++"):excerpt.append(line[1:])
+                      elif line.startswith(" "): excerpt.append(line[1:])
+                  hooks.append({"version":ver,"patch_line":i+1,"source_excerpt":"\\n".join(excerpt)[:13500]})
+          (root/"db-backup-hooks.json").write_text(json.dumps({"source":"original v22633/34 patch only","hooks":hooks},indent=2)+"\\n")
           result={"status":"static-only","legacy_version":"v2.26.33 + v2.26.34 patches","reconstructed_new_files":summary,"patches":recorded,"not_proven":["full final v2.26.52 source","live server deployment","Android device backup restore","key availability","zero data loss"]}
           (root/"codec-report.json").write_text(json.dumps(result,indent=2)+"\n")
           print("Read-only historical codec extraction complete:",[x["file"] for x in summary])
@@ -76,6 +93,7 @@ jobs:
           name: B29-Legacy-Backup-Codec-Source-Audit
           path: |
             ${{ runner.temp }}/b29-codec/codec-report.json
+            ${{ runner.temp }}/b29-codec/db-backup-hooks.json
             ${{ runner.temp }}/b29-codec/backup-source/*.kt
           retention-days: 30
           if-no-files-found: error

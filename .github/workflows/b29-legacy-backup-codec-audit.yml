@@ -1,0 +1,80 @@
+name: B29 Legacy Messenger Backup Codec Audit (No APK)
+on:
+  push:
+    branches: [b29-legacy-codec-audit-20261012]
+permissions:
+  contents: read
+jobs:
+  inspect-archived-codec:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode historical checked-in source patches (no credentials, no network, no app execution)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/b29-codec"
+          cat tmp-messenger-build/v22633-chunk{1,2,3,4,5,6,7}.txt |
+            base64 --decode | gzip -dc > "$RUNNER_TEMP/b29-codec/v22633.patch"
+          cat tmp-messenger-build/v22634-safe-{00,01,02,03,04}.txt |
+            base64 --decode | gzip -dc > "$RUNNER_TEMP/b29-codec/v22634.patch"
+          test -s "$RUNNER_TEMP/b29-codec/v22633.patch"
+          test -s "$RUNNER_TEMP/b29-codec/v22634.patch"
+      - name: Extract ONLY historical backup-specific Kotlin sources and safe algorithm metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,re,hashlib,os
+          root=Path(os.environ["RUNNER_TEMP"])/"b29-codec"
+          out=root/"backup-source"
+          out.mkdir(exist_ok=True)
+          recorded=[]
+          for ver in ("v22633","v22634"):
+              patch=(root/(ver+".patch")).read_text(errors="replace")
+              recorded.append({"version":ver,"sha256":hashlib.sha256(patch.encode()).hexdigest(),"bytes":len(patch)})
+              sections=re.split(r"(?=^diff --git )",patch,flags=re.M)
+              for section in sections:
+                  if not section.startswith("diff --git"): continue
+                  hdr=section.splitlines()[0]
+                  m=re.search(r" b/([^ ]+\.kt)",hdr)
+                  if not m: continue
+                  name=Path(m.group(1)).name
+                  if name not in ("BackupManager.kt","BackupKeyStore.kt","BackupWorker.kt"): continue
+                  lines=section.splitlines()
+                  is_new=any(x.startswith("--- /dev/null") for x in lines)
+                  if is_new:
+                      body=[];inhunk=False
+                      for x in lines:
+                          if x.startswith("@@"):inhunk=True;continue
+                          if not inhunk:continue
+                          if x.startswith("+") and not x.startswith("+++"): body.append(x[1:])
+                          elif x.startswith(" "):body.append(x[1:])
+                          elif x.startswith("\\ No newline"):continue
+                      (out/name).write_text("\n".join(body)+"\n")
+          summary=[]
+          # Expose only algorithm-related source lines; never log any stored user backups or credentials.
+          terms=("MSGBK","PBKDF2","AES/","GCM","SecretKeyFactory","PBEKeySpec","Cipher.","SecureRandom","salt","recovery","androidkeystore","SHA-256","backup_version","DATABASE","media_count","message_count")
+          for p in sorted(out.glob("*.kt")):
+              code=p.read_text()
+              highlighted=[]
+              for i,line in enumerate(code.splitlines(),1):
+                  if any(t.lower() in line.lower() for t in terms):
+                      if not any(t in line.lower() for t in ("password =", "api_key", "server_token", "secret =")):
+                          highlighted.append({"line":i,"text":line.strip()[:170]})
+              summary.append({"file":p.name,"lines":len(code.splitlines()),"sha256":hashlib.sha256(code.encode()).hexdigest(),"algorithm_evidence":highlighted[:100]})
+          result={"status":"static-only","legacy_version":"v2.26.33 + v2.26.34 patches","reconstructed_new_files":summary,"patches":recorded,"not_proven":["full final v2.26.52 source","live server deployment","Android device backup restore","key availability","zero data loss"]}
+          (root/"codec-report.json").write_text(json.dumps(result,indent=2)+"\n")
+          print("Read-only historical codec extraction complete:",[x["file"] for x in summary])
+          if not summary: raise SystemExit("No new backup Kotlin files reconstructed; inspect patch format")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B29-Legacy-Backup-Codec-Source-Audit
+          path: |
+            ${{ runner.temp }}/b29-codec/codec-report.json
+            ${{ runner.temp }}/b29-codec/backup-source/*.kt
+          retention-days: 30
+          if-no-files-found: error
